@@ -43,6 +43,8 @@ export async function runSetup(defaults: WizardDefaults = {}): Promise<void> {
   output.write("opencode-atme-proxy setup\n\n");
   output.write("本向导只写入本机配置，不会上传任何内容。\n");
   output.write(`配置: ${configPath}\n密钥: ${envPath}\n\n`);
+  output.write("提示：open_id 是你在飞书里的用户 ID（ou_...）。\n");
+  output.write("扫码创建应用时会自动带出，通常不用手填。\n\n");
 
   const existing = await readExisting(configPath);
   const answers = defaults.nonInteractive
@@ -95,11 +97,11 @@ export async function runSetup(defaults: WizardDefaults = {}): Promise<void> {
 
   output.write(`\n已写入：\n  ${configPath}\n  ${envPath}\n\n`);
   if (answers.appSecretFromQr) {
-    output.write("扫码创建的应用需要在飞书开放平台完成：\n");
-    output.write("  1. 开启机器人能力\n");
-    output.write("  2. 添加所需权限（含 im:message.group_msg，敏感权限需管理员审批）\n");
-    output.write("  3. 订阅长连接事件 im.message.receive_v1、card.action.trigger\n");
-    output.write("  4. 发布应用并将机器人拉入群\n\n");
+    output.write("扫码已预填机器人能力、权限、事件和卡片回调。\n");
+    output.write("仍需你完成：\n");
+    output.write("  1. 管理员审批敏感权限 im:message.group_msg\n");
+    output.write("  2. 发布应用\n");
+    output.write("  3. 把机器人拉进目标群\n\n");
   }
   output.write("下一步：\n");
   output.write("  atme-proxy doctor\n");
@@ -182,15 +184,22 @@ async function ask(existing: Partial<AppConfig>): Promise<Answers> {
     const result = await registerBotApp({
       onQrReady: (info) => {
         qrUrl = info.url;
-        output.write(`\n请在飞书 App 中打开或扫码完成创建（${info.expireIn} 秒有效）：\n`);
-        output.write(`  ${info.url}\n`);
+        output.write(`\n用飞书扫一扫完成创建（${Math.round(info.expireIn / 60)} 分钟内有效）\n`);
         void (async () => {
           try {
             const qrcode = await import("qrcode");
-            const text = await qrcode.toString(info.url, { type: "terminal", small: true });
+            const text = await qrcode.toString(info.url, {
+              type: "terminal",
+              small: true,
+              errorCorrectionLevel: "L",
+              margin: 1,
+            });
             output.write(`${text}\n`);
           } catch {
-            // Terminal QR is optional; the URL is always printed.
+            output.write("二维码渲染失败，请设置 ATME_SETUP_VERBOSE=1 重跑以打印链接。\n");
+          }
+          if (process.env.ATME_SETUP_VERBOSE === "1") {
+            output.write(`\n链接：${info.url}\n`);
           }
         })();
         output.write("等待飞书授权...\n");
@@ -215,14 +224,15 @@ async function ask(existing: Partial<AppConfig>): Promise<Answers> {
       false,
     );
   }
-  const meOpenId = await askText(
-    "你的 open_id (ou_...)",
-    claimedOpenId || feishu?.me?.openId || "",
-  );
-  const approverOpenId = await askText(
-    "审批人 open_id (回车等于你自己)",
-    feishu?.approvers?.[0]?.openId ?? meOpenId,
-  );
+  const meOpenId =
+    claimedOpenId ||
+    (await askText("你的 open_id (ou_...)", feishu?.me?.openId ?? ""));
+  const approverOpenId =
+    claimedOpenId ||
+    (await askText(
+      "审批人 open_id (回车等于你自己)",
+      feishu?.approvers?.[0]?.openId ?? meOpenId,
+    ));
   const chatIdsRaw = await askText(
     "群 chat_id (oc_...，多个用逗号分隔)",
     feishu?.groups?.map((group: { chatId: string }) => group.chatId).join(",") ?? "",
