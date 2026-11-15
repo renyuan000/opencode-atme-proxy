@@ -108,10 +108,17 @@ atme-proxy setup
 
 向导支持两种方式：
 
-1. **扫码自动创建飞书应用（推荐）**：飞书设备授权，自动拿到 App ID / App Secret / 你的 open_id。
+1. **扫码自动创建机器人应用（推荐）**：调用飞书 `registerApp`，扫码后直接创建带机器人能力、权限、事件和卡片回调的应用，并返回 App ID / App Secret / 你的 open_id。
 2. **手动输入**：已有应用时使用。
 
-扫码创建后仍需在飞书开放平台手动完成：开启机器人能力、添加权限（含敏感权限 `im:message.group_msg`）、订阅长连接事件、发布应用、拉机器人入群。**敏感权限无法通过扫码自动获批。**
+扫码会预填：
+
+- 机器人能力（`preset: false` 的最小机器人模板）
+- scopes：`im:message.group_at_msg:readonly`、`im:message.group_msg`、`im:message:send_as_bot`、`im:message.p2p_msg:readonly`、`im:resource`、`contact:user.base:readonly`
+- 事件：`im.message.receive_v1`
+- 回调：`card.action.trigger`
+
+仍需你在飞书确认/完成：**敏感权限 `im:message.group_msg` 需要管理员审批**；发布应用、把机器人拉进群。
 
 向导会写入：
 
@@ -587,10 +594,12 @@ atme-proxy setup
 
 Two modes:
 
-1. **QR device flow (recommended)**: creates a Feishu app and returns App ID / App Secret / your open_id.
+1. **QR device flow (recommended)**: calls Feishu `registerApp` to create a bot app with bot capability, scopes, events and card callback, then returns App ID / App Secret / your open_id.
 2. **Manual input**: when the app already exists.
 
-After QR creation you still must, in the Feishu console: enable the bot, add scopes (including sensitive `im:message.group_msg`), subscribe to long-connection events, publish the app, and add the bot to groups. Sensitive scopes cannot be auto-approved.
+The QR flow prefills bot capability (minimal `preset: false` template), the six scopes, `im.message.receive_v1`, and `card.action.trigger`.
+
+You still must approve the sensitive `im:message.group_msg` scope, publish the app, and add the bot to groups.
 
 It writes `~/.config/opencode-atme-proxy/config.json` and `.env`, both mode 600.
 

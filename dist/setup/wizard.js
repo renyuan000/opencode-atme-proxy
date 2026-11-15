@@ -5,7 +5,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { AppConfigSchema, loadConfig, defaultConfigPath, } from "../core/config.js";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
-import { beginAppRegistration, formatRegistrationPrompt, pollAppRegistration, } from "./device-flow.js";
+import { registerBotApp } from "./device-flow.js";
 import { toErrorMessage } from "../core/util.js";
 const CONFIG_DIR = join(homedir(), ".config", "opencode-atme-proxy");
 export async function runSetup(defaults = {}) {
@@ -94,6 +94,8 @@ function fromEnv(existing) {
         meOpenId: env.ATME_ME_OPEN_ID ?? existing.platforms?.feishu?.me?.openId ?? "",
         approverOpenId: env.ATME_APPROVER_OPEN_IDS ??
             existing.platforms?.feishu?.approvers?.[0]?.openId ??
+            env.ATME_ME_OPEN_ID ??
+            existing.platforms?.feishu?.me?.openId ??
             "",
         chatIds: existing.platforms?.feishu?.groups?.map((group) => group.chatId) ?? [],
         opencodeUrl: env.ATME_OPENCODE_URL ?? existing.opencode?.baseUrl ?? "http://127.0.0.1:19876",
@@ -126,18 +128,37 @@ async function ask(existing) {
         "  2. 手动输入 App ID / App Secret\n");
     const mode = (await rl.question("请选择 [1]: ")).trim() || "1";
     if (mode === "1") {
-        const begin = await beginAppRegistration({
-            onWait: (info) => {
-                output.write(`\n${formatRegistrationPrompt(info)}\n`);
+        let qrUrl = "";
+        const result = await registerBotApp({
+            onQrReady: (info) => {
+                qrUrl = info.url;
+                output.write(`\n请在飞书 App 中打开或扫码完成创建（${info.expireIn} 秒有效）：\n`);
+                output.write(`  ${info.url}\n`);
+                void (async () => {
+                    try {
+                        const qrcode = await import("qrcode");
+                        const text = await qrcode.toString(info.url, { type: "terminal", small: true });
+                        output.write(`${text}\n`);
+                    }
+                    catch {
+                        // Terminal QR is optional; the URL is always printed.
+                    }
+                })();
                 output.write("等待飞书授权...\n");
             },
+            onStatus: (info) => {
+                if (info.status === "slow_down") {
+                    output.write(`飞书要求降低轮询频率，间隔 ${info.interval ?? "?"} 秒\n`);
+                }
+            },
         });
-        const result = await pollAppRegistration(begin);
         appId = result.appId;
         appSecret = result.appSecret;
         appSecretFromQr = true;
         claimedOpenId = result.openId ?? "";
-        output.write(`\n已创建应用：${appId}\n`);
+        output.write(`\n已创建机器人应用：${appId}\n`);
+        if (!qrUrl)
+            output.write("注意：没有拿到二维码链接，但授权已完成。\n");
     }
     else {
         appId = await askText("飞书 App ID (cli_...)", feishu?.appId ?? "");

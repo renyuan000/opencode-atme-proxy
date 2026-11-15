@@ -1,11 +1,3 @@
-export interface AppRegistrationBegin {
-    deviceCode: string;
-    userCode: string;
-    verificationUri: string;
-    verificationUriComplete: string;
-    expiresIn: number;
-    interval: number;
-}
 export interface AppRegistrationResult {
     appId: string;
     appSecret: string;
@@ -13,13 +5,28 @@ export interface AppRegistrationResult {
     tenantBrand?: string;
 }
 export interface DeviceFlowOptions {
-    onWait?: (begin: AppRegistrationBegin) => void;
-    fetchImpl?: typeof fetch;
-    sleep?: (ms: number) => Promise<void>;
-    now?: () => number;
+    onQrReady?: (info: {
+        url: string;
+        expireIn: number;
+    }) => void;
+    onStatus?: (info: {
+        status: string;
+        interval?: number;
+    }) => void;
+    signal?: AbortSignal;
 }
-export declare function parseBeginResponse(data: Record<string, unknown>): AppRegistrationBegin;
-export declare function parsePollResponse(data: Record<string, unknown>): AppRegistrationResult | undefined;
-export declare function beginAppRegistration(options?: DeviceFlowOptions): Promise<AppRegistrationBegin>;
-export declare function pollAppRegistration(begin: AppRegistrationBegin, options?: DeviceFlowOptions): Promise<AppRegistrationResult>;
-export declare function formatRegistrationPrompt(begin: AppRegistrationBegin): string;
+export declare const ATME_ADDONS: {
+    preset: boolean;
+    scopes: {
+        tenant: string[];
+    };
+    events: {
+        items: {
+            tenant: string[];
+        };
+    };
+    callbacks: {
+        items: string[];
+    };
+};
+export declare function registerBotApp(options?: DeviceFlowOptions): Promise<AppRegistrationResult>;
