@@ -5,6 +5,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { AppConfigSchema, loadConfig, defaultConfigPath, } from "../core/config.js";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
+import * as Lark from "@larksuiteoapi/node-sdk";
 import { registerBotApp } from "./device-flow.js";
 import { toErrorMessage } from "../core/util.js";
 const CONFIG_DIR = join(homedir(), ".config", "opencode-atme-proxy");
@@ -299,6 +300,49 @@ export async function runDoctor(configPath) {
         detail: loaded.secrets.appSecret ? "已设置" : "缺失",
         fix: loaded.secrets.appSecret ? undefined : "在 .env 设置 FEISHU_APP_SECRET",
     });
+    if (loaded.secrets.appSecret) {
+        try {
+            const client = new Lark.Client({
+                appId: feishu.appId,
+                appSecret: loaded.secrets.appSecret,
+                domain: feishu.domain === "lark" ? Lark.Domain.Lark : Lark.Domain.Feishu,
+                logger: { error: () => { }, warn: () => { }, info: () => { }, debug: () => { }, trace: () => { } },
+            });
+            const info = await client.request({ method: "GET", url: "/open-apis/bot/v3/info" });
+            const botOpenId = info?.bot?.open_id ?? info?.data?.bot?.open_id;
+            if (info?.code !== 0) {
+                checks.push({
+                    ok: false,
+                    label: "飞书凭据",
+                    detail: `App Secret 无效或应用未发布: ${info?.msg ?? info?.code ?? "unknown"}`,
+                    fix: "核对 App ID/Secret，并在开放平台发布应用",
+                });
+            }
+            else if (!botOpenId) {
+                checks.push({
+                    ok: false,
+                    label: "机器人能力",
+                    detail: "凭据有效，但应用没有机器人能力",
+                    fix: "在开放平台开启机器人能力并发布",
+                });
+            }
+            else {
+                checks.push({
+                    ok: true,
+                    label: "飞书凭据与机器人",
+                    detail: `bot open_id=${botOpenId}`,
+                });
+            }
+        }
+        catch (error) {
+            checks.push({
+                ok: false,
+                label: "飞书凭据",
+                detail: toErrorMessage(error),
+                fix: "检查网络、App ID/Secret，以及应用是否已发布",
+            });
+        }
+    }
     checks.push({
         ok: !!feishu.me.openId || !!feishu.approvers[0]?.openId,
         label: "owner（我）",
