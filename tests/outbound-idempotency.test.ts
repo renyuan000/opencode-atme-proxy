@@ -43,6 +43,17 @@ function config(stateDir: string): LoadedConfig {
       analysis: { mode: "main_agent", timeoutMs: 1000 },
       botReply: { enabled: false, allowNoReply: true, escalateWhenUnsure: true, analyzeBeforeEscalate: false, minAnswerConfidence: 0.6, decisionMentionText: "需要你确认", maxQuestionChars: 160, perSenderPerMinute: 6, perSenderConcurrent: 1, cooldownSeconds: 0, ownerBypass: true, overloadReply: "稍后", maxMessagesPerSenderPerRun: 20 },
       opencode: { baseUrl: "http://127.0.0.1:19876", passwordEnv: "P", sessionTitlePrefix: "atme", keepSessions: true, sessionListVisible: true },
+      subagents: {
+        enabled: false,
+        analyst: "atme-analyst",
+        executor: "atme-executor",
+        reviewer: "atme-reviewer",
+        maxChildrenPerTask: 3,
+        maxChildrenGlobal: 8,
+        depth: 1,
+        archiveAfterDays: 7,
+        deleteAfterDays: 30,
+      },
       context: { enabled: false, maxMessagesPerChat: 20, maxCharsPerMessage: 300, ttlDays: 7, maxChats: 100, includeInAnalysis: false, storeAnalysisSnippets: false, storeMentions: true, storeRelevantScan: true, storeOwnerDm: true },
       memory: {
         enabled: false,

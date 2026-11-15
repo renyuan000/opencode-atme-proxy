@@ -54,6 +54,17 @@ function cfg(stateDir: string, autoReply = false, filterEnabled = false): Loaded
       repos: [],
       policy: { defaultDenyGroups: true, autoReplyOnMention: autoReply, groupWriteBack: false, requireMergeApproval: true, allowExternalModel: filterEnabled, autoAnalyzeTasks: false, maxConcurrentExecutions: 2, approvalTimeoutHours: 24, executionTimeoutMinutes: 60, maxExecutionRetries: 0 },
       budget: { maxMessagesPerRun: 500, maxTokensPerRun: 50000, maxExecutionsPerDay: 10 },
+      subagents: {
+        enabled: false,
+        analyst: "atme-analyst",
+        executor: "atme-executor",
+        reviewer: "atme-reviewer",
+        maxChildrenPerTask: 3,
+        maxChildrenGlobal: 8,
+        depth: 1,
+        archiveAfterDays: 7,
+        deleteAfterDays: 30,
+      },
       context: {
         enabled: true,
         maxMessagesPerChat: 20,

@@ -70,6 +70,17 @@ function config(stateDir: string): LoadedConfig {
         maxMessagesPerSenderPerRun: 20,
       },
       opencode: { baseUrl: "http://127.0.0.1:19876", passwordEnv: "P", sessionTitlePrefix: "atme", keepSessions: true, sessionListVisible: true },
+      subagents: {
+        enabled: false,
+        analyst: "atme-analyst",
+        executor: "atme-executor",
+        reviewer: "atme-reviewer",
+        maxChildrenPerTask: 3,
+        maxChildrenGlobal: 8,
+        depth: 1,
+        archiveAfterDays: 7,
+        deleteAfterDays: 30,
+      },
       context: { enabled: false, maxMessagesPerChat: 20, maxCharsPerMessage: 300, ttlDays: 7, maxChats: 100, includeInAnalysis: false, storeAnalysisSnippets: false, storeMentions: true, storeRelevantScan: true, storeOwnerDm: true },
       memory: {
         enabled: false,

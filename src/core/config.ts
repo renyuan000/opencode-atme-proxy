@@ -114,6 +114,20 @@ const OpenCodeSchema = z.object({
   sessionListVisible: z.boolean().default(true),
 });
 
+const SubagentsSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    analyst: z.string().default("atme-analyst"),
+    executor: z.string().default("atme-executor"),
+    reviewer: z.string().default("atme-reviewer"),
+    maxChildrenPerTask: z.number().int().min(1).max(10).default(3),
+    maxChildrenGlobal: z.number().int().min(1).max(64).default(8),
+    depth: z.number().int().min(1).max(3).default(1),
+    archiveAfterDays: z.number().int().min(1).max(365).default(7),
+    deleteAfterDays: z.number().int().min(1).max(3650).default(30),
+  })
+  .default({});
+
 const ContextSchema = z
   .object({
     enabled: z.boolean().default(true),
@@ -267,6 +281,7 @@ export const AppConfigSchema = z.object({
   filter: FilterSchema.default({}),
   analysis: AnalysisSchema.default({}),
   opencode: OpenCodeSchema.default({}),
+  subagents: SubagentsSchema,
   context: ContextSchema,
   memory: MemorySchema,
   project: ProjectSchema,

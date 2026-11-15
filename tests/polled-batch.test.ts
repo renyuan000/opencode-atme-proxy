@@ -144,6 +144,17 @@ function makeConfig(stateDir: string, filterEnabled = true): LoadedConfig {
         maxTokensPerRun: 50000,
         maxExecutionsPerDay: 10,
       },
+      subagents: {
+        enabled: false,
+        analyst: "atme-analyst",
+        executor: "atme-executor",
+        reviewer: "atme-reviewer",
+        maxChildrenPerTask: 3,
+        maxChildrenGlobal: 8,
+        depth: 1,
+        archiveAfterDays: 7,
+        deleteAfterDays: 30,
+      },
       context: {
         enabled: true,
         maxMessagesPerChat: 20,

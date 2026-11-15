@@ -95,6 +95,8 @@ export class ProxyRuntime {
   private readonly outbound: DedupStore;
   private readonly cursors: CursorStore;
   private readonly sessions: SessionStore;
+  private readonly coordinatorLocks = new Map<string, Promise<string>>();
+  private readonly childSlots: Semaphore;
   private readonly tasks: TaskStore;
   private readonly approvals: ApprovalStore;
   private readonly audit: AuditLog;
@@ -200,6 +202,7 @@ export class ProxyRuntime {
       this.config.platforms.feishu.rateLimit.burst,
     );
     this.executionSlots = new Semaphore(this.config.policy.maxConcurrentExecutions);
+    this.childSlots = new Semaphore(this.config.subagents.maxChildrenGlobal);
     this.groupIds = new Set(
       this.config.platforms.feishu.groups
         .filter((group) => group.enabled)
@@ -442,6 +445,7 @@ export class ProxyRuntime {
     this.poller.start();
     this.sweepTimer = setInterval(() => {
       void this.sweepExpiredApprovals();
+      void this.sweepSessions();
       void this.chatContext.flush();
       void this.memory.flush();
     }, 60_000);
@@ -803,10 +807,14 @@ export class ProxyRuntime {
         `内容：${message.text}`,
         `当前项目目录：${project.worktree}`,
       ].join("\n");
-      const sessionId = await this.options.bridge.createSession({
+      const { sessionId, release } = await this.createChildSession({
+        platform: message.platform,
+        chatId: message.chat.id,
         directory: project.worktree,
         title: `${this.config.opencode.sessionTitlePrefix}:analyze:${message.messageId}`,
+        role: "analysis",
         permission: READ_ONLY_PERMISSION,
+        signal,
       });
       try {
         const raw = await this.options.bridge.prompt(sessionId, {
@@ -817,6 +825,7 @@ export class ProxyRuntime {
         });
         return truncate(raw.trim(), 600);
       } finally {
+        release();
         await this.finishSession(
           sessionId,
           `${this.config.opencode.sessionTitlePrefix}:analyze:${message.messageId}`,
@@ -1395,12 +1404,17 @@ export class ProxyRuntime {
       }),
     ].join("\n");
     const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
-    const sessionId = await this.options.bridge.createSession({
+    const { sessionId, release } = await this.createChildSession({
+      platform: task.platform,
+      chatId: task.chatId,
       directory: repo.path,
       title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
+      role: "analysis",
       permission: READ_ONLY_PERMISSION,
       ...(analysisAgent ? { agent: analysisAgent } : {}),
       ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
+      taskId: task.id,
+      ...(signal ? { signal } : {}),
     });
     let raw: string;
     try {
@@ -1412,6 +1426,7 @@ export class ProxyRuntime {
         ...(signal ? { signal } : {}),
       });
     } finally {
+      release();
       await this.finishSession(
         sessionId,
         `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
@@ -1454,12 +1469,17 @@ export class ProxyRuntime {
       }),
     ].join("\n");
     const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
-    const sessionId = await this.options.bridge.createSession({
+    const { sessionId, release } = await this.createChildSession({
+      platform: task.platform,
+      chatId: task.chatId,
       directory: worktree,
       title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
+      role: "analysis",
       permission: READ_ONLY_PERMISSION,
       ...(analysisAgent ? { agent: analysisAgent } : {}),
       ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
+      taskId: task.id,
+      ...(signal ? { signal } : {}),
     });
     let raw: string;
     try {
@@ -1471,6 +1491,7 @@ export class ProxyRuntime {
         ...(signal ? { signal } : {}),
       });
     } finally {
+      release();
       await this.finishSession(
         sessionId,
         `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
@@ -1875,6 +1896,14 @@ export class ProxyRuntime {
           ? `任务完成：${task.title}\n分支：${execution.branch}\n${execution.diffStat}`
           : `任务失败：${task.title}\n${execution.error ?? "未知错误"}`,
       );
+      if (execution.status === "succeeded") {
+        await this.reviewExecution({
+          task,
+          directory: execution.worktree,
+          summary: execution.testResult?.summary ?? execution.diffStat ?? "",
+          ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
+        });
+      }
       await this.audit.append({
         actor: { system: true },
         action: execution.status === "succeeded" ? "execution_succeeded" : "execution_failed",
@@ -1927,11 +1956,15 @@ export class ProxyRuntime {
         }),
       ].join("\n");
       const executionAgent = this.config.opencode.executionAgent ?? this.config.opencode.agent;
-      const sessionId = await this.options.bridge.createSession({
+      const { sessionId, release } = await this.createChildSession({
+        platform: task.platform,
+        chatId: task.chatId,
         directory: worktree,
         title: `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
+        role: "execution",
         permission: EXECUTION_PERMISSION,
         ...(executionAgent ? { agent: executionAgent } : {}),
+        taskId: task.id,
       });
       let output = "";
       try {
@@ -1941,6 +1974,7 @@ export class ProxyRuntime {
           text: prompt,
         });
       } finally {
+        release();
         await this.finishSession(
           sessionId,
           `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
@@ -1967,6 +2001,12 @@ export class ProxyRuntime {
       task.updatedAt = Date.now();
       await this.tasks.save(task);
       await this.sendToApprover(`任务完成：${task.title}\n目录：${worktree}\n${execution.diffStat}`);
+      await this.reviewExecution({
+        task,
+        directory: worktree,
+        summary: execution.diffStat ?? "",
+        ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
+      });
       await this.audit.append({
         actor: { system: true },
         action: "execution_succeeded",
@@ -1981,6 +2021,52 @@ export class ProxyRuntime {
       throw error;
     } finally {
       release();
+    }
+  }
+
+  private async reviewExecution(input: {
+    task: TaskRecord;
+    directory: string;
+    summary: string;
+    diffStat?: string;
+  }): Promise<void> {
+    if (!this.config.subagents.enabled || !this.config.subagents.reviewer) return;
+    const title = `${this.config.opencode.sessionTitlePrefix}:review:${input.task.id}`;
+    try {
+      const { sessionId, release } = await this.createChildSession({
+        platform: input.task.platform,
+        chatId: input.task.chatId,
+        directory: input.directory,
+        title,
+        role: "review",
+        permission: READ_ONLY_PERMISSION,
+        taskId: input.task.id,
+      });
+      try {
+        const review = await this.options.bridge.prompt(sessionId, {
+          directory: input.directory,
+          title,
+          text: [
+            "你是只读评审。不要修改文件，不要执行写操作。",
+            "检查这次改动是否满足任务验收标准，指出风险或遗漏。",
+            "输出最多 5 行，先给结论（通过/需修改），再给发现。",
+            `任务：${input.task.title}`,
+            `执行摘要：${truncate(input.summary, 800)}`,
+            ...(input.diffStat ? [`diff：${truncate(input.diffStat, 1200)}`] : []),
+          ].join("\n"),
+        });
+        await this.sendToOwner(
+          `评审结果：${input.task.title}\n${truncate(review.trim(), 800)}`,
+        );
+      } finally {
+        release();
+        await this.finishSession(sessionId, title, input.directory, "task_review");
+      }
+    } catch (error) {
+      this.logger.warn("execution review failed", {
+        taskId: input.task.id,
+        error: toErrorMessage(error),
+      });
     }
   }
 
@@ -2009,11 +2095,15 @@ export class ProxyRuntime {
         }),
       ].join("\n");
       const executionAgent = this.config.opencode.executionAgent ?? this.config.opencode.agent;
-      const sessionId = await this.options.bridge.createSession({
+      const { sessionId, release } = await this.createChildSession({
+        platform: task.platform,
+        chatId: task.chatId,
         directory: worktree.path,
         title: `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
+        role: "execution",
         permission: EXECUTION_PERMISSION,
         ...(executionAgent ? { agent: executionAgent } : {}),
+        taskId: task.id,
       });
       let output = "";
       try {
@@ -2023,6 +2113,7 @@ export class ProxyRuntime {
           text: prompt,
         });
       } finally {
+        release();
         await this.finishSession(
           sessionId,
           `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
@@ -2065,6 +2156,128 @@ export class ProxyRuntime {
         error: toErrorMessage(error),
       };
     }
+  }
+
+  private async coordinatorSession(
+    platform: string,
+    chatId: string,
+    directory: string,
+    title: string,
+  ): Promise<string> {
+    const key = `coordinator:${platform}:${chatId}`;
+    const existing = this.sessions.get(key);
+    if (existing) {
+      const alive = await this.options.bridge.getSession?.(existing.sessionId, existing.directory);
+      if (!alive || alive.timeArchived) {
+        this.sessions.delete(key);
+      } else {
+        return existing.sessionId;
+      }
+    }
+    const inflight = this.coordinatorLocks.get(key);
+    if (inflight) return inflight;
+    const promise = (async () => {
+      const sessionId = await this.options.bridge.createSession({
+        directory,
+        title,
+        ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
+      });
+      this.sessions.set(key, sessionId, directory, { kind: "coordinator", createdAt: Date.now() });
+      await this.sessions.flush();
+      this.logger.info("coordinator session ready", { sessionId, chatId, directory });
+      return sessionId;
+    })();
+    this.coordinatorLocks.set(key, promise);
+    try {
+      return await promise;
+    } finally {
+      this.coordinatorLocks.delete(key);
+    }
+  }
+
+  private async createChildSession(input: {
+    platform: string;
+    chatId: string;
+    directory: string;
+    title: string;
+    role: "reply" | "analysis" | "execution" | "review";
+    agent?: string;
+    permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>;
+    taskId?: string;
+    model?: { providerID: string; modelID: string };
+    signal?: AbortSignal;
+  }): Promise<{ sessionId: string; release: () => void }> {
+    if (!this.config.subagents.enabled) {
+      const sessionId = await this.options.bridge.createSession({
+        directory: input.directory,
+        title: input.title,
+        ...(input.agent ? { agent: input.agent } : {}),
+        ...(input.permission ? { permission: input.permission } : {}),
+        ...(input.model ? { model: input.model } : {}),
+      });
+      return { sessionId, release: () => {} };
+    }
+    const release = await this.childSlots.acquire(input.signal);
+    try {
+      const coordinator = await this.coordinatorSession(
+        input.platform,
+        input.chatId,
+        input.directory,
+        `${this.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`,
+      );
+      const roleAgent =
+        input.role === "analysis"
+          ? this.config.subagents.analyst
+          : input.role === "execution"
+            ? this.config.subagents.executor
+            : input.role === "review"
+              ? this.config.subagents.reviewer
+              : input.agent;
+      const sessionId = await this.options.bridge.createSession({
+        directory: input.directory,
+        title: input.title,
+        parentID: coordinator,
+        ...(roleAgent ? { agent: roleAgent } : {}),
+        ...(input.permission ? { permission: input.permission } : {}),
+        ...(input.model ? { model: input.model } : {}),
+      });
+      this.sessions.set(`child:${sessionId}`, sessionId, input.directory, {
+        kind: "child",
+        createdAt: Date.now(),
+        ...(input.taskId ? { taskId: input.taskId } : {}),
+      });
+      await this.sessions.flush();
+      return { sessionId, release };
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
+
+  private async sweepSessions(): Promise<void> {
+    if (!this.config.subagents.enabled) return;
+    const now = Date.now();
+    const archiveMs = this.config.subagents.archiveAfterDays * 86_400_000;
+    const deleteMs = this.config.subagents.deleteAfterDays * 86_400_000;
+    for (const [key, record] of this.sessions.list("child")) {
+      const age = now - record.createdAt;
+      if (age < archiveMs) continue;
+      try {
+        if (age >= deleteMs) {
+          await this.options.bridge.deleteSession(record.sessionId);
+          this.sessions.delete(key);
+        } else {
+          await this.options.bridge.archiveSession?.(record.sessionId, record.directory);
+          this.sessions.delete(key);
+        }
+      } catch (error) {
+        this.logger.warn("session cleanup failed", {
+          sessionId: record.sessionId,
+          error: toErrorMessage(error),
+        });
+      }
+    }
+    await this.sessions.flush();
   }
 
   private async finishSession(
@@ -2360,11 +2573,15 @@ export class ProxyRuntime {
         : ["未定位到项目目录，只能给出一般性建议；不要假装了解项目细节。"]),
       `问题：${message.text}`,
     ].join("\n");
-    const sessionId = await this.options.bridge.createSession({
+    const { sessionId, release } = await this.createChildSession({
+      platform: message.platform,
+      chatId: message.chat.id,
       directory,
       title: `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`,
+      role: "reply",
       permission: READ_ONLY_PERMISSION,
       ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
+      signal,
     });
     try {
       const raw = await this.options.bridge.prompt(sessionId, {
@@ -2375,6 +2592,7 @@ export class ProxyRuntime {
       });
       return enforceReplyLength(raw, style, this.replyOptions);
     } finally {
+      release();
       await this.finishSession(
         sessionId,
         `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`,

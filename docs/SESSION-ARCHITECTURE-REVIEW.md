@@ -2,10 +2,10 @@
 
 | 项目 | 内容 |
 |------|------|
-| 版本 | v0.1 评审稿 |
+| 版本 | v0.2 已实施 |
 | 日期 | 2026-11-15 |
 | 对象 | 「主 session + 有限 subagent」方案 |
-| 结论 | 方向正确，但需要做 5 处修正才够简洁、够即时、够智能 |
+| 结论 | 已按修正实施：coordinator 锚点 + 确定性 child + 归档 + reviewer |
 
 ---
 
@@ -51,7 +51,7 @@
 
 ---
 
-## 3. 五个必须修正的点
+## 3. 六个必须修正的点
 
 ### 修正 1：拉历史不是 subagent，是定时器
 
@@ -84,7 +84,21 @@
 
 主 session 不参与快路径的每次判断，否则会被长任务拖住。
 
-### 修正 5：subagent 必须确定性创建 + 有边界
+### 修正 5：coordinator 只做锚点，不承载并发 prompt
+
+OpenCode 同一 session 并发 prompt 会返回 `SessionBusyError`。如果所有 @消息都打到一个 coordinator：
+
+- 同群 4 并发会互相冲突；
+- 长任务会阻塞短回复。
+
+所以：
+
+- coordinator 只作为**可见的 root 锚点**，用于挂 child、存标题、方便你查看；
+- 所有实际 prompt 都在 child 执行（reply / analysis / execution / review）；
+- 上下文不靠 coordinator 的历史，而靠 `chat-context.json` + `memory.json` 注入；
+- 这样并发不冲突，session 列表也只多一个 root/群。
+
+### 修正 6：subagent 必须确定性创建 + 有边界
 
 - 不依赖主 agent "自己想不想调用"。
 - 我们直接 `session.create({ parentID: coordinatorId, agent: "atme-analyst" })`。
@@ -110,17 +124,21 @@
        │
        ├─ 快路径：直接回复 / 群内 @ 主人 / 私聊知会
        │
-       └─ 慢路径：coordinator session（每群/项目，root）
-                     ├─ child: atme-analyst   只读分析
-                     ├─ child: atme-executor  批准后执行
-                     └─ child: atme-reviewer  只读评审
+       └─ child sessions（parentID 指向 coordinator）
+             ├─ reply child      快速回复/代答
+             ├─ analyst child    只读分析
+             ├─ executor child   批准后执行
+             └─ reviewer child   只读评审
+
+coordinator（每群/项目 1 个 root，仅作锚点，不跑 prompt）
 ```
 
 ### 4.1 会话生命周期
 
 | 会话 | 数量 | 复用 | 归档 | 删除 |
 |------|------|------|------|------|
-| coordinator | 每群/项目 1 个 | 是 | 不归档 | 手动 |
+| coordinator | 每群/项目 1 个 | 是（仅锚点） | 不归档 | 手动 |
+| reply child | 每消息 1 个 | 否 | 完成 7 天 | 30 天 |
 | analysis child | 每任务 1 个 | 否 | 完成 7 天 | 30 天 |
 | execution child | 每任务 1 个 | 否 | 完成 7 天 | 30 天 |
 | review child | 每任务 1 个 | 否 | 完成 7 天 | 30 天 |
@@ -224,16 +242,32 @@
 ## 9. 建议实施顺序
 
 1. **接上 `sessions.json`**：coordinator 复用 + 失效重建。
-2. **确定性 child**：`parentID + agent` 创建 analyst/executor。
-3. **快慢路径显式化**：长任务先回执，child 结果异步回写。
-4. **归档策略**：完成 7 天归档、30 天删除。
-5. **reviewer**：执行后只读评审。
+2. **确定性 child**：`parentID + agent` 创建 reply/analyst/executor/reviewer。
+3. **coordinator 不跑 prompt**：避免 `SessionBusyError`，保持同群并发。
+4. **快慢路径显式化**：长任务先回执，child 结果异步回写。
+5. **归档策略**：child 完成 7 天归档、30 天删除。
+6. **reviewer**：执行后只读评审。
 6. **任务合并**（P1）。
 7. **记忆检索增强**（P1/P2）。
 
 ---
 
-## 10. 最终建议
+## 10. 实施记录（v0.2）
+
+| 项 | 状态 | 位置 |
+|----|------|------|
+| coordinator 复用 | 已实现 | `runtime.ts` `coordinatorSession`；`sessions.json` 持久化 |
+| 确定性 child | 已实现 | `runtime.ts` `createChildSession`；`parentID + agent` |
+| coordinator 不跑 prompt | 已实现 | 所有 prompt 在 child |
+| 快慢路径 | 已实现 | 分类在守护进程；分析/执行/评审在 child |
+| 归档/删除 | 已实现 | `sweepSessions`：7 天归档、30 天删除 |
+| reviewer | 已实现 | `reviewExecution` + `.opencode/agents/atme-reviewer.md` |
+| 并发上限 | 已实现 | `Semaphore(maxChildrenGlobal)`；每任务 3 |
+| 关闭开关 | 已实现 | `subagents.enabled=false` 回退旧行为 |
+
+仍待 P0-1/P0-2 真实验证：`SessionBusyError` 是否只在 coordinator 出现、child 并发是否受 OpenCode 自身限制、归档 API 是否按预期生效。
+
+## 11. 最终建议
 
 - **采纳**：主 coordinator + 3 类 child + 确定性分派 + 快慢路径分离。
 - **不采纳**：按人分 subagent、subagent 做轮询、主 session 存历史、每消息建 root。

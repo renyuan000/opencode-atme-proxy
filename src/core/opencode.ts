@@ -9,8 +9,17 @@ export interface SessionCreateInput {
   directory: string;
   title: string;
   agent?: string;
+  parentID?: string;
   model?: { providerID: string; modelID: string };
   permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>;
+}
+
+export interface SessionInfo {
+  id: string;
+  title: string;
+  directory: string;
+  parentID?: string;
+  timeArchived?: number;
 }
 
 export interface SessionPromptInput extends SessionCreateInput {
@@ -24,6 +33,9 @@ export interface OpenCodeBridge {
   deleteSession(sessionId: string): Promise<void>;
   getClient(): OpencodeClient;
   getInfo?(): { baseUrl: string; mode: "http" | "injected" };
+  getSession?(sessionId: string, directory?: string): Promise<SessionInfo | undefined>;
+  archiveSession?(sessionId: string, directory?: string): Promise<void>;
+  listChildren?(sessionId: string, directory?: string): Promise<SessionInfo[]>;
 }
 
 export class HttpOpenCodeBridge implements OpenCodeBridge {
@@ -103,6 +115,32 @@ export class HttpOpenCodeBridge implements OpenCodeBridge {
     return text;
   }
 
+  async getSession(sessionId: string, directory?: string): Promise<SessionInfo | undefined> {
+    const result = await this.client.session.get({
+      sessionID: sessionId,
+      ...(directory ? { directory } : {}),
+    });
+    if (result.error || !result.data) return undefined;
+    return toSessionInfo(result.data);
+  }
+
+  async archiveSession(sessionId: string, directory?: string): Promise<void> {
+    await this.client.session.update({
+      sessionID: sessionId,
+      ...(directory ? { directory } : {}),
+      time: { archived: Date.now() },
+    });
+  }
+
+  async listChildren(sessionId: string, directory?: string): Promise<SessionInfo[]> {
+    const result = await this.client.session.children({
+      sessionID: sessionId,
+      ...(directory ? { directory } : {}),
+    });
+    if (result.error || !result.data) return [];
+    return result.data.map(toSessionInfo);
+  }
+
   async deleteSession(sessionId: string): Promise<void> {
     try {
       await this.client.session.delete({ sessionID: sessionId });
@@ -134,6 +172,8 @@ export class InjectedOpenCodeBridge implements OpenCodeBridge {
     const result = await this.client.session.create({
       title: input.title,
       directory: input.directory,
+      ...(input.agent ? { agent: input.agent } : {}),
+      ...(input.parentID ? { parentID: input.parentID } : {}),
       ...(input.model
         ? { model: { id: input.model.modelID, providerID: input.model.providerID } }
         : {}),
@@ -164,6 +204,32 @@ export class InjectedOpenCodeBridge implements OpenCodeBridge {
       .trim();
     if (!text) throw new Error("OpenCode returned no text");
     return text;
+  }
+
+  async getSession(sessionId: string, directory?: string): Promise<SessionInfo | undefined> {
+    const result = await this.client.session.get({
+      sessionID: sessionId,
+      ...(directory ? { directory } : {}),
+    });
+    if (result.error || !result.data) return undefined;
+    return toSessionInfo(result.data);
+  }
+
+  async archiveSession(sessionId: string, directory?: string): Promise<void> {
+    await this.client.session.update({
+      sessionID: sessionId,
+      ...(directory ? { directory } : {}),
+      time: { archived: Date.now() },
+    });
+  }
+
+  async listChildren(sessionId: string, directory?: string): Promise<SessionInfo[]> {
+    const result = await this.client.session.children({
+      sessionID: sessionId,
+      ...(directory ? { directory } : {}),
+    });
+    if (result.error || !result.data) return [];
+    return result.data.map(toSessionInfo);
   }
 
   async deleteSession(sessionId: string): Promise<void> {
@@ -197,6 +263,23 @@ export interface ExecutionResult {
 
 export function repoById(repos: RepoConfig[], id: string): RepoConfig | undefined {
   return repos.find((repo) => repo.id === id);
+}
+
+
+function toSessionInfo(session: {
+  id: string;
+  title: string;
+  directory: string;
+  parentID?: string;
+  time?: { archived?: number };
+}): SessionInfo {
+  return {
+    id: session.id,
+    title: session.title,
+    directory: session.directory,
+    ...(session.parentID ? { parentID: session.parentID } : {}),
+    ...(session.time?.archived ? { timeArchived: session.time.archived } : {}),
+  };
 }
 
 function formatError(error: unknown): string {

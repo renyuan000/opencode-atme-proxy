@@ -2,13 +2,24 @@ import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
 import { readJsonFile, writeJsonAtomic, toErrorMessage } from "./util.js";
 
+export type SessionKind = "coordinator" | "child";
+
+export interface SessionRecord {
+  sessionId: string;
+  directory: string;
+  updatedAt: number;
+  createdAt: number;
+  kind: SessionKind;
+  taskId?: string;
+}
+
 interface SessionFile {
   version: 1;
-  sessions: Record<string, { sessionId: string; updatedAt: number }>;
+  sessions: Record<string, SessionRecord>;
 }
 
 export class SessionStore {
-  private sessions = new Map<string, { sessionId: string; updatedAt: number }>();
+  private sessions = new Map<string, SessionRecord>();
   private dirty = false;
   private readonly logger: Logger;
 
@@ -24,7 +35,19 @@ export class SessionStore {
       const data = await readJsonFile<SessionFile>(this.file, { version: 1, sessions: {} });
       for (const [key, value] of Object.entries(data.sessions ?? {})) {
         if (value && typeof value.sessionId === "string") {
-          this.sessions.set(key, value);
+          this.sessions.set(key, {
+            sessionId: value.sessionId,
+            directory: typeof value.directory === "string" ? value.directory : "",
+            updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : 0,
+            createdAt:
+              typeof value.createdAt === "number"
+                ? value.createdAt
+                : typeof value.updatedAt === "number"
+                  ? value.updatedAt
+                  : 0,
+            kind: value.kind === "child" ? "child" : "coordinator",
+            ...(typeof value.taskId === "string" ? { taskId: value.taskId } : {}),
+          });
         }
       }
     } catch (error) {
@@ -34,13 +57,32 @@ export class SessionStore {
     }
   }
 
-  get(key: string): string | undefined {
-    return this.sessions.get(key)?.sessionId;
+  get(key: string): SessionRecord | undefined {
+    return this.sessions.get(key);
   }
 
-  set(key: string, sessionId: string): void {
-    this.sessions.set(key, { sessionId, updatedAt: Date.now() });
+  set(
+    key: string,
+    sessionId: string,
+    directory: string,
+    meta?: { kind?: SessionKind; taskId?: string; createdAt?: number },
+  ): void {
+    const now = Date.now();
+    const existing = this.sessions.get(key);
+    this.sessions.set(key, {
+      sessionId,
+      directory,
+      updatedAt: now,
+      createdAt: meta?.createdAt ?? existing?.createdAt ?? now,
+      kind: meta?.kind ?? existing?.kind ?? "coordinator",
+      ...(meta?.taskId ?? existing?.taskId ? { taskId: meta?.taskId ?? existing?.taskId } : {}),
+    });
     this.dirty = true;
+  }
+
+  list(kind?: SessionKind): Array<[string, SessionRecord]> {
+    const entries = [...this.sessions.entries()];
+    return kind ? entries.filter(([, record]) => record.kind === kind) : entries;
   }
 
   delete(key: string): void {

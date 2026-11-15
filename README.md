@@ -208,6 +208,15 @@ websocket ready
 | 卡片按钮无响应 | 检查 `card.action.trigger` 事件与回调时限 |
 | OpenCode 不可用 | 确认 `opencode serve` 与 `opencode.baseUrl` |
 
+### 会话架构（已实现）
+
+- 每个群/项目一个 coordinator session（`atme:chat:<chatId>`），只作锚点，不跑 prompt，避免 `SessionBusyError`。
+- 实际工作在 child session：`reply`、`analysis`、`execution`、`review`，通过 `parentID` 挂在 coordinator 下。
+- 子会话默认隐藏（OpenCode `session list` 只列 root），所以你只看到每群一个 root。
+- 子会话完成 7 天归档、30 天删除；每任务最多 3 个 child，全局 8，`depth=1`。
+- 关闭 `subagents.enabled` 可退回“每条消息独立 session”的旧行为。
+- 内置三个 agent 定义：`.opencode/agents/atme-analyst.md`、`atme-executor.md`、`atme-reviewer.md`。
+
 ### 架构评审：会话与并发
 
 详细评审见 `docs/SESSION-ARCHITECTURE-REVIEW.md`。结论：
@@ -601,6 +610,15 @@ docs/REQUIREMENTS.md   requirements v0.2
 - No image/file content parsing in the first release; placeholders only.
 - Push/PR/merge is not implemented; the executor never pushes.
 - Running executions are not resumed after a restart.
+
+### Session architecture (implemented)
+
+- One coordinator session per chat/project (`atme:chat:<chatId>`), used only as an anchor; it never runs prompts, avoiding `SessionBusyError`.
+- Real work runs in child sessions: `reply`, `analysis`, `execution`, `review`, attached via `parentID`.
+- Children are hidden by default (`session list` shows roots), so you see one root per chat.
+- Children are archived after 7 days and deleted after 30; max 3 per task, 8 global, `depth=1`.
+- Set `subagents.enabled=false` to fall back to one session per message.
+- Bundled agent files: `.opencode/agents/atme-analyst.md`, `atme-executor.md`, `atme-reviewer.md`.
 
 ### Session and concurrency review
 

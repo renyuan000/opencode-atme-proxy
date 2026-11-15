@@ -21,7 +21,7 @@
 | P0-5 | 安装与诊断体验 | 目前只有手动配置；新用户难以确认权限、OpenCode、项目目录是否就绪 | 提供 `atme-proxy setup`（扫码/手动）、`doctor`（配置/凭据/bot/权限/OpenCode/项目）、`status`（PID/心跳）、`logs`、`stop`、`--daemon`；按 README 可从零跑通 | 无 | 未开始 |
 | P0-6 | 机器人人格与角色（作用域隔离） | 飞书里是助手、OpenCode 里是架构/研发角色；不能污染用户自己的普通会话 | `persona` 配置（身份/职责/语气/边界/项目上下文）只注入飞书任务与回复会话；普通 OpenCode 会话不受影响；可选只读导入 AgentSoul 文件；有测试断言不外溢 | P0-2 | 未开始 |
 
-| P0-7 | 会话架构重构（coordinator + 3 child） | 每消息建 root 会无限增长；需 coordinator 复用、确定性 child、归档策略 | 见 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 8 节；`sessions.json` 真正启用；child 7 天归档/30 天删除；每任务 ≤3 child、全局 ≤8、depth=1 | P0-2 | 未开始 |
+| P0-7 | 会话架构重构（coordinator + 3 child） | 每消息建 root 会无限增长；需 coordinator 复用、确定性 child、归档策略 | 已实现 coordinator 锚点、reply/analysis/execution/review child、sessions.json、7/30 天清理、reviewer；待真实验证 | P0-2 | 已实现（待真实验证） |
 
 ---
 
