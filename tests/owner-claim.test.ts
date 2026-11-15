@@ -70,6 +70,7 @@ function config(stateDir: string): LoadedConfig {
         archiveAfterDays: 7,
         deleteAfterDays: 30,
       },
+      directChat: { enabled: false, onlyOwner: true },
       context: { enabled: false, maxMessagesPerChat: 20, maxCharsPerMessage: 300, ttlDays: 7, maxChats: 100, includeInAnalysis: false, storeAnalysisSnippets: false, storeMentions: true, storeRelevantScan: true, storeOwnerDm: true },
       memory: {
         enabled: false,

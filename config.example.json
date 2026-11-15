@@ -87,6 +87,10 @@
     "archiveAfterDays": 7,
     "deleteAfterDays": 30
   },
+  "directChat": {
+    "enabled": true,
+    "onlyOwner": true
+  },
   "context": {
     "enabled": true,
     "maxMessagesPerChat": 20,

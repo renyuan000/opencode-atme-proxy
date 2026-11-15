@@ -18,6 +18,8 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 
 ### 核心能力
 
+- **私聊对话**：和机器人单独聊天会直接回复（默认仅限 owner）。
+
 - **消息类型识别**：@机器人 先判断是询问、任务、提醒、通知还是闲聊，再决定动作。
 - **发言必要性评估**：@机器人 不必然回复。助手判断 `answer / need_decision / notify_owner / no_reply`；寒暄或无需介入就不回，避免刷屏。
 - **防刷屏**：按发送者限流、限并发、加冷却；同一人连续刷只警告一次，不同同事仍可并发处理。
@@ -520,6 +522,7 @@ A platform-agnostic, approval-gated bot framework that:
 ### Features
 
 - **Message type**: `@bot` classifies question / task / reminder / notification / chat before acting.
+- **Direct chat**: talking to the bot in a DM gets a direct reply (owner only by default).
 - **Necessity check**: `@bot` does not always reply. The bot decides `answer / need_decision / notify_owner / no_reply`.
 - **Abuse protection**: per-sender rate limit, concurrency cap, and cooldown; one warning per offender, while different colleagues can still be processed concurrently.
 - **Escalation**: when a decision is needed (launch, schedule, commitment, resources, risk, missing info), the bot mentions your account in the group with the question, source, and reason. It never commits on your behalf.

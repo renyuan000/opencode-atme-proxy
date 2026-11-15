@@ -70,6 +70,7 @@ export declare class ProxyRuntime {
     private isMention;
     private isMentionMe;
     private isMentionBot;
+    private handleDirectMessage;
     private handleMessage;
     private handleBotMention;
     private decideBotIntent;

@@ -413,7 +413,9 @@ export class ProxyRuntime {
         if (message.chat.kind === "direct") {
             if (await this.claimOwner(message)) {
                 await this.markProcessed(message);
+                return;
             }
+            await this.handleDirectMessage(message);
             return;
         }
         if (this.config.policy.defaultDenyGroups && !this.groupIds.has(message.chat.id)) {
@@ -527,6 +529,71 @@ export class ProxyRuntime {
         const bot = this.options.platform
             .getBotOpenId?.() ?? this.config.platforms.feishu.botOpenId;
         return Boolean(bot) && message.mentions.some((mention) => mention.id === bot);
+    }
+    async handleDirectMessage(message) {
+        if (!this.config.directChat.enabled)
+            return;
+        const ownerId = this.ownerOpenId();
+        if (ownerId && message.sender.id !== ownerId) {
+            this.logger.info("ignoring direct message from non-owner", {
+                senderId: message.sender.id,
+            });
+            return;
+        }
+        const dedupKey = `${message.platform}:${message.messageId}`;
+        if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey))
+            return;
+        this.activeMessageIds.add(dedupKey);
+        if (this.config.context.enabled && this.config.context.storeOwnerDm) {
+            this.chatContext.append(`${message.platform}:${message.chat.id}`, {
+                messageId: message.messageId,
+                senderId: message.sender.id,
+                ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
+                text: message.text,
+                at: message.createdAt,
+                mentionMe: false,
+                mentionBot: false,
+                origin: "owner_dm",
+            }, {
+                platform: message.platform,
+                chatId: message.chat.id,
+                ...(message.chat.name ? { chatName: message.chat.name } : {}),
+            });
+        }
+        const job = this.dispatcher.enqueue({
+            id: `dm:${message.messageId}`,
+            key: `dm:${message.chat.id}`,
+            priority: 1,
+            keyConcurrency: 1,
+            timeoutMs: this.config.concurrency.mentionTimeoutMs,
+            run: async (signal) => {
+                try {
+                    const style = detectReplyStyle(message, this.replyOptions);
+                    const reply = await this.askOpenCode(message, style, signal);
+                    const ok = await this.safeReply(message, this.sanitize(reply));
+                    if (ok)
+                        await this.markProcessed(message);
+                    await this.audit.append({
+                        actor: message.sender,
+                        action: "direct_message_replied",
+                        details: { messageId: message.messageId },
+                    });
+                }
+                finally {
+                    this.activeMessageIds.delete(dedupKey);
+                }
+            },
+        });
+        try {
+            await job;
+        }
+        catch (error) {
+            this.activeMessageIds.delete(dedupKey);
+            this.logger.error("direct message failed", {
+                messageId: message.messageId,
+                error: toErrorMessage(error),
+            });
+        }
     }
     async handleMessage(message, signal) {
         const mentionMe = this.isMentionMe(message);

@@ -436,6 +436,16 @@ export declare const AppConfigSchema: z.ZodObject<{
         archiveAfterDays?: number | undefined;
         deleteAfterDays?: number | undefined;
     }>>;
+    directChat: z.ZodDefault<z.ZodObject<{
+        enabled: z.ZodDefault<z.ZodBoolean>;
+        onlyOwner: z.ZodDefault<z.ZodBoolean>;
+    }, "strip", z.ZodTypeAny, {
+        enabled: boolean;
+        onlyOwner: boolean;
+    }, {
+        enabled?: boolean | undefined;
+        onlyOwner?: boolean | undefined;
+    }>>;
     context: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
         maxMessagesPerChat: z.ZodDefault<z.ZodNumber>;
@@ -828,6 +838,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         archiveAfterDays: number;
         deleteAfterDays: number;
     };
+    directChat: {
+        enabled: boolean;
+        onlyOwner: boolean;
+    };
     context: {
         enabled: boolean;
         maxCharsPerMessage: number;
@@ -1039,6 +1053,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         depth?: number | undefined;
         archiveAfterDays?: number | undefined;
         deleteAfterDays?: number | undefined;
+    } | undefined;
+    directChat?: {
+        enabled?: boolean | undefined;
+        onlyOwner?: boolean | undefined;
     } | undefined;
     context?: {
         enabled?: boolean | undefined;

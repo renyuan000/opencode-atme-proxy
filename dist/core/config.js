@@ -118,6 +118,12 @@ const SubagentsSchema = z
     deleteAfterDays: z.number().int().min(1).max(3650).default(30),
 })
     .default({});
+const DirectChatSchema = z
+    .object({
+    enabled: z.boolean().default(true),
+    onlyOwner: z.boolean().default(true),
+})
+    .default({});
 const ContextSchema = z
     .object({
     enabled: z.boolean().default(true),
@@ -263,6 +269,7 @@ export const AppConfigSchema = z.object({
     analysis: AnalysisSchema.default({}),
     opencode: OpenCodeSchema.default({}),
     subagents: SubagentsSchema,
+    directChat: DirectChatSchema,
     context: ContextSchema,
     memory: MemorySchema,
     project: ProjectSchema,

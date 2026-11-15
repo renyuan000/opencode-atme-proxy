@@ -65,6 +65,7 @@ function cfg(stateDir: string, autoReply = false, filterEnabled = false): Loaded
         archiveAfterDays: 7,
         deleteAfterDays: 30,
       },
+      directChat: { enabled: false, onlyOwner: true },
       context: {
         enabled: true,
         maxMessagesPerChat: 20,

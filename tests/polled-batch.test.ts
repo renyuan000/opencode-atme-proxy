@@ -155,6 +155,7 @@ function makeConfig(stateDir: string, filterEnabled = true): LoadedConfig {
         archiveAfterDays: 7,
         deleteAfterDays: 30,
       },
+      directChat: { enabled: false, onlyOwner: true },
       context: {
         enabled: true,
         maxMessagesPerChat: 20,
