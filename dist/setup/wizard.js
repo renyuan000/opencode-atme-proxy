@@ -5,6 +5,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { AppConfigSchema, loadConfig, defaultConfigPath, } from "../core/config.js";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
+import { beginAppRegistration, formatRegistrationPrompt, pollAppRegistration, } from "./device-flow.js";
 import { toErrorMessage } from "../core/util.js";
 const CONFIG_DIR = join(homedir(), ".config", "opencode-atme-proxy");
 export async function runSetup(defaults = {}) {
@@ -57,6 +58,13 @@ export async function runSetup(defaults = {}) {
     await writeFile(envPath, envLines.join("\n"), { encoding: "utf8", mode: 0o600 });
     await chmod(envPath, 0o600);
     output.write(`\n已写入：\n  ${configPath}\n  ${envPath}\n\n`);
+    if (answers.appSecretFromQr) {
+        output.write("扫码创建的应用需要在飞书开放平台完成：\n");
+        output.write("  1. 开启机器人能力\n");
+        output.write("  2. 添加所需权限（含 im:message.group_msg，敏感权限需管理员审批）\n");
+        output.write("  3. 订阅长连接事件 im.message.receive_v1、card.action.trigger\n");
+        output.write("  4. 发布应用并将机器人拉入群\n\n");
+    }
     output.write("下一步：\n");
     output.write("  atme-proxy doctor\n");
     output.write("  atme-proxy agents\n");
@@ -81,6 +89,7 @@ function fromEnv(existing) {
     const env = process.env;
     return {
         appId: env.FEISHU_APP_ID ?? existing.platforms?.feishu?.appId ?? "",
+        appSecretFromQr: false,
         appSecret: env.FEISHU_APP_SECRET ?? "",
         meOpenId: env.ATME_ME_OPEN_ID ?? existing.platforms?.feishu?.me?.openId ?? "",
         approverOpenId: env.ATME_APPROVER_OPEN_IDS ??
@@ -108,9 +117,33 @@ async function ask(existing) {
         return result;
     };
     const feishu = existing.platforms?.feishu;
-    const appId = await askText("飞书 App ID (cli_...)", feishu?.appId ?? "");
-    const appSecret = await askText("飞书 App Secret (留空则只写环境变量占位)", process.env.FEISHU_APP_SECRET ?? "", false);
-    const meOpenId = await askText("你的 open_id (ou_...)", feishu?.me?.openId ?? "");
+    let appId = "";
+    let appSecret = "";
+    let appSecretFromQr = false;
+    let claimedOpenId = "";
+    output.write("\n选择应用凭证方式：\n" +
+        "  1. 扫码自动创建飞书应用（推荐）\n" +
+        "  2. 手动输入 App ID / App Secret\n");
+    const mode = (await rl.question("请选择 [1]: ")).trim() || "1";
+    if (mode === "1") {
+        const begin = await beginAppRegistration({
+            onWait: (info) => {
+                output.write(`\n${formatRegistrationPrompt(info)}\n`);
+                output.write("等待飞书授权...\n");
+            },
+        });
+        const result = await pollAppRegistration(begin);
+        appId = result.appId;
+        appSecret = result.appSecret;
+        appSecretFromQr = true;
+        claimedOpenId = result.openId ?? "";
+        output.write(`\n已创建应用：${appId}\n`);
+    }
+    else {
+        appId = await askText("飞书 App ID (cli_...)", feishu?.appId ?? "");
+        appSecret = await askText("飞书 App Secret (留空则只写环境变量占位)", process.env.FEISHU_APP_SECRET ?? "", false);
+    }
+    const meOpenId = await askText("你的 open_id (ou_...)", claimedOpenId || feishu?.me?.openId || "");
     const approverOpenId = await askText("审批人 open_id (回车等于你自己)", feishu?.approvers?.[0]?.openId ?? meOpenId);
     const chatIdsRaw = await askText("群 chat_id (oc_...，多个用逗号分隔)", feishu?.groups?.map((group) => group.chatId).join(",") ?? "");
     const opencodeUrl = await askText("OpenCode 服务地址", existing.opencode?.baseUrl ?? "http://127.0.0.1:19876");
@@ -125,6 +158,7 @@ async function ask(existing) {
     rl.close();
     return {
         appId,
+        appSecretFromQr,
         appSecret,
         meOpenId,
         approverOpenId,

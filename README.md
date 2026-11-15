@@ -106,6 +106,13 @@ atme-proxy agents
 atme-proxy setup
 ```
 
+向导支持两种方式：
+
+1. **扫码自动创建飞书应用（推荐）**：飞书设备授权，自动拿到 App ID / App Secret / 你的 open_id。
+2. **手动输入**：已有应用时使用。
+
+扫码创建后仍需在飞书开放平台手动完成：开启机器人能力、添加权限（含敏感权限 `im:message.group_msg`）、订阅长连接事件、发布应用、拉机器人入群。**敏感权限无法通过扫码自动获批。**
+
 向导会写入：
 
 - `~/.config/opencode-atme-proxy/config.json`（600）
@@ -577,6 +584,13 @@ This copies `atme-analyst.md`, `atme-executor.md`, `atme-reviewer.md` into `~/.c
 ```bash
 atme-proxy setup
 ```
+
+Two modes:
+
+1. **QR device flow (recommended)**: creates a Feishu app and returns App ID / App Secret / your open_id.
+2. **Manual input**: when the app already exists.
+
+After QR creation you still must, in the Feishu console: enable the bot, add scopes (including sensitive `im:message.group_msg`), subscribe to long-connection events, publish the app, and add the bot to groups. Sensitive scopes cannot be auto-approved.
 
 It writes `~/.config/opencode-atme-proxy/config.json` and `.env`, both mode 600.
 
