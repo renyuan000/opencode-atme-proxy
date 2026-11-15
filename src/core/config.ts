@@ -127,9 +127,16 @@ const BotReplySchema = z
     enabled: z.boolean().default(true),
     allowNoReply: z.boolean().default(true),
     escalateWhenUnsure: z.boolean().default(true),
+    analyzeBeforeEscalate: z.boolean().default(true),
     minAnswerConfidence: z.number().min(0).max(1).default(0.6),
     decisionMentionText: z.string().default("需要你确认"),
     maxQuestionChars: z.number().int().min(10).max(500).default(160),
+    perSenderPerMinute: z.number().int().min(1).max(60).default(6),
+    perSenderConcurrent: z.number().int().min(1).max(10).default(1),
+    cooldownSeconds: z.number().int().min(0).max(300).default(5),
+    ownerBypass: z.boolean().default(true),
+    overloadReply: z.string().default("请求有点多，我先排队处理；紧急事项请直接 @我主人。"),
+    maxMessagesPerSenderPerRun: z.number().int().min(1).max(200).default(20),
   })
   .default({});
 

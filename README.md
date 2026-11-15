@@ -18,7 +18,9 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 
 ### 核心能力
 
-- **发言必要性评估**：@机器人 不必然回复。助手先判断 `answer / need_decision / no_reply`；寒暄或无需介入就不回，避免刷屏。
+- **消息类型识别**：@机器人 先判断是询问、任务、提醒、通知还是闲聊，再决定动作。
+- **发言必要性评估**：@机器人 不必然回复。助手判断 `answer / need_decision / notify_owner / no_reply`；寒暄或无需介入就不回，避免刷屏。
+- **防刷屏**：按发送者限流、限并发、加冷却；同一人连续刷只警告一次，不同同事仍可并发处理。
 - **需要你决策时群里 @ 你**：涉及上线、排期、承诺、资源、风险或信息不足时，机器人在群里 @ 你的主账号，并附问题、来源、原因，不代替你承诺。
 - **实时 @ 接管**：@机器人 按必要性直接回答或升级；@我 默认先私聊请示，批准后引用回复。
 - **周期筛选**：定时拉取群历史，用关键词 + 低成本模型筛出“我的任务”，只在私聊汇总，不刷群。
@@ -249,6 +251,7 @@ worktrees/          执行工作树
 ```
 
 - `concurrency.mentionConcurrency`：同一群内 @ 消息的并发数。
+- `botReply.perSenderPerMinute` / `perSenderConcurrent` / `cooldownSeconds`：单个同事的刷屏保护。
 - `concurrency.scanConcurrency`：同一群批量筛选的并发数，默认 1，避免重复上下文。
 - `reply.defaultStyle`：默认极简；检测到“详细”等触发词才展开。
 - `policy.autoReplyOnMention`：默认关闭，所有 @我 先请示。
@@ -355,7 +358,9 @@ A platform-agnostic, approval-gated bot framework that:
 
 ### Features
 
-- **Necessity check**: `@bot` does not always reply. The bot decides `answer / need_decision / no_reply`; trivial messages get no reply.
+- **Message type**: `@bot` classifies question / task / reminder / notification / chat before acting.
+- **Necessity check**: `@bot` does not always reply. The bot decides `answer / need_decision / notify_owner / no_reply`.
+- **Abuse protection**: per-sender rate limit, concurrency cap, and cooldown; one warning per offender, while different colleagues can still be processed concurrently.
 - **Escalation**: when a decision is needed (launch, schedule, commitment, resources, risk, missing info), the bot mentions your account in the group with the question, source, and reason. It never commits on your behalf.
 - **Realtime mentions**: `@bot` answers or escalates; `@me` asks you first, then replies with a quote.
 - **Periodic scanning**: history polling + keyword/LLM filtering, private digest only, no group spam.

@@ -76,9 +76,16 @@ function config(stateDir: string): LoadedConfig {
         enabled: false,
         allowNoReply: true,
         escalateWhenUnsure: true,
+        analyzeBeforeEscalate: false,
         minAnswerConfidence: 0.6,
         decisionMentionText: "需要你确认",
         maxQuestionChars: 160,
+        perSenderPerMinute: 6,
+        perSenderConcurrent: 1,
+        cooldownSeconds: 0,
+        ownerBypass: true,
+        overloadReply: "请求有点多，先排队",
+        maxMessagesPerSenderPerRun: 20,
       },
       opencode: {
         baseUrl: "http://127.0.0.1:19876",
@@ -222,12 +229,12 @@ class FakeBridge implements OpenCodeBridge {
   async deleteSession(): Promise<void> {}
 }
 
-function mention(id: string, text: string): IncomingMessage {
+function mention(id: string, text: string, senderId = "u1"): IncomingMessage {
   return {
     platform: "feishu",
     messageId: id,
     chat: { id: "chat", kind: "group" },
-    sender: { platform: "feishu", id: "u1", displayName: "李四" },
+    sender: { platform: "feishu", id: senderId, displayName: senderId },
     senderType: "user",
     text,
     mentions: [{ platform: "feishu", id: "bot" }],
@@ -249,10 +256,10 @@ test("concurrent bot mentions in one chat are processed concurrently", async () 
     await runtime.start();
     const started = Date.now();
     await Promise.all([
-      runtime.ingest(mention("m1", "问题1")),
-      runtime.ingest(mention("m2", "问题2")),
-      runtime.ingest(mention("m3", "问题3")),
-      runtime.ingest(mention("m4", "问题4")),
+      runtime.ingest(mention("m1", "问题1", "u1")),
+      runtime.ingest(mention("m2", "问题2", "u2")),
+      runtime.ingest(mention("m3", "问题3", "u3")),
+      runtime.ingest(mention("m4", "问题4", "u4")),
     ]);
     await new Promise((resolve) => setTimeout(resolve, 300));
     const elapsed = Date.now() - started;

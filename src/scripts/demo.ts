@@ -133,6 +133,15 @@ class DemoLlm implements LlmClient {
       return {
         text: JSON.stringify({
           action: noReply ? "no_reply" : needsDecision ? "need_decision" : "answer",
+          kind: noReply
+            ? "chat"
+            : /文档|任务|做一下|补一下/.test(text)
+              ? "task"
+              : /提醒|别忘了|截止/.test(text)
+                ? "reminder"
+                : /通知|已上线|已完成/.test(text)
+                  ? "notification"
+                  : "question",
           style: text.includes("详细") ? "detailed" : "concise",
           confidence: noReply ? 0.9 : needsDecision ? 0.8 : 0.85,
           reason: noReply
@@ -140,6 +149,8 @@ class DemoLlm implements LlmClient {
             : needsDecision
               ? "涉及上线/排期，需要用户本人决策"
               : "信息明确，可直接回答",
+          summary: text.slice(0, 80),
+          ...(needsDecision ? { suggested_action: "先评估影响范围，再决定是否承诺" } : {}),
         }),
         model: "demo-model",
         usage: { promptTokens: 8, completionTokens: 4, totalTokens: 12 },
@@ -231,9 +242,16 @@ function demoConfig(stateDir: string): LoadedConfig {
         enabled: true,
         allowNoReply: true,
         escalateWhenUnsure: true,
+        analyzeBeforeEscalate: false,
         minAnswerConfidence: 0.6,
         decisionMentionText: "需要你确认",
         maxQuestionChars: 160,
+        perSenderPerMinute: 6,
+        perSenderConcurrent: 1,
+        cooldownSeconds: 0,
+        ownerBypass: true,
+        overloadReply: "请求有点多，先排队",
+        maxMessagesPerSenderPerRun: 20,
       },
       opencode: {
         baseUrl: "http://127.0.0.1:19876",
@@ -371,12 +389,40 @@ async function main(): Promise<void> {
     process.stdout.write(`${adapter.replies.at(-1)}\n`);
     process.stdout.write(`@ 的主账号：${adapter.lastMentionedId ?? "none"}\n`);
 
-    printSection("5) @我：生成私聊审批卡（不直接回群）");
+    printSection("5) 多个同事并发 @机器人：各自处理，互不阻塞");
+    await Promise.all([
+      runtime.ingest({
+        ...message("c1", "支付灰度怎么配？", ["bot"]),
+        sender: { platform: "feishu", id: "dev_zhang", displayName: "张三" },
+      }),
+      runtime.ingest({
+        ...message("c2", "支付灰度怎么配？", ["bot"]),
+        sender: { platform: "feishu", id: "dev_wang", displayName: "王五" },
+      }),
+      runtime.ingest({
+        ...message("c3", "支付灰度怎么配？", ["bot"]),
+        sender: { platform: "feishu", id: "dev_zhao", displayName: "赵六" },
+      }),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    process.stdout.write(`本轮群回复数：${adapter.replies.length}（应比上一步增加 3）\n`);
+
+    printSection("6) 同一人刷屏：限流并只警告一次");
+    const before = adapter.replies.length;
+    await Promise.all([
+      runtime.ingest({ ...message("s1", "支付灰度怎么配？", ["bot"]), sender: { platform: "feishu", id: "spammer", displayName: "刷屏者" } }),
+      runtime.ingest({ ...message("s2", "支付灰度怎么配？", ["bot"]), sender: { platform: "feishu", id: "spammer", displayName: "刷屏者" } }),
+      runtime.ingest({ ...message("s3", "支付灰度怎么配？", ["bot"]), sender: { platform: "feishu", id: "spammer", displayName: "刷屏者" } }),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    process.stdout.write(`新增回复数：${adapter.replies.length - before}（含 1 条限流提示）\n`);
+
+    printSection("7) @我：生成私聊审批卡（不直接回群）");
     await runtime.ingest(message("m5", "支付灰度什么时候上？", ["me"]));
     await new Promise((resolve) => setTimeout(resolve, 300));
     process.stdout.write(`${adapter.privateMessages.at(-1)}\n`);
 
-    printSection("6) 批准代答：群内出现引用回复 + 助手代答标识");
+    printSection("8) 批准代答：群内出现引用回复 + 助手代答标识");
     const pending = JSON.parse(
       await readFile(join(stateDir, "pending.json"), "utf8"),
     ) as { cards: Record<string, { taskId: string; planHash: string }> };
@@ -394,7 +440,7 @@ async function main(): Promise<void> {
     process.stdout.write(`操作结果：${result.toast}\n`);
     process.stdout.write(`群内最后一条：${adapter.replies.at(-1)}\n`);
 
-    printSection("7) 非 @ 批量筛选：只私聊汇总，不刷群");
+    printSection("9) 非 @ 批量筛选：只私聊汇总，不刷群");
     await runtime.ingestBatch([
       message("m6", "支付灰度昨天已经上线了", []),
       message("m7", "中午吃什么？", []),
@@ -402,7 +448,7 @@ async function main(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 300));
     process.stdout.write(`${adapter.privateMessages.at(-1)}\n`);
 
-    printSection("8) 运行指标");
+    printSection("10) 运行指标");
     process.stdout.write(`群回复数：${adapter.replies.length}\n`);
     process.stdout.write(`私聊消息数：${adapter.privateMessages.length}\n`);
     process.stdout.write(`调度器：${JSON.stringify(runtime.stats())}\n`);

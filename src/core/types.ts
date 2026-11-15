@@ -49,13 +49,25 @@ export interface IncomingMessage {
 
 export type Actionability = "task" | "question" | "fyi" | "noise";
 
-export type BotReplyAction = "answer" | "need_decision" | "no_reply";
+export type BotReplyAction = "answer" | "need_decision" | "notify_owner" | "no_reply";
+
+export type BotMessageKind =
+  | "question"
+  | "task"
+  | "reminder"
+  | "notification"
+  | "chat"
+  | "other";
 
 export interface BotIntent {
   action: BotReplyAction;
+  kind: BotMessageKind;
   style: "concise" | "detailed";
   confidence: number;
   reason: string;
+  summary?: string;
+  suggestedAction?: string;
+  needsAction?: boolean;
   question?: string;
 }
 

@@ -46,6 +46,7 @@ import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { ProjectStore } from "./project-store.js";
 import { ChatContextStore } from "./chat-context.js";
+import { SenderLimiter } from "./sender-limiter.js";
 import { OwnerStore, type OwnerBinding } from "./owner-store.js";
 import { assertTransition, canTransition } from "./task-state.js";
 import {
@@ -113,6 +114,7 @@ export class ProxyRuntime {
   private readonly owners: OwnerStore;
   private resolvedOwner?: OwnerBinding;
   private readonly claimAttempts = new Map<string, { count: number; firstAt: number }>();
+  private readonly senderLimiter: SenderLimiter;
   private projectResolver?: ProjectResolver;
   private readonly projectCache = new Map<
     string,
@@ -148,6 +150,11 @@ export class ProxyRuntime {
       join(this.stateDir, "projects.json"),
       this.logger.child("projects"),
     );
+    this.senderLimiter = new SenderLimiter({
+      maxPerMinute: this.config.botReply.perSenderPerMinute,
+      maxConcurrent: this.config.botReply.perSenderConcurrent,
+      cooldownMs: this.config.botReply.cooldownSeconds * 1000,
+    });
     this.owners = new OwnerStore(
       join(this.stateDir, "owner.json"),
       this.logger.child("owner"),
@@ -447,6 +454,22 @@ export class ProxyRuntime {
     if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey)) return;
     this.activeMessageIds.add(dedupKey);
     const mention = this.isMention(message);
+    const mentionBot = this.isMentionBot(message);
+    const ownerId = this.ownerOpenId();
+    const fromOwner = Boolean(ownerId) && message.sender.id === ownerId;
+    const limited = mentionBot && !(this.config.botReply.ownerBypass && fromOwner);
+    if (limited && !this.senderLimiter.tryAcquire(message.sender.id)) {
+      if (this.senderLimiter.shouldWarn(message.sender.id)) {
+        this.logger.warn("sender rate limited; sending one warning", {
+          senderId: message.sender.id,
+          messageId: message.messageId,
+        });
+        await this.safeReply(message, this.config.botReply.overloadReply);
+      }
+      this.dedup.add(dedupKey);
+      await this.dedup.flush();
+      return;
+    }
     if (this.config.context.enabled) {
       this.chatContext.append(
         `${message.platform}:${message.chat.id}`,
@@ -482,11 +505,13 @@ export class ProxyRuntime {
             await this.handleMessage(message, signal);
           } finally {
             this.activeMessageIds.delete(dedupKey);
+            if (limited) this.senderLimiter.release(message.sender.id);
           }
         },
       })
       .catch((error) => {
         this.activeMessageIds.delete(dedupKey);
+        if (limited) this.senderLimiter.release(message.sender.id);
         this.logger.error("failed to process message", {
           messageId: message.messageId,
           error: toErrorMessage(error),
@@ -554,13 +579,31 @@ export class ProxyRuntime {
       return;
     }
 
+    if (intent.action === "notify_owner") {
+      await this.sendOwnerDecisionCard(message, intent, "notify");
+      await this.markProcessed(message);
+      await this.audit.append({
+        actor: { system: true },
+        action: "bot_mention_owner_notified",
+        details: { messageId: message.messageId, kind: intent.kind, reason: intent.reason },
+      });
+      return;
+    }
+
     if (intent.action === "need_decision") {
+      const analysis = await this.analyzeBotRequest(message, intent, signal);
       await this.escalateToOwner(message, intent);
+      await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
       await this.markProcessed(message);
       await this.audit.append({
         actor: { system: true },
         action: "bot_mention_escalated",
-        details: { messageId: message.messageId, reason: intent.reason },
+        details: {
+          messageId: message.messageId,
+          kind: intent.kind,
+          reason: intent.reason,
+          analysisHash: analysis ? sha256(analysis).slice(0, 12) : undefined,
+        },
       });
       return;
     }
@@ -600,6 +643,7 @@ export class ProxyRuntime {
     if (!this.config.botReply.enabled) {
       return {
         action: "answer",
+        kind: "question",
         style: detectReplyStyle(message, this.replyOptions),
         confidence: 1,
         reason: "necessity check disabled",
@@ -609,6 +653,7 @@ export class ProxyRuntime {
       const trivial = /^(谢谢|收到|好的| ok|ok|测试一下|test)[！!。.\s]*$/i.test(message.text.trim());
       return {
         action: trivial ? "no_reply" : "answer",
+        kind: trivial ? "chat" : "question",
         style: detectReplyStyle(message, this.replyOptions),
         confidence: 0.5,
         reason: trivial ? "寒暄/确认，无需回复" : "未启用筛选模型，按普通问题回答",
@@ -665,11 +710,72 @@ export class ProxyRuntime {
       });
       return {
         action: this.config.botReply.escalateWhenUnsure ? "need_decision" : "no_reply",
+        kind: "other",
         style: detectReplyStyle(message, this.replyOptions),
         confidence: 0,
         reason: "intent classification failed",
       };
     }
+  }
+
+  private async analyzeBotRequest(
+    message: IncomingMessage,
+    intent: BotIntent,
+    signal: AbortSignal,
+  ): Promise<string | undefined> {
+    if (!this.config.botReply.analyzeBeforeEscalate) return undefined;
+    try {
+      const project = await this.resolveProject(message.chat.id);
+      const prompt = [
+        "你是研发任务助手。请对下面这个群里的请求做简短可行性分析，供主人决策。",
+        "只输出 3-5 行：请求实质、影响范围、建议做/不做/先确认什么、风险。",
+        "不要执行代码，不要承诺排期，不要编造。",
+        `消息类型：${intent.kind}`,
+        `发送人：${message.sender.displayName ?? message.sender.id}`,
+        `内容：${message.text}`,
+        `当前项目目录：${project.worktree}`,
+      ].join("\n");
+      const sessionId = await this.options.bridge.createSession({
+        directory: project.worktree,
+        title: `${this.config.opencode.sessionTitlePrefix}:analyze:${message.messageId}`,
+        permission: READ_ONLY_PERMISSION,
+      });
+      try {
+        const raw = await this.options.bridge.prompt(sessionId, {
+          directory: project.worktree,
+          title: `${this.config.opencode.sessionTitlePrefix}:analyze:${message.messageId}`,
+          text: prompt,
+          signal,
+        });
+        return truncate(raw.trim(), 600);
+      } finally {
+        await this.options.bridge.deleteSession(sessionId);
+      }
+    } catch (error) {
+      this.logger.warn("bot request analysis failed", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
+      });
+      return undefined;
+    }
+  }
+
+  private async sendOwnerDecisionCard(
+    message: IncomingMessage,
+    intent: BotIntent,
+    mode: "decision" | "notify",
+    analysis?: string,
+  ): Promise<void> {
+    const text = [
+      mode === "decision" ? "群里有人 @机器人，需要你判断是否要做" : "群里有人 @机器人，仅需你知会",
+      `类型：${intent.kind}`,
+      `来源：${message.chat.name ?? message.chat.id} / ${message.sender.displayName ?? message.sender.id}`,
+      `内容：${truncate(intent.summary ?? message.text, 240)}`,
+      `判断：${intent.reason}`,
+      ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),
+      ...(analysis ? [`分析：\n${analysis}`] : []),
+    ].join("\n");
+    await this.sendToOwner(text);
   }
 
   private async escalateToOwner(message: IncomingMessage, intent: BotIntent): Promise<void> {
@@ -678,9 +784,11 @@ export class ProxyRuntime {
       : truncate(message.text, this.config.botReply.maxQuestionChars);
     const text = [
       this.config.botReply.decisionMentionText,
+      `类型：${intent.kind}`,
       `问题：${question}`,
       `来源：${message.sender.displayName ?? message.sender.id}`,
       `原因：${intent.reason || "需要你本人决策"}`,
+      ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),
     ].join("\n");
     try {
       await this.sendLimiter.take();
@@ -873,7 +981,19 @@ export class ProxyRuntime {
       return !this.dedup.has(key) && !this.activeMessageIds.has(key);
     });
     if (fresh.length === 0) return;
-    for (const message of fresh) {
+    const perSender = new Map<string, number>();
+    const capped = fresh.filter((message) => {
+      const count = (perSender.get(message.sender.id) ?? 0) + 1;
+      if (count > this.config.botReply.maxMessagesPerSenderPerRun) return false;
+      perSender.set(message.sender.id, count);
+      return true;
+    });
+    if (capped.length < fresh.length) {
+      this.logger.warn("per-sender message cap applied", {
+        dropped: fresh.length - capped.length,
+      });
+    }
+    for (const message of capped) {
       this.activeMessageIds.add(`${message.platform}:${message.messageId}`);
       if (this.config.context.enabled) {
         this.chatContext.append(
@@ -896,38 +1016,38 @@ export class ProxyRuntime {
       }
     }
 
-    const chatId = fresh[0]?.chat.id ?? "unknown";
+    const chatId = capped[0]?.chat.id ?? "unknown";
     const budget = this.config.budget.maxMessagesPerRun;
-    const limited = fresh.slice(0, budget);
-    if (limited.length < fresh.length) {
+    const limitedMessages = capped.slice(0, budget);
+    if (limitedMessages.length < capped.length) {
       await this.sendToApprover(
-        `本轮消息超过预算，仅处理 ${limited.length}/${fresh.length} 条；剩余留待下一轮。`,
+        `本轮消息超过预算，仅处理 ${limitedMessages.length}/${capped.length} 条；剩余留待下一轮。`,
       );
     }
     try {
       await this.dispatcher.enqueue({
-        id: `scan:${chatId}:${limited[0]?.messageId ?? Date.now()}`,
+        id: `scan:${chatId}:${limitedMessages[0]?.messageId ?? Date.now()}`,
         key: `${chatId}:scan`,
         keyConcurrency: this.config.concurrency.scanConcurrency,
         priority: 5,
         timeoutMs: this.config.concurrency.scanTimeoutMs,
         run: async (signal) => {
           try {
-            await this.handlePolledBatchJob(limited, signal);
+            await this.handlePolledBatchJob(limitedMessages, signal);
           } finally {
-            for (const message of fresh) {
+            for (const message of capped) {
               this.activeMessageIds.delete(`${message.platform}:${message.messageId}`);
             }
           }
         },
       });
     } catch (error) {
-      for (const message of fresh) {
+      for (const message of capped) {
         this.activeMessageIds.delete(`${message.platform}:${message.messageId}`);
       }
       this.logger.error("polled batch failed", {
         chatId,
-        count: fresh.length,
+        count: capped.length,
         error: toErrorMessage(error),
       });
       throw error;
