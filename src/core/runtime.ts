@@ -645,23 +645,7 @@ export class ProxyRuntime {
       });
       return;
     }
-    const client = this.options.bridge.getClient?.();
-    let name = event.chatId;
-    if (client && "im" in client) {
-      try {
-        const response: any = await (client as any).im.v1.chat.get({
-          path: { chat_id: event.chatId },
-        });
-        if (typeof response?.data?.name === "string" && response.data.name) {
-          name = response.data.name;
-        }
-      } catch (error) {
-        this.logger.debug("chat name lookup failed on join", {
-          chatId: event.chatId,
-          error: toErrorMessage(error),
-        });
-      }
-    }
+    const name = (await this.fetchChatName(event.chatId)) ?? event.chatId;
     this.chatNames.set(event.chatId, { name, at: Date.now() });
     this.groupIds.add(event.chatId);
     this.logger.info("bot added to chat", {
@@ -680,6 +664,37 @@ export class ProxyRuntime {
     });
   }
 
+  private async fetchChatName(chatId: string): Promise<string | undefined> {
+    const client = this.options.bridge.getClient?.();
+    if (!client) return undefined;
+    try {
+      const response: any = await (client as any).im.v1.chat.get({
+        path: { chat_id: chatId },
+      });
+      if (typeof response?.data?.name === "string" && response.data.name) {
+        return response.data.name;
+      }
+    } catch (error) {
+      this.logger.debug("chat.get failed; trying raw request", {
+        chatId,
+        error: toErrorMessage(error),
+      });
+    }
+    try {
+      const raw: any = await (client as any).request({
+        method: "GET",
+        url: `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}`,
+      });
+      if (typeof raw?.data?.name === "string" && raw.data.name) return raw.data.name;
+    } catch (error) {
+      this.logger.debug("raw chat lookup failed", {
+        chatId,
+        error: toErrorMessage(error),
+      });
+    }
+    return undefined;
+  }
+
   private async chatLabel(message: IncomingMessage): Promise<string> {
     const chatId = message.chat.id;
     const cached = this.chatNames.get(chatId);
@@ -693,23 +708,10 @@ export class ProxyRuntime {
       this.chatNames.set(chatId, { name: configured.name, at: Date.now() });
       return configured.name;
     }
-    const client = this.options.bridge.getClient?.();
-    if (client && "im" in client) {
-      try {
-        const response: any = await (client as any).im.v1.chat.get({
-          path: { chat_id: chatId },
-        });
-        const name = response?.data?.name;
-        if (typeof name === "string" && name) {
-          this.chatNames.set(chatId, { name, at: Date.now() });
-          return name;
-        }
-      } catch (error) {
-        this.logger.debug("chat name lookup failed", {
-          chatId,
-          error: toErrorMessage(error),
-        });
-      }
+    const name = await this.fetchChatName(chatId);
+    if (name) {
+      this.chatNames.set(chatId, { name, at: Date.now() });
+      return name;
     }
     return chatId;
   }

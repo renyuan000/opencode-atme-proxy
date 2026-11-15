@@ -188,8 +188,10 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 
 1. 事件订阅选择「长连接」，添加 `im.message.receive_v1`、`card.action.trigger`。
 2. 权限：`im:message.group_at_msg:readonly`、`im:message.group_msg`（敏感，需管理员审批）、`im:message:send_as_bot`；可选 `im:message.p2p_msg:readonly`（仅私聊 claim 需要）、`contact:user.base:readonly`。
-3. 把机器人拉进目标群。机器人会收到 `im.chat.member.bot.added_v1`，自动加入处理白名单，并私聊你群名和 `chat_id`。
-4. 运行 `atme-proxy chats --sync` 把群 `chat_id` 和真实群名写入配置，重启后长期生效。
+3. 把机器人拉进目标群，然后运行 `atme-proxy chats --sync`，自动发现群 `chat_id` 和真实群名并写入配置。
+4. 重启后，日志里的 `chatName` 会显示真实群名（首次收到消息时按 `chat_id` 查询并缓存）。
+
+如果后台有 `im.chat.member.bot.added_v1` 事件，插件也会在加群时自动白名单并私聊通知；没有该事件不影响使用。
 4. 以上 scope 名称以飞书开放平台后台实际可选项为准；`im:message.group_msg` 需管理员审批。
 
 项目上下文：
@@ -658,8 +660,10 @@ Feishu console:
 
 1. Event subscription: long connection, add `im.message.receive_v1` and `card.action.trigger`.
 2. Scopes: `im:message.group_at_msg:readonly`, `im:message.group_msg` (sensitive, admin approval), `im:message:send_as_bot`; optional `contact:user.base:readonly`.
-3. Add the bot to target groups. It receives `im.chat.member.bot.added_v1`, auto-allowlists the chat, and DMs you the group name and `chat_id`.
-4. Run `atme-proxy chats --sync` to persist chat ids and real group names, then restart.
+3. Add the bot to target groups, then run `atme-proxy chats --sync` to discover chat ids and real names.
+4. After restart, `chatName` in logs is resolved from `chat_id` on first use and cached.
+
+If your console offers `im.chat.member.bot.added_v1`, the bot also auto-allowlists and DMs you on join; it is optional.
 
 ### About "configuring an LLM"
 

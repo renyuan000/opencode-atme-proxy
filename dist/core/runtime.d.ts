@@ -73,6 +73,7 @@ export declare class ProxyRuntime {
     private isMentionMe;
     private isMentionBot;
     private onChatMembership;
+    private fetchChatName;
     private chatLabel;
     private handleDirectMessage;
     private handleMessage;
