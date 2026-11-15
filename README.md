@@ -151,10 +151,20 @@ npm run build
 
 ### 4. 验证
 
+先跑本地模拟（无需飞书凭据）：
+
+```bash
+npm run demo
+```
+
+再跑真实飞书最小流程：
+
 ```bash
 npm run probe      # 只拉历史消息并打印，不回复
 npm run check      # typecheck + 全部测试
 ```
+
+完整步骤见 `docs/DEMO.md`。
 
 启动成功的日志应包含：
 
@@ -438,10 +448,20 @@ Restart `opencode serve`. The plugin and the daemon share `instance.lock`, so on
 
 ### Verify
 
+Local simulation (no Feishu credentials needed):
+
+```bash
+npm run demo
+```
+
+Real Feishu minimal flow:
+
 ```bash
 npm run probe      # print history only, no replies
 npm run check      # typecheck + tests
 ```
+
+See `docs/DEMO.md` for the full walkthrough.
 
 Expected startup logs: `runtime started`, `project resolved`, `websocket ready`.
 

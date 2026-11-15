@@ -21,7 +21,8 @@
     "probe": "tsx src/scripts/probe-history.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "demo": "tsx src/scripts/demo.ts"
   },
   "engines": {
     "node": ">=20.11"

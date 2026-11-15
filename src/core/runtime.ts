@@ -77,6 +77,7 @@ export interface RuntimeOptions {
   bridge: OpenCodeBridge;
   loaded: LoadedConfig;
   logger?: Logger;
+  llm?: LlmClient;
 }
 
 export class ProxyRuntime {
@@ -1617,6 +1618,7 @@ function requireStateDir(config: AppConfig): string {
 }
 
 function createFilterClient(options: RuntimeOptions, logger: Logger): LlmClient {
+  if (options.llm) return options.llm;
   const { config, secrets } = options.loaded;
   if (!config.filter.enabled) {
     return {
