@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "app": {
+    "stateDir": "~/.local/state/opencode-atme-proxy",
+    "logLevel": "info"
+  },
+  "platforms": {
+    "feishu": {
+      "enabled": true,
+      "appId": "cli_xxxxxxxx",
+      "appSecretEnv": "FEISHU_APP_SECRET",
+      "domain": "feishu",
+      "me": { "openId": "ou_xxxxxxxx" },
+      "approvers": [{ "openId": "ou_xxxxxxxx", "name": "我" }],
+      "groups": [
+        { "chatId": "oc_xxxxxxxx", "name": "项目群", "enabled": true }
+      ],
+      "receiveAllGroupMessages": false,
+      "rateLimit": { "sendPerSecond": 5, "burst": 10 }
+    }
+  },
+  "polling": {
+    "enabled": true,
+    "intervalSeconds": 180,
+    "pageSize": 50,
+    "maxPages": 20,
+    "lookbackSeconds": 3600,
+    "overlapSeconds": 60
+  },
+  "filter": {
+    "enabled": true,
+    "keywordPrefilter": true,
+    "baseUrl": "https://your-openai-compatible-endpoint/v1",
+    "apiKeyEnv": "ATME_FILTER_API_KEY",
+    "model": "your-low-cost-model",
+    "maxMessagesPerBatch": 50,
+    "maxCharsPerMessage": 800,
+    "timeoutMs": 60000,
+    "minTaskConfidence": 0.7,
+    "minReviewConfidence": 0.5,
+    "profile": {
+      "name": "张三",
+      "role": "后端负责人",
+      "keywords": ["支付", "订单", "灰度"],
+      "excludeKeywords": ["广告"],
+      "projects": ["订单中台"],
+      "tasks": []
+    }
+  },
+  "analysis": {
+    "mode": "main_agent",
+    "timeoutMs": 180000
+  },
+  "opencode": {
+    "baseUrl": "http://127.0.0.1:19876",
+    "passwordEnv": "ATME_OPENCODE_PASSWORD",
+    "sessionTitlePrefix": "atme",
+    "agent": "build",
+    "analysisAgent": "plan",
+    "executionAgent": "build"
+  },
+  "context": {
+    "enabled": true,
+    "maxMessagesPerChat": 20,
+    "maxCharsPerMessage": 300,
+    "ttlDays": 7,
+    "maxChats": 100,
+    "includeInAnalysis": true
+  },
+  "project": {
+    "mode": "auto",
+    "allowlist": [],
+    "fallbackWorktree": "",
+    "recentSessions": 20,
+    "maxAgeDays": 30,
+    "cacheSeconds": 60,
+    "bindChat": true,
+    "includeRecentSessionTitles": 5
+  },
+  "reply": {
+    "defaultStyle": "concise",
+    "maxChars": 320,
+    "detailMaxChars": 2000,
+    "acknowledgeLongTasks": true,
+    "ackDelayMs": 2000,
+    "ackText": "收到，处理中…"
+  },
+  "concurrency": {
+    "global": 8,
+    "mentionConcurrency": 4,
+    "scanConcurrency": 1,
+    "perChat": 1,
+    "maxQueue": 200,
+    "mentionTimeoutMs": 60000,
+    "scanTimeoutMs": 120000,
+    "analysisTimeoutMs": 180000,
+    "maxRetries": 1,
+    "retryDelayMs": 1000
+  },
+  "repos": [
+    {
+      "id": "order-platform",
+      "path": "/path/to/order-platform",
+      "defaultBranch": "main",
+      "testCommand": [["npm", "test"]],
+      "lintCommand": [["npm", "run", "lint"]],
+      "allowPush": false,
+      "allowMerge": false
+    }
+  ],
+  "policy": {
+    "defaultDenyGroups": true,
+    "autoReplyOnMention": false,
+    "groupWriteBack": false,
+    "requireMergeApproval": true,
+    "allowExternalModel": true,
+    "autoAnalyzeTasks": true,
+    "maxConcurrentExecutions": 2,
+    "approvalTimeoutHours": 24,
+    "executionTimeoutMinutes": 60,
+    "maxExecutionRetries": 2
+  },
+  "budget": {
+    "maxMessagesPerRun": 500,
+    "maxTokensPerRun": 50000,
+    "maxExecutionsPerDay": 10
+  }
+}

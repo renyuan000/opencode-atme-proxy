@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+config.json
+config.local.json
+*.local.json
+*.log
+coverage/
+.DS_Store
+/tmp/
