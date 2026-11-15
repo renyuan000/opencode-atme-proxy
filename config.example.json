@@ -54,10 +54,7 @@
   "opencode": {
     "baseUrl": "http://127.0.0.1:19876",
     "passwordEnv": "ATME_OPENCODE_PASSWORD",
-    "sessionTitlePrefix": "atme",
-    "agent": "build",
-    "analysisAgent": "plan",
-    "executionAgent": "build"
+    "sessionTitlePrefix": "atme"
   },
   "context": {
     "enabled": true,

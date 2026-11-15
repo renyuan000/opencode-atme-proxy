@@ -97,6 +97,7 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 1. 事件订阅选择「长连接」，添加 `im.message.receive_v1`、`card.action.trigger`。
 2. 权限：`im:message.group_at_msg:readonly`、`im:message.group_msg`（敏感，需管理员审批）、`im:message:send_as_bot`；可选 `contact:user.base:readonly`。
 3. 把机器人拉进目标群；群 `chat_id` 可通过事件日志或开放平台接口获取。
+4. 以上 scope 名称以飞书开放平台后台实际可选项为准；`im:message.group_msg` 需管理员审批。
 
 项目上下文：
 
@@ -136,7 +137,7 @@ OpenCode 插件模式：
 npm run build
 ```
 
-在 `~/.config/opencode/opencode.json` 中加入绝对路径：
+在 `~/.config/opencode/opencode.json` 中加入绝对路径（需先 `npm run build`）：
 
 ```json
 {
@@ -145,6 +146,8 @@ npm run build
 ```
 
 然后重启 `opencode serve`。插件与独立进程共用 `instance.lock`，同一时间只能启动一个。
+
+> 插件模式尚未在真实 OpenCode 1.19.x 上验证。如果本地目录未被识别，可先用 `npm link` 或发布为包；独立守护进程模式已验证可编译、可测试。
 
 ### 4. 验证
 
@@ -272,11 +275,33 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 简洁/详细回复策略、审批门禁、失败降级
 - 49 个单元/集成测试
 
-待 M0 实测：
+未完成 / 下一步：
 
-- 飞书全量群消息权限是否可用
-- 卡片回调时限与 payload
-- 私聊 `receive_id_type=open_id` 限制
+P0（必须先做）：
+
+- **M0 真实飞书验证**：全量群消息权限、卡片回调时限与 payload、私聊 `open_id` 发送、历史消息时间单位。
+- **真实 OpenCode 联调**：`opencode serve` + 实际仓库的审批 → 执行 → 测试 → diff 全链路；执行超时/取消尚未接入。
+- **push/PR/合并二次审批**：当前只保留配置，未实现；执行器不会 push。
+- **重启恢复**：待审批卡片可恢复；正在执行的会话不会自动续跑。
+
+P1：
+
+- 飞书 429 退避与重试抖动；发送限流已做，接收侧退避未做。
+- 预算硬停：token 预算目前是事后告警，未在批次中间硬停；每日执行次数未强制。
+- 附件/图片/文件解析（当前只占位）。
+- 群内结果回写（默认关闭，未实现）。
+- 执行器 worktree 清理策略未接入定时任务。
+- 多审批人、审批超时重新发起 UI。
+- 插件模式在真实 OpenCode 中的加载验证。
+- 集成测试（Mock 飞书服务）与 CI。
+- systemd/pm2 部署单元、日志轮转。
+
+P2：
+
+- 第二个平台适配器（Slack/Telegram/DingTalk/企微）。
+- 任务跨消息语义合并、任务优先级。
+- 上下文摘要（当前只保留最近 N 条原文）。
+- Web 审批降级（无卡片平台）。
 
 ### 文档
 
@@ -407,6 +432,8 @@ Add the absolute path to `~/.config/opencode/opencode.json`:
 ```
 
 Restart `opencode serve`. The plugin and the daemon share `instance.lock`, so only one can run at a time.
+
+> Plugin mode has not been verified on a real OpenCode 1.19.x yet. If the local directory is not recognized, use `npm link` or publish the package first. The standalone daemon is build/test verified.
 
 ### Verify
 

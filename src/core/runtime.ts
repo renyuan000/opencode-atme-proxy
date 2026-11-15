@@ -166,9 +166,11 @@ export class ProxyRuntime {
         .filter((group) => group.enabled)
         .map((group) => group.chatId),
     );
-    this.pollingEnabled =
-      this.config.polling.enabled && options.platform.capabilities().groupHistory;
     this.filterEnabled = this.config.filter.enabled && this.config.policy.allowExternalModel;
+    this.pollingEnabled =
+      this.config.polling.enabled &&
+      options.platform.capabilities().groupHistory &&
+      this.filterEnabled;
     if (this.config.filter.enabled && !this.config.policy.allowExternalModel) {
       this.logger.warn("external model disabled by policy; relevance filter is off");
     }
