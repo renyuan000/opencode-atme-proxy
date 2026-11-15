@@ -1,0 +1,131 @@
+# opencode-atme-proxy 待办与决策记录
+
+| 项目 | 内容 |
+|------|------|
+| 版本 | v0.1 |
+| 更新 | 2026-11-15 |
+| 用途 | 记录未完成事项、P0/P1/P2 优先级、参考实现评估与决策，避免口头约定丢失 |
+
+> 本文只记录待办与决策，不代表已实现。实现状态以代码和测试为准。
+
+---
+
+## 1. P0（阻塞上线 / 必须先做）
+
+| ID | 事项 | 为什么是 P0 | 验收标准 | 依赖 | 状态 |
+|----|------|-------------|----------|------|------|
+| P0-1 | 飞书 M0 能力验证 | 全量群消息、卡片回调、私聊发送都是未验证假设，直接决定架构是否成立 | 输出 `docs/M0-FINDINGS.md`：①`im.message.receive_v1` + `im:message.group_msg` 能否收到非 @ 全量群消息；②历史消息时间单位/边界/分页；③卡片回调 payload/时限；④私聊 `receive_id_type=open_id` 限制；⑤机器人自身消息是否回推；⑥429 结构 | 真实飞书应用与群 | 未开始 |
+| P0-2 | OpenCode 真实联调 | 目前执行链路是骨架，未在真实仓库跑通「审批 → 执行 → 测试 → diff」 | 真实仓库完成：@bot 回答、@me 请示、批准后执行、lint/test 门禁、diff 报告；未批准零执行；超时/取消可用 | P0-1、真实仓库 | 未开始 |
+| P0-3 | push/PR/合并二次审批 | 配置已保留但未实现；没有它不能安全交付代码 | 默认不 push；开启后 push/PR 需二次审批；合并需再次审批；审计记录 commit/PR；禁止 force push 与保护分支直推 | P0-2 | 未开始 |
+| P0-4 | 执行恢复 / 超时 / 取消 | 当前重启后执行中的任务不会续跑，也没有中断标记 | 重启后执行中任务标记 `interrupted`，不自动重放；待审批卡片可恢复；取消能终止会话并保留 worktree/日志；不重复发消息 | P0-2 | 未开始 |
+| P0-5 | 安装与诊断体验 | 目前只有手动配置；新用户难以确认权限、OpenCode、项目目录是否就绪 | 提供 `atme-proxy setup`（扫码/手动）、`doctor`（配置/凭据/bot/权限/OpenCode/项目）、`status`（PID/心跳）、`logs`、`stop`、`--daemon`；按 README 可从零跑通 | 无 | 未开始 |
+| P0-6 | 机器人人格与角色（作用域隔离） | 飞书里是助手、OpenCode 里是架构/研发角色；不能污染用户自己的普通会话 | `persona` 配置（身份/职责/语气/边界/项目上下文）只注入飞书任务与回复会话；普通 OpenCode 会话不受影响；可选只读导入 AgentSoul 文件；有测试断言不外溢 | P0-2 | 未开始 |
+
+---
+
+## 2. P1（首期应有，可稍后）
+
+| ID | 事项 | 验收标准 |
+|----|------|----------|
+| P1-1 | 飞书 429 退避与重试抖动 | 接收/发送均区分可重试错误；指数退避 + 抖动；不刷屏 |
+| P1-2 | 硬预算 | 单轮 token、每日执行次数在批次中间硬停，不只事后告警 |
+| P1-3 | 附件解析 | 图片/文件/语音按配置下载或 OCR；默认不出网；有大小/类型限制 |
+| P1-4 | 群内结果回写 | 默认关闭；按任务开启；只回写批准过的任务；限频 |
+| P1-5 | worktree 清理 | 完成后按 TTL 清理；清理前确认；审计记录 |
+| P1-6 | 多审批人 / 超时重发 | 支持多个 approver；超时后可一键重新发起 |
+| P1-7 | 插件模式验证 | 在真实 OpenCode 1.19.x 加载本地/包路径；验证 dispose、锁、重启 |
+| P1-8 | 集成测试与 CI | Mock 飞书服务 + 沙箱仓库；CI 跑 typecheck/test/build |
+| P1-9 | 部署与日志轮转 | systemd/pm2 单元；日志按天/大小轮转；备份恢复脚本 |
+| P1-10 | 任务跨消息合并 | 同一任务多轮讨论合并为一个任务；避免重复建单 |
+
+---
+
+## 3. P2（后续增强）
+
+| ID | 事项 |
+|----|------|
+| P2-1 | 第二个平台适配器（Slack / Telegram / Discord / Teams 选一） |
+| P2-2 | 任务优先级与排序（截止时间/影响面/提出人） |
+| P2-3 | 上下文摘要（当前保留最近 N 条原文） |
+| P2-4 | 无卡片平台的 Web 审批降级（签名链接） |
+| P2-5 | 多账号 / 多配置 profile 管理 |
+| P2-6 | 钉钉 / 企业微信 / WhatsApp 适配与限制说明 |
+
+---
+
+## 4. 参考实现评估：opencode-feishu（只读参考，不复制架构）
+
+参考路径：`/home/renyuan/opencode-feishu.git`。仅作为 API 用法与交互体验参考，不沿用其事件处理器、会话管理和卡片架构。
+
+| 能力 | 参考位置 | 决策 | 说明 |
+|------|----------|------|------|
+| 扫码创建应用（device flow） | `src/setup/device-flow.ts:24-42`（`accounts.feishu.cn/oauth/v1/app/registration`，`archetype=PersonalAgent`，`auth_method=client_secret`，`request_user_info=open_id tenant_brand`） | **采纳到 P0-5** | 只解决凭证获取；敏感 scope（如 `im:message.group_msg`）仍需管理员审批，不能承诺全自动 |
+| 配置向导 | `src/setup/wizard.ts` | **采纳到 P0-5** | 扫码失败回退手动；保留环境变量提供 secret 的做法 |
+| 预检 `doctor` | `src/setup/preflight.ts` | **采纳到 P0-5** | 检查配置、凭据、bot open_id、OpenCode、权限、白名单；我们会增加项目解析检查 |
+| 守护进程 / PID / 心跳 / status / logs | `src/core/daemon.ts:13-15`、`src/cli.ts:46,90,157,182` | **采纳到 P0-5** | 提供 `--daemon`、`status`、`logs`、`stop`；保留我们自己的 `instance.lock` |
+| profile 多配置 | `src/cli.ts:303-408` | 暂缓 P2-5 | 首期单用户单配置，多账号后续做 |
+| workdir 持久化 | `src/core/workdir-manager.ts` | 不直接采纳 | 我们已有 `project-resolver` + `projects.json`，按群绑定项目更合适 |
+| 每会话 busy 时拒绝新消息 | `src/core/message-handler.ts:180-190` | 不采纳 | 我们要求同群 @ 并发，busy 拒绝会违背需求 |
+| 仅 @ 机器人才处理 | `src/core/message-handler.ts:145-162` | 不采纳 | 我们还需要非 @ 全量筛选 |
+| 卡片流式渲染架构 | `src/feishu/card.ts` | 不照搬 | 我们只做审批/汇总卡，按自己的状态机渲染 |
+
+---
+
+## 5. AgentSoul 评估（人格/角色插件）
+
+已检查 npm 包：`@neomei/agentsoul@0.1.14`（`npm view` 与包内源码）。
+
+### 5.1 它是什么
+
+- 独立的 **OpenCode 全局插件**，与飞书无耦合。
+- 人格文件：`~/.agentsoul/soul/IDENTITY.md`、`SOUL.md`、`USER.md`。
+- 注入方式：插件 hook `experimental.chat.system.transform`，在每次 LLM 调用前把人格文本追加到 system prompt。
+- 记忆：`chat.message` hook 把用户消息写入 `~/.agentsoul/memory.db`（SQLite；环境不支持时回退 JSON）。
+- 安装：`agentsoul setup` 会自动把 `@neomei/agentsoul` 注册进 `~/.config/opencode/opencode.json`。
+
+### 5.2 是否适合本项目
+
+**不建议直接依赖**，原因：
+
+1. **作用域过大**：它影响所有 OpenCode 会话，包括你本人日常开发会话，不只是飞书机器人。
+2. **记忆混流**：飞书群聊内容会进入全局 `memory.db`，与个人会话混在一起，隐私边界不清。
+3. **角色冲突**：模板是“温暖、有情绪、主动表达”的伴侣型人格；本项目需要“架构师 + 研发负责人 + 审批纪律 + 简洁回复”，直接套用会冲突。
+4. **依赖与复杂度**：需要 SQLite/原生模块回退逻辑；我们首期用 JSON 状态更轻。
+5. **不可审计**：全局注入难以按任务/群追踪，出了偏差不好定位。
+
+### 5.3 建议方案（已记为 P0-6）
+
+- 在本项目内实现 `persona` 配置：`name`、`role`、`tone`、`boundaries`、`projectContext`、`responseStyle`。
+- 只注入到飞书相关会话（回复、任务分析、执行），普通 OpenCode 会话不受影响。
+- 可选 `persona.source: "agentsoul"`：只读导入 `~/.agentsoul/soul/*.md` 作为补充，但不安装、不写全局配置。
+- 任务分析与执行仍保留强约束：不可被 persona 覆盖审批门禁、工具白名单、仓库白名单。
+- 验收：测试断言 persona 不会出现在非飞书会话；关闭后完全无注入。
+
+### 5.4 如果仍想用 AgentSoul
+
+可以，但请明确它是全局生效：
+
+```bash
+npx @neomei/agentsoul setup
+```
+
+风险：会影响你所有 OpenCode 会话，并把消息写入 `~/.agentsoul/memory.db`。本项目不会默认安装它。
+
+---
+
+## 6. 当前已实现（对照）
+
+- 飞书适配器：WS 事件、历史消息、发送/回复、审批卡
+- 并发 @：同群 4 并发、跨群并行、有界队列、超时/重试、发送限流
+- 项目解析与群绑定、群聊上下文
+- 去重、游标、任务、分析、审批、执行、审计骨架
+- 简洁/详细回复、审批门禁、失败降级
+- 49 个测试通过
+
+## 7. 建议顺序
+
+1. **P0-1 M0 验证**：先确认飞书能力，避免在错误假设上继续开发。
+2. **P0-5 setup/doctor**：让你能独立安装、诊断、启动。
+3. **P0-2 真实联调**：打通审批 → 执行 → 测试 → diff。
+4. **P0-3 / P0-4**：安全交付与恢复。
+5. **P0-6 persona**：在联调稳定后接入，避免人格干扰排障。

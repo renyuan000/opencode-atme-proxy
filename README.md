@@ -306,6 +306,7 @@ P2：
 ### 文档
 
 - 需求：`docs/REQUIREMENTS.md`
+- 待办与决策（P0/P1/P2、参考实现、AgentSoul 评估）：`docs/BACKLOG.md`
 - 配置示例：`config.example.json`
 - 环境变量：`.env.example`
 
@@ -515,5 +516,6 @@ P2:
 ### Docs
 
 - Requirements: `docs/REQUIREMENTS.md`
+- Backlog and decisions (P0/P1/P2, reference review, AgentSoul): `docs/BACKLOG.md`
 - Config example: `config.example.json`
 - Env example: `.env.example`
