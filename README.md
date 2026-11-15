@@ -208,6 +208,15 @@ websocket ready
 | 卡片按钮无响应 | 检查 `card.action.trigger` 事件与回调时限 |
 | OpenCode 不可用 | 确认 `opencode serve` 与 `opencode.baseUrl` |
 
+### 架构评审：会话与并发
+
+详细评审见 `docs/SESSION-ARCHITECTURE-REVIEW.md`。结论：
+
+- **采纳**：每群/项目一个 coordinator session + 3 类 child（analyst/executor/reviewer），确定性 `parentID + agent` 创建。
+- **不采纳**：按人拆 subagent、用 subagent 做轮询、主 session 存聊天历史、每条消息建 root session。
+- **快慢路径分离**：分类/必要性/通知走快路径（秒级）；分析/执行/评审走 child（分钟级，不阻塞）。
+- **生命周期**：root 长期保留；child 完成 7 天归档、30 天删除；每任务最多 3 个 child，全局 8，depth=1。
+
 ### 上下文与关键信息记忆
 
 分三层，避免把没用的聊天都存下来：
@@ -592,6 +601,15 @@ docs/REQUIREMENTS.md   requirements v0.2
 - No image/file content parsing in the first release; placeholders only.
 - Push/PR/merge is not implemented; the executor never pushes.
 - Running executions are not resumed after a restart.
+
+### Session and concurrency review
+
+See `docs/SESSION-ARCHITECTURE-REVIEW.md`. Summary:
+
+- **Adopt**: one coordinator session per chat/project plus three child roles (analyst/executor/reviewer), created deterministically with `parentID + agent`.
+- **Reject**: per-person subagents, using subagents as pollers, storing chat history in the main session, or creating a root session per message.
+- **Fast/slow paths**: classification and notification are seconds; analysis/execution/review run in children without blocking.
+- **Lifecycle**: keep roots; archive children after 7 days, delete after 30; max 3 children per task, 8 global, depth=1.
 
 ### Context and memory
 

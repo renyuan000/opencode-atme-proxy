@@ -1,0 +1,243 @@
+# 会话与并发架构评审
+
+| 项目 | 内容 |
+|------|------|
+| 版本 | v0.1 评审稿 |
+| 日期 | 2026-11-15 |
+| 对象 | 「主 session + 有限 subagent」方案 |
+| 结论 | 方向正确，但需要做 5 处修正才够简洁、够即时、够智能 |
+
+---
+
+## 1. 评审结论（先说结果）
+
+| 维度 | 评分 | 结论 |
+|------|------|------|
+| 简洁 | 6/10 | 当前讨论里混入了不该由 subagent 承担的职责，简化后可达 8/10 |
+| 即时响应 | 7/10 | 守护进程 + WS 已经足够；但主 session 串行会拖慢，需要明确"快路径/慢路径" |
+| 智能 | 7/10 | 分类、必要性、分析、执行分工合理；缺"记忆检索"和"任务合并"两个关键环节 |
+| 可运维 | 6/10 | session 生命周期、归档、失败恢复还没定死 |
+| 安全 | 7/10 | 审批门禁在，但 subagent 权限边界需要写入配置 |
+
+**总体：方案可行，但必须先纠正 5 个点，否则会变成"看起来智能、实际又慢又贵"。**
+
+---
+
+## 2. 方案原文（待评审）
+
+```text
+主 agent（主 session）负责聊天历史与上下文
+ ├─ 一个 subagent 定时拉聊天历史（非 @ 消息）
+ ├─ 两个 subagent 按人处理 @我/@机器人
+ └─ 长任务交给 subagent，结果回传主 agent
+```
+
+### 2.1 与 OpenCode 事实的对照
+
+| 假设 | 事实 | 结论 |
+|------|------|------|
+| subagent 可常驻轮询 | subagent 是一次性 child session，干完即结束；background subagent 仍是实验特性 | ❌ 不能做轮询器 |
+| 主 session 负责聊天历史 | 历史应落在确定性存储（JSON/SQLite），LLM 只读取 | ❌ 不该由 LLM 持有 |
+| 按人分 2 个 subagent | 群上下文属于"群"，不属"人"；交替发言会丢上下文 | ❌ 分工会割裂上下文 |
+| 子会话可见 | `session list` 默认只列 root（`roots` 参数），child 隐藏属正常 | ✅ 符合预期 |
+| subagent 由主 agent 自己决定调用 | 存在不确定性；我们可直接构造 `subtask` / `parentID` 保证确定性 | ⚠️ 需改为确定性分派 |
+
+证据：
+
+- `opencode agent list`：`explore (subagent)`、`general (subagent)`
+- 数据库：`child sessions: 32`、`root sessions: 31`
+- SDK：`session.create({ parentID, agent })`、`session.list({ roots })`、`session.update({ time.archived })`
+- 二进制：`experimentalBackgroundSubagents:!1`（默认关闭）
+
+---
+
+## 3. 五个必须修正的点
+
+### 修正 1：拉历史不是 subagent，是定时器
+
+- 拉历史是确定性代码：分页、游标、去重、限流。
+- 做成 subagent：每轮烧 token、不能常驻、失败不可控。
+- 保留现有 `PollingService`，继续按 `intervalSeconds` 运行。
+- 失败不前进游标；整批成功才前进（已实现）。
+
+### 修正 2：主 session 不保存历史
+
+- 主 session 只做"对话协调"，不负责持久化。
+- 历史由 `chat-context.json`、`memory.json`、`dedup.json`、`cursors.json` 持有。
+- 注入主 session 时只带"相关摘要"，不塞全量。
+- 这样重启、成本、一致性都可控。
+
+### 修正 3：并发按任务分，不按人分
+
+- 同一群多个同事 @：各自独立任务，互不阻塞。
+- 不按人拆 subagent，避免上下文割裂。
+- 限流仍按发送者（已有 `SenderLimiter`），但分派按任务。
+- 当前 dispatcher 已支持同群 4 并发、跨群并行。
+
+### 修正 4：快路径 / 慢路径分离
+
+| 路径 | 触发 | 目标延迟 | 执行者 |
+|------|------|----------|--------|
+| 快路径 | 收到消息、去重、限流、分类、必要性 | 秒级 | 守护进程 + 低成本模型 |
+| 确认路径 | 需要用户决策 | 秒级 | 守护进程发卡片/@ |
+| 慢路径 | 任务分析、开发执行、评审 | 分钟级 | child session |
+
+主 session 不参与快路径的每次判断，否则会被长任务拖住。
+
+### 修正 5：subagent 必须确定性创建 + 有边界
+
+- 不依赖主 agent "自己想不想调用"。
+- 我们直接 `session.create({ parentID: coordinatorId, agent: "atme-analyst" })`。
+- 每任务最多 3 个 child：analyst / executor / reviewer。
+- 全局 child 上限 8；`subagent_depth=1`。
+- child 权限：analyst/reviewer 只读；executor 可写但禁 push/merge/force push。
+- 完成 7 天归档，30 天删除；root 长期保留。
+
+---
+
+## 4. 修正后的目标架构
+
+```text
+飞书 WS / 定时 poller
+        │
+        ▼
+守护进程（确定性，不烧 token）
+  ├─ 去重（message_id）
+  ├─ 游标（时间 + lastMessageId）
+  ├─ 限流（按发送者）
+  ├─ 低成本模型：分类 + 必要性
+  └─ 分派
+       │
+       ├─ 快路径：直接回复 / 群内 @ 主人 / 私聊知会
+       │
+       └─ 慢路径：coordinator session（每群/项目，root）
+                     ├─ child: atme-analyst   只读分析
+                     ├─ child: atme-executor  批准后执行
+                     └─ child: atme-reviewer  只读评审
+```
+
+### 4.1 会话生命周期
+
+| 会话 | 数量 | 复用 | 归档 | 删除 |
+|------|------|------|------|------|
+| coordinator | 每群/项目 1 个 | 是 | 不归档 | 手动 |
+| analysis child | 每任务 1 个 | 否 | 完成 7 天 | 30 天 |
+| execution child | 每任务 1 个 | 否 | 完成 7 天 | 30 天 |
+| review child | 每任务 1 个 | 否 | 完成 7 天 | 30 天 |
+
+### 4.2 并发上限
+
+```json
+{
+  "concurrency": {
+    "global": 8,
+    "mentionConcurrency": 4,
+    "scanConcurrency": 1,
+    "perChat": 1
+  },
+  "subagents": {
+    "maxChildrenPerTask": 3,
+    "maxChildrenGlobal": 8,
+    "depth": 1
+  }
+}
+```
+
+---
+
+## 5. 是否"够简洁"
+
+**修正后够简洁**，因为：
+
+- 只有 3 类 child，职责固定。
+- 拉历史、去重、限流、分类都是确定性代码，不额外建会话。
+- 主 session 不做长任务，只做协调。
+- 记忆和历史是数据层，不是会话层。
+
+**不够简洁的写法**（应避免）：
+
+- 按人建 subagent；
+- 每消息建 root session；
+- 让主 agent 自己决定是否开子任务；
+- 把聊天历史塞进 session 当存储。
+
+---
+
+## 6. 是否"够即时响应"
+
+| 环节 | 当前 | 目标 | 差距 |
+|------|------|------|------|
+| WS 接收 | 已有 | 即时 | 无 |
+| 去重/限流 | 已有 | 毫秒级 | 无 |
+| 分类/必要性 | 低成本模型 | 秒级 | 可接受 |
+| 群内 @ 主人 | 已有 | 秒级 | 无 |
+| 私聊审批卡 | 已有 | 秒级 | 无 |
+| 任务分析 | child | 分钟级 | 后台，不阻塞 |
+| 开发执行 | child | 分钟级 | 后台，不阻塞 |
+
+**结论：快路径已经是秒级；慢路径后台化后，主流程不会阻塞。** 需要补的是：
+
+1. 快路径不要等待 child 结果；
+2. 长任务先回"处理中"；
+3. 慢路径失败要回写，不静默。
+
+---
+
+## 7. 是否"够智能"
+
+已有：
+
+- 消息类型识别（question/task/reminder/notification/chat）
+- 必要性判断（answer/need_decision/notify_owner/no_reply）
+- 任务分析（目标/范围/风险/验收）
+- 记忆注入（task/decision/fact/preference/deadline/outcome）
+- 项目上下文解析
+
+还缺：
+
+| 缺口 | 影响 | 建议 |
+|------|------|------|
+| 任务跨消息合并 | 同一任务多轮讨论会重复建单 | P1-10，按 fingerprint + 语义相似合并 |
+| 记忆检索质量 | 关键词匹配可能漏 | 后续可加 embedding；首期先加"最近决策优先" |
+| 任务优先级 | 所有任务同权 | 按截止时间/提出人/影响面排序 |
+| 结果回写 | 群内默认静默 | 按任务开启，默认私聊 |
+| 评审闭环 | 执行后无独立评审 | reviewer child 检查 diff + 测试 |
+
+**结论：基础智能够用；要"更智能"，优先补任务合并和评审闭环，而不是加更多 subagent。**
+
+---
+
+## 8. 与当前代码的差距
+
+| 项 | 当前 | 目标 | 工作量 |
+|----|------|------|--------|
+| coordinator 复用 | `sessions.json` 只 load/flush，未使用 | 真正 `chatId -> sessionId` | 中 |
+| child 创建 | 每消息新建 root | `parentID + agent` | 中 |
+| 会话归档 | 仅 keep/delete | 7 天归档、30 天删除 | 中 |
+| 快慢路径 | 已在 dispatcher 分层 | 明确不等待 child | 小 |
+| 任务合并 | 仅 dedupKey | 语义合并 | 大（P1） |
+| reviewer | 无 | 只读评审 | 中 |
+| 权限隔离 | analysis/exec 已有 | 固化为 agent 配置 | 小 |
+
+---
+
+## 9. 建议实施顺序
+
+1. **接上 `sessions.json`**：coordinator 复用 + 失效重建。
+2. **确定性 child**：`parentID + agent` 创建 analyst/executor。
+3. **快慢路径显式化**：长任务先回执，child 结果异步回写。
+4. **归档策略**：完成 7 天归档、30 天删除。
+5. **reviewer**：执行后只读评审。
+6. **任务合并**（P1）。
+7. **记忆检索增强**（P1/P2）。
+
+---
+
+## 10. 最终建议
+
+- **采纳**：主 coordinator + 3 类 child + 确定性分派 + 快慢路径分离。
+- **不采纳**：按人分 subagent、subagent 做轮询、主 session 存历史、每消息建 root。
+- **先做**：1–5，能在不增加复杂度的前提下解决 session 膨胀和阻塞问题。
+- **后做**：任务合并、记忆检索增强，这些是"更智能"的关键，但不是当前瓶颈。
+
+评审结论：**方案方向正确；修正 5 点后，简洁性 8/10、即时性 8/10、智能 7/10，可以作为下一阶段实现基线。**
