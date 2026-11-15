@@ -147,11 +147,10 @@ async function ask(existing) {
                         output.write(`${text}\n`);
                     }
                     catch {
-                        output.write("二维码渲染失败，请设置 ATME_SETUP_VERBOSE=1 重跑以打印链接。\n");
+                        // The link below is always printed as a fallback.
                     }
-                    if (process.env.ATME_SETUP_VERBOSE === "1") {
-                        output.write(`\n链接：${info.url}\n`);
-                    }
+                    output.write("方式二（二维码扫不了时，在飞书里打开链接）：\n");
+                    output.write(`${info.url}\n`);
                 })();
                 output.write("等待飞书授权...\n");
             },
