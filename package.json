@@ -1,7 +1,6 @@
 {
   "name": "opencode-atme-proxy",
   "version": "0.1.0",
-  "private": true,
   "description": "Platform-agnostic, approval-gated chat task bot that identifies tasks, analyzes them, and hands approved work to OpenCode.",
   "type": "module",
   "main": "./dist/index.js",

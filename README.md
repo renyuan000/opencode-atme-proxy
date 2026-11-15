@@ -100,14 +100,37 @@ atme-proxy agents
 
 `node_modules/`、`dist/`、`.env`、`*.tgz` 已在 `.gitignore` 中，不会提交。
 
-### 2. 配置
+### 2. 配置（推荐用 setup）
 
 ```bash
-mkdir -p ~/.config/opencode-atme-proxy
-cp config.example.json ~/.config/opencode-atme-proxy/config.json
-chmod 600 ~/.config/opencode-atme-proxy/config.json
-cp .env.example .env
+atme-proxy setup
 ```
+
+向导会写入：
+
+- `~/.config/opencode-atme-proxy/config.json`（600）
+- `~/.config/opencode-atme-proxy/.env`（600）
+
+非交互模式（适合脚本）：
+
+```bash
+export FEISHU_APP_ID=cli_xxx
+export FEISHU_APP_SECRET=xxx
+export ATME_ME_OPEN_ID=ou_xxx
+export ATME_APPROVER_OPEN_IDS=ou_xxx
+export ATME_FILTER_BASE_URL=https://your-endpoint/v1
+export ATME_FILTER_MODEL=your-low-cost-model
+export ATME_FILTER_API_KEY=xxx
+atme-proxy setup --yes
+```
+
+检查：
+
+```bash
+atme-proxy doctor
+```
+
+手动配置（不使用向导）：
 
 填写 `.env`（不要提交）：
 
@@ -163,6 +186,13 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 - `reply.defaultStyle=concise`，默认 ≤320 字；对方说「详细/展开/步骤/why/how」才展开。
 - `concurrency.mentionConcurrency=4`：同一群 @ 消息并发数。
 - `concurrency.scanConcurrency=1`：同群批量筛选串行，避免上下文串台。
+
+### 2.1 关于“配置 LLM”
+
+- **OpenCode 已配置的模型**用于：群回复、任务分析、开发执行、评审。这部分不用重复配置，只要 `opencode serve` 在跑。
+- **批量筛选**建议单独配一个低成本 OpenAI 兼容模型（`filter.baseUrl/model/apiKey`），因为它是高频、低价值的分类调用，用主模型会烧钱。
+- 如果你想先用起来、不想单独配筛选模型：把 `filter.enabled` 设为 `false`，@ 消息仍会走 OpenCode 主模型，但周期筛选会关闭。
+- 你的 OpenCode 已配好，**不需要再配一遍模型**；`setup` 里的“低成本模型”是可选项。
 
 ### 3. 启动
 
@@ -542,14 +572,34 @@ atme-proxy agents
 
 This copies `atme-analyst.md`, `atme-executor.md`, `atme-reviewer.md` into `~/.config/opencode/agents/`.
 
-### Configure
+### Configure (setup recommended)
 
 ```bash
-mkdir -p ~/.config/opencode-atme-proxy
-cp config.example.json ~/.config/opencode-atme-proxy/config.json
-chmod 600 ~/.config/opencode-atme-proxy/config.json
-cp .env.example .env
+atme-proxy setup
 ```
+
+It writes `~/.config/opencode-atme-proxy/config.json` and `.env`, both mode 600.
+
+Non-interactive:
+
+```bash
+export FEISHU_APP_ID=cli_xxx
+export FEISHU_APP_SECRET=xxx
+export ATME_ME_OPEN_ID=ou_xxx
+export ATME_APPROVER_OPEN_IDS=ou_xxx
+export ATME_FILTER_BASE_URL=https://your-endpoint/v1
+export ATME_FILTER_MODEL=your-low-cost-model
+export ATME_FILTER_API_KEY=xxx
+atme-proxy setup --yes
+```
+
+Check:
+
+```bash
+atme-proxy doctor
+```
+
+Manual configuration (without the wizard):
 
 Fill `.env` (never commit it):
 
@@ -582,6 +632,13 @@ Feishu console:
 1. Event subscription: long connection, add `im.message.receive_v1` and `card.action.trigger`.
 2. Scopes: `im:message.group_at_msg:readonly`, `im:message.group_msg` (sensitive, admin approval), `im:message:send_as_bot`; optional `contact:user.base:readonly`.
 3. Add the bot to the target groups.
+
+### About "configuring an LLM"
+
+- Your existing OpenCode model is reused for replies, analysis, execution, and review. No duplicate setup; just keep `opencode serve` running.
+- Batch filtering benefits from a separate low-cost OpenAI-compatible model (`filter.baseUrl/model/apiKey`); using the main model for every message is expensive.
+- If you do not want a separate filter model yet, set `filter.enabled=false`. Mentions still use the OpenCode model; periodic scanning is disabled.
+- A model already configured in OpenCode does not need to be configured again here; the low-cost model in `setup` is optional.
 
 ### Run and directories
 

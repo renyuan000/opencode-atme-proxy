@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import "dotenv/config";
+import { config as loadDotenv } from "dotenv";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig, resolveLogFile, resolveStateDir } from "./core/config.js";
+import { defaultConfigPath, loadConfig, resolveLogFile, resolveStateDir, } from "./core/config.js";
 import { createLogger } from "./core/logger.js";
 import { FeishuAdapter } from "./adapters/feishu/adapter.js";
 import { FeishuEventSource } from "./adapters/feishu/events.js";
@@ -15,6 +15,8 @@ import { HttpOpenCodeBridge } from "./core/opencode.js";
 import { ProxyRuntime } from "./core/runtime.js";
 import { toErrorMessage } from "./core/util.js";
 import { acquireInstanceLock, releaseInstanceLock } from "./core/instance-lock.js";
+import { runSetup, runDoctor } from "./setup/wizard.js";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 export async function startDaemon(options = {}) {
     const loaded = await loadConfig({ path: options.configPath });
     const logger = createLogger({
@@ -71,11 +73,87 @@ async function installAgents() {
     }
     process.stdout.write(`agents installed to ${target}\n`);
 }
+function bootstrapEnv() {
+    const configIndex = process.argv.indexOf("--config");
+    const explicit = configIndex >= 0 ? process.argv[configIndex + 1] : undefined;
+    const configPath = explicit ?? process.env.ATME_CONFIG ?? defaultConfigPath();
+    loadDotenv({ path: join(dirname(configPath), ".env"), quiet: true });
+    loadDotenv({ quiet: true });
+}
 async function main() {
+    bootstrapEnv();
     const logger = createLogger({ scope: "cli" });
-    const command = process.argv[2] ?? "start";
+    const command = process.argv[2] ?? "help";
     if (command === "agents") {
         await installAgents();
+        return;
+    }
+    if (command === "setup") {
+        await runSetup({
+            ...(process.argv.includes("--config")
+                ? { configPath: process.argv[process.argv.indexOf("--config") + 1] }
+                : {}),
+            nonInteractive: process.argv.includes("--yes"),
+        });
+        return;
+    }
+    if (command === "doctor") {
+        const checks = await runDoctor(process.argv.includes("--config")
+            ? process.argv[process.argv.indexOf("--config") + 1]
+            : undefined);
+        let failed = 0;
+        for (const check of checks) {
+            process.stdout.write(`${check.ok ? "✅" : "❌"} ${check.label}${check.detail ? ` — ${check.detail}` : ""}\n`);
+            if (!check.ok) {
+                failed++;
+                if (check.fix)
+                    process.stdout.write(`   fix: ${check.fix}\n`);
+            }
+        }
+        if (failed > 0)
+            process.exitCode = 1;
+        return;
+    }
+    if (command === "status") {
+        const stateDir = process.env.ATME_STATE_DIR ?? join(homedir(), ".local", "state", "opencode-atme-proxy");
+        const lockPath = join(stateDir, "instance.lock");
+        if (!existsSync(lockPath)) {
+            process.stdout.write("stopped\n");
+            process.exitCode = 1;
+            return;
+        }
+        const raw = JSON.parse(readFileSync(lockPath, "utf8"));
+        try {
+            process.kill(raw.pid ?? 0, 0);
+            process.stdout.write(`running (pid ${raw.pid})\n`);
+        }
+        catch {
+            process.stdout.write(`stale lock (pid ${raw.pid})\n`);
+            process.exitCode = 1;
+        }
+        return;
+    }
+    if (command === "stop") {
+        const stateDir = process.env.ATME_STATE_DIR ?? join(homedir(), ".local", "state", "opencode-atme-proxy");
+        const lockPath = join(stateDir, "instance.lock");
+        if (!existsSync(lockPath)) {
+            process.stdout.write("not running\n");
+            return;
+        }
+        const raw = JSON.parse(readFileSync(lockPath, "utf8"));
+        if (raw.pid) {
+            try {
+                process.kill(raw.pid, "SIGTERM");
+                process.stdout.write(`sent SIGTERM to ${raw.pid}\n`);
+            }
+            catch (error) {
+                process.stderr.write(`failed to stop: ${toErrorMessage(error)}\n`);
+            }
+        }
+        try {
+            unlinkSync(lockPath);
+        }
+        catch { }
         return;
     }
     if (command === "version" || command === "--version" || command === "-v") {
@@ -83,14 +161,20 @@ async function main() {
         return;
     }
     if (command !== "start") {
-        process.stderr.write([
+        process.stdout.write([
             "usage:",
-            "  atme-proxy start           start the daemon",
-            "  atme-proxy agents          install bundled agents to ~/.config/opencode/agents",
-            "  atme-proxy version         print version",
+            "  atme-proxy setup            interactive configuration wizard",
+            "  atme-proxy doctor           check config, credentials, OpenCode and project",
+            "  atme-proxy agents           install bundled agents to ~/.config/opencode/agents",
+            "  atme-proxy status           show daemon status",
+            "  atme-proxy stop             stop the daemon",
+            "  atme-proxy start            start the daemon",
+            "  atme-proxy version          print version",
             "",
         ].join("\n"));
-        process.exitCode = 1;
+        if (command !== "help" && command !== "--help" && command !== "-h") {
+            process.exitCode = 1;
+        }
         return;
     }
     let handle;

@@ -42,6 +42,13 @@ npm run demo
 配置：
 
 ```bash
+atme-proxy setup
+atme-proxy doctor
+```
+
+或手动：
+
+```bash
 mkdir -p ~/.config/opencode-atme-proxy
 cp config.example.json ~/.config/opencode-atme-proxy/config.json
 chmod 600 ~/.config/opencode-atme-proxy/config.json
