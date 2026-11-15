@@ -45,7 +45,8 @@ import { Semaphore, TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { ProjectStore } from "./project-store.js";
-import { ChatContextStore } from "./chat-context.js";
+import { ChatContextStore, type ContextOrigin } from "./chat-context.js";
+import { MemoryStore, type MemoryKind } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
 import { OwnerStore, type OwnerBinding } from "./owner-store.js";
 import { assertTransition, canTransition } from "./task-state.js";
@@ -113,6 +114,7 @@ export class ProxyRuntime {
   private readonly filterEnabled: boolean;
   private readonly projectStore: ProjectStore;
   private readonly chatContext: ChatContextStore;
+  private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
   private resolvedOwner?: OwnerBinding;
   private readonly claimAttempts = new Map<string, { count: number; firstAt: number }>();
@@ -176,6 +178,13 @@ export class ProxyRuntime {
       maxChats: this.config.context.maxChats,
       ttlMs: this.config.context.ttlDays * 86_400_000,
       logger: this.logger.child("context"),
+    });
+    this.memory = new MemoryStore({
+      file: join(this.stateDir, "memory.json"),
+      maxEntries: this.config.memory.maxEntries,
+      ttlMs: this.config.memory.ttlDays * 86_400_000,
+      pinnedKinds: this.config.memory.pinnedKinds,
+      logger: this.logger.child("memory"),
     });
     this.dispatcher = new ConcurrentDispatcher({
       concurrency: this.config.concurrency.global,
@@ -423,6 +432,7 @@ export class ProxyRuntime {
     await this.pending.load();
     await this.projectStore.load();
     await this.chatContext.load();
+    await this.memory.load();
     await this.owners.load();
     this.reconcileOwner();
     await this.options.platform.start({
@@ -433,6 +443,7 @@ export class ProxyRuntime {
     this.sweepTimer = setInterval(() => {
       void this.sweepExpiredApprovals();
       void this.chatContext.flush();
+      void this.memory.flush();
     }, 60_000);
     this.sweepTimer.unref?.();
     void this.sweepExpiredApprovals();
@@ -470,6 +481,7 @@ export class ProxyRuntime {
       this.pending.flush(),
       this.projectStore.flush(),
       this.chatContext.flush(),
+      this.memory.flush(),
       this.owners.flush(),
     ]);
     this.logger.info("runtime stopped");
@@ -507,7 +519,8 @@ export class ProxyRuntime {
       await this.dedup.flush();
       return;
     }
-    if (this.config.context.enabled) {
+    const mentionMe2 = this.isMentionMe(message);
+    if (this.shouldStoreContext(mentionMe2, mentionBot)) {
       this.chatContext.append(
         `${message.platform}:${message.chat.id}`,
         {
@@ -516,8 +529,9 @@ export class ProxyRuntime {
           ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
           text: message.text,
           at: message.createdAt,
-          mentionMe: this.isMentionMe(message),
-          mentionBot: this.isMentionBot(message),
+          mentionMe: mentionMe2,
+          mentionBot,
+          origin: mentionBot ? "mention_bot" : "mention_me",
         },
         {
           platform: message.platform,
@@ -631,6 +645,7 @@ export class ProxyRuntime {
 
     if (intent.action === "notify_owner") {
       const notified = await this.sendOwnerDecisionCard(message, intent, "notify");
+      this.rememberFromMention(message, intent);
       if (notified) await this.markProcessed(message);
       await this.audit.append({
         actor: { system: true },
@@ -644,6 +659,7 @@ export class ProxyRuntime {
       const analysis = await this.analyzeBotRequest(message, intent, signal);
       const escalated = await this.escalateToOwner(message, intent);
       const notified = await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
+      this.rememberFromMention(message, intent, analysis);
       if (escalated || notified) await this.markProcessed(message);
       await this.audit.append({
         actor: { system: true },
@@ -670,6 +686,7 @@ export class ProxyRuntime {
       const reply = await this.askOpenCode(message, style, signal);
       if (ackTimer) clearTimeout(ackTimer);
       replied = await this.safeReply(message, this.sanitize(reply));
+      this.rememberFromMention(message, intent, reply);
     } catch (error) {
       this.logger.error("bot mention handling failed", {
         messageId: message.messageId,
@@ -1063,25 +1080,6 @@ export class ProxyRuntime {
     }
     for (const message of capped) {
       this.activeMessageIds.add(`${message.platform}:${message.messageId}`);
-      if (this.config.context.enabled) {
-        this.chatContext.append(
-          `${message.platform}:${message.chat.id}`,
-          {
-            messageId: message.messageId,
-            senderId: message.sender.id,
-            ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
-            text: message.text,
-            at: message.createdAt,
-            mentionMe: false,
-            mentionBot: false,
-          },
-          {
-            platform: message.platform,
-            chatId: message.chat.id,
-            ...(message.chat.name ? { chatName: message.chat.name } : {}),
-          },
-        );
-      }
     }
 
     const chatId = capped[0]?.chat.id ?? "unknown";
@@ -1153,6 +1151,7 @@ export class ProxyRuntime {
         await this.markProcessed(message);
         continue;
       }
+      this.appendContextForScan(message);
       if (
         item.actionability === "task" &&
         item.confidence >= this.config.filter.minTaskConfidence
@@ -1325,6 +1324,7 @@ export class ProxyRuntime {
       join(this.stateDir, "analyses", task.id, "index.json"),
       { version: analysis.version },
     );
+    this.rememberTaskOutcome(task, analysis);
     task.state = analysis.needsInfo ? "needs_info" : "awaiting_approval";
     task.updatedAt = Date.now();
     await this.tasks.save(task);
@@ -1377,6 +1377,16 @@ export class ProxyRuntime {
         requester: task.requester.displayName ?? task.requester.id,
         project: task.project,
         recentContext: this.contextForTask(task),
+        memory: this.config.memory.enabled && this.config.memory.includeInAnalysis
+          ? this.memory
+              .query({
+                platform: task.platform,
+                chatId: task.chatId,
+                text: `${task.title} ${task.excerpt}`,
+                limit: this.config.memory.injectLimit,
+              })
+              .map((record) => `${record.kind}: ${record.key} = ${record.value}`)
+          : [],
       }),
     ].join("\n");
     const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
@@ -1421,6 +1431,16 @@ export class ProxyRuntime {
         requester: task.requester.displayName ?? task.requester.id,
         project: task.project,
         recentContext: this.contextForTask(task),
+        memory: this.config.memory.enabled && this.config.memory.includeInAnalysis
+          ? this.memory
+              .query({
+                platform: task.platform,
+                chatId: task.chatId,
+                text: `${task.title} ${task.excerpt}`,
+                limit: this.config.memory.injectLimit,
+              })
+              .map((record) => `${record.kind}: ${record.key} = ${record.value}`)
+          : [],
       }),
     ].join("\n");
     const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
@@ -2022,6 +2042,134 @@ export class ProxyRuntime {
     }
   }
 
+  private memoryBlock(platform: string, chatId: string | undefined, text: string): string {
+    if (!this.config.memory.enabled) return "";
+    const records = this.memory.query({
+      platform,
+      ...(chatId ? { chatId } : {}),
+      text,
+      limit: this.config.memory.injectLimit,
+    });
+    if (records.length === 0) return "";
+    const lines = records.map(
+      (record) => `- [${record.kind}${record.pinned ? ",pin" : ""}] ${record.key}: ${record.value}`,
+    );
+    return truncate(
+      ["已知关键信息（优先参考，与当前消息冲突时以当前消息为准）：", ...lines].join("\n"),
+      this.config.memory.injectMaxChars,
+    );
+  }
+
+  private rememberFromMention(
+    message: IncomingMessage,
+    intent: BotIntent,
+    analysis?: string,
+  ): void {
+    if (!this.config.memory.enabled || !this.config.memory.extract) return;
+    if (!this.config.memory.autoExtractFromMentions) return;
+    const projectId = this.projectStore.get(message.chat.id)?.projectId;
+    const base = {
+      platform: message.platform,
+      chatId: message.chat.id,
+      ...(projectId ? { projectId } : {}),
+      sourceMessageIds: [message.messageId],
+      tags: [intent.kind, ...this.config.filter.profile.projects],
+    };
+    const summary = intent.summary ?? truncate(message.text, 160);
+    const kind: MemoryKind =
+      intent.kind === "task"
+        ? "task"
+        : intent.action === "need_decision"
+          ? "decision"
+          : intent.kind === "reminder"
+            ? "deadline"
+            : "fact";
+    this.memory.upsert({
+      ...base,
+      kind,
+      key: `mention:${message.messageId}`,
+      value: analysis ? `${summary}\n分析：${truncate(analysis, 400)}` : summary,
+      confidence: intent.confidence,
+    });
+    if (analysis) {
+      for (const line of analysis.split("\n")) {
+        const trimmed = line.replace(/^[-*\d.、\s]+/, "").trim();
+        if (trimmed.length < 6) continue;
+        if (/(建议|结论|风险|决定|决定做|不做|先确认)/.test(trimmed)) {
+          this.memory.upsert({
+            ...base,
+            kind: "decision",
+            key: `analysis:${message.messageId}:${sha256(trimmed).slice(0, 8)}`,
+            value: truncate(trimmed, 300),
+            confidence: intent.confidence,
+            pinned: false,
+          });
+        }
+      }
+    }
+    void this.memory.flush();
+  }
+
+  private rememberTaskOutcome(task: TaskRecord, analysis: TaskAnalysis): void {
+    if (!this.config.memory.enabled || !this.config.memory.extract) return;
+    if (!this.config.memory.autoExtractFromAnalysis) return;
+    const projectId = this.projectStore.get(task.chatId)?.projectId;
+    this.memory.upsert({
+      platform: task.platform,
+      chatId: task.chatId,
+      ...(projectId ? { projectId } : {}),
+      kind: "task",
+      key: `task:${task.id}`,
+      value: `${task.title}\n目标：${analysis.goal}\n验收：${analysis.acceptanceCriteria.join("；")}`,
+      sourceMessageIds: task.messageIds,
+      tags: ["task", ...(task.project ? [task.project] : []), ...task.keywords],
+      confidence: 0.9,
+    });
+    if (analysis.openQuestions.length > 0) {
+      this.memory.upsert({
+        platform: task.platform,
+        chatId: task.chatId,
+        ...(projectId ? { projectId } : {}),
+        kind: "decision",
+        key: `task:${task.id}:open`,
+        value: `待确认：${analysis.openQuestions.join("；")}`,
+        sourceMessageIds: task.messageIds,
+        tags: ["open_question"],
+        confidence: 0.8,
+      });
+    }
+    void this.memory.flush();
+  }
+
+  private shouldStoreContext(mentionMe: boolean, mentionBot: boolean): boolean {
+    if (!this.config.context.enabled) return false;
+    if (mentionMe) return this.config.context.storeMentions;
+    if (mentionBot) return this.config.context.storeMentions;
+    return false;
+  }
+
+  private appendContextForScan(message: IncomingMessage): void {
+    if (!this.config.context.enabled || !this.config.context.storeRelevantScan) return;
+    this.chatContext.append(
+      `${message.platform}:${message.chat.id}`,
+      {
+        messageId: message.messageId,
+        senderId: message.sender.id,
+        ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
+        text: message.text,
+        at: message.createdAt,
+        mentionMe: false,
+        mentionBot: false,
+        origin: "scan_relevant",
+      },
+      {
+        platform: message.platform,
+        chatId: message.chat.id,
+        ...(message.chat.name ? { chatName: message.chat.name } : {}),
+      },
+    );
+  }
+
   private contextForTask(task: TaskRecord): string[] {
     if (!this.config.context.enabled || !this.config.context.includeInAnalysis) return [];
     const messages = this.chatContext.recent(`${task.platform}:${task.chatId}`, 10);
@@ -2152,9 +2300,15 @@ export class ProxyRuntime {
             ),
           ].join("\n")
         : "";
+    const memoryBlock = this.memoryBlock(
+      message.platform,
+      message.chat.id,
+      `${message.text} ${this.config.filter.profile.projects.join(" ")}`,
+    );
     const prompt = [
       styleInstruction,
       "你的角色：资深软件架构师与研发负责人，熟悉当前主项目。",
+      ...(memoryBlock ? [memoryBlock] : []),
       ...(contextBlock ? [contextBlock] : []),
       "你在飞书群里以机器人身份回答。不要冒充用户。",
       "如果只是代答，请用一句话结论 + 一个下一步；不要展开。",

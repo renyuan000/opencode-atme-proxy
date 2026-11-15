@@ -113,6 +113,19 @@ cat ~/.local/state/opencode-atme-proxy/dedup.json
 cat ~/.local/state/opencode-atme-proxy/outbound.json
 ```
 
+## 3.2 上下文与记忆检查
+
+```bash
+cat ~/.local/state/opencode-atme-proxy/chat-context.json
+cat ~/.local/state/opencode-atme-proxy/memory.json
+```
+
+期望：
+
+- `chat-context.json` 只出现 @消息和被判定相关的消息，不出现闲聊。
+- `memory.json` 出现任务/决策等条目，带来源 messageId。
+- 日志里有 `messageId/chatId`，但没有正文。
+
 ## 4. 出问题看哪里
 
 ```bash

@@ -80,7 +80,23 @@
     "maxCharsPerMessage": 300,
     "ttlDays": 7,
     "maxChats": 100,
-    "includeInAnalysis": true
+    "includeInAnalysis": true,
+    "storeAnalysisSnippets": false,
+    "storeMentions": true,
+    "storeRelevantScan": true,
+    "storeOwnerDm": true
+  },
+  "memory": {
+    "enabled": true,
+    "extract": true,
+    "maxEntries": 2000,
+    "ttlDays": 90,
+    "pinnedKinds": ["task", "decision", "deadline"],
+    "injectLimit": 8,
+    "injectMaxChars": 2000,
+    "includeInAnalysis": true,
+    "autoExtractFromMentions": true,
+    "autoExtractFromAnalysis": true
   },
   "project": {
     "mode": "auto",

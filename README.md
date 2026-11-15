@@ -208,6 +208,20 @@ websocket ready
 | 卡片按钮无响应 | 检查 `card.action.trigger` 事件与回调时限 |
 | OpenCode 不可用 | 确认 `opencode serve` 与 `opencode.baseUrl` |
 
+### 上下文与关键信息记忆
+
+分三层，避免把没用的聊天都存下来：
+
+| 层 | 文件 | 存什么 | 默认 |
+|----|------|--------|------|
+| 聊天上下文 | `chat-context.json` | 只存 @我/@机器人 消息，以及**被判定相关**的批量消息；不存闲聊 | 每群 20 条 / 7 天 |
+| 关键信息记忆 | `memory.json` | 任务、决策、事实、偏好、截止时间、结论；主动 upsert、可 pin、可 TTL | 2000 条 / 90 天 |
+| 运行日志 | stderr / `logFile` | `messageId/chatId/类型/结果` 等元数据，**不存正文** | 关 |
+
+- 周期拉取的非 @ 消息：只有 `relevant` 的才进 `chat-context.json`，其余不落盘。
+- 关键信息在 @ 消息处理、任务分析后主动提取；回答和任务分析会注入相关记忆。
+- 不存全量聊天归档，也不把正文写进日志。
+
 ### 重启恢复与不重复
 
 WSL2 可能随时重启，插件启动时会做三件事：
@@ -569,6 +583,18 @@ docs/REQUIREMENTS.md   requirements v0.2
 - No image/file content parsing in the first release; placeholders only.
 - Push/PR/merge is not implemented; the executor never pushes.
 - Running executions are not resumed after a restart.
+
+### Context and memory
+
+Three layers, so irrelevant chat is not persisted:
+
+| Layer | File | Stores | Default |
+|-------|------|--------|---------|
+| Chat context | `chat-context.json` | mentions and **relevant** scan messages only | 20 msgs/chat, 7 days |
+| Key memory | `memory.json` | task, decision, fact, preference, deadline, outcome; proactive upsert, pinnable, TTL | 2000 entries, 90 days |
+| Run log | stderr / `logFile` | metadata only, no message body | off |
+
+Non-mention polled messages are persisted only when classified as relevant. Key facts are extracted after mentions and task analysis, then injected into replies and analysis.
 
 ### Restart recovery
 

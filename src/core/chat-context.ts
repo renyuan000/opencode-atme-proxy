@@ -2,6 +2,8 @@ import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
 import { readJsonFile, writeJsonAtomic, toErrorMessage, truncate } from "./util.js";
 
+export type ContextOrigin = "mention_me" | "mention_bot" | "scan_relevant" | "owner_dm";
+
 export interface ContextMessage {
   messageId: string;
   senderId: string;
@@ -10,6 +12,7 @@ export interface ContextMessage {
   at: number;
   mentionMe: boolean;
   mentionBot: boolean;
+  origin?: ContextOrigin;
 }
 
 export interface ChatContext {

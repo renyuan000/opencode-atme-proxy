@@ -119,7 +119,28 @@ const ContextSchema = z
     maxCharsPerMessage: z.number().int().min(20).max(2000).default(300),
     ttlDays: z.number().int().min(1).max(90).default(7),
     maxChats: z.number().int().min(1).max(1000).default(100),
+    storeAnalysisSnippets: z.boolean().default(false),
     includeInAnalysis: z.boolean().default(true),
+    storeMentions: z.boolean().default(true),
+    storeRelevantScan: z.boolean().default(true),
+    storeOwnerDm: z.boolean().default(true),
+  })
+  .default({});
+
+const MemorySchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    extract: z.boolean().default(true),
+    maxEntries: z.number().int().min(10).max(100_000).default(2000),
+    ttlDays: z.number().int().min(1).max(3650).default(90),
+    pinnedKinds: z
+      .array(z.enum(["task", "decision", "fact", "preference", "deadline", "outcome"]))
+      .default(["task", "decision", "deadline"]),
+    injectLimit: z.number().int().min(1).max(50).default(8),
+    injectMaxChars: z.number().int().min(100).max(8000).default(2000),
+    includeInAnalysis: z.boolean().default(true),
+    autoExtractFromMentions: z.boolean().default(true),
+    autoExtractFromAnalysis: z.boolean().default(true),
   })
   .default({});
 
@@ -245,6 +266,7 @@ export const AppConfigSchema = z.object({
   analysis: AnalysisSchema.default({}),
   opencode: OpenCodeSchema.default({}),
   context: ContextSchema,
+  memory: MemorySchema,
   project: ProjectSchema,
   botReply: BotReplySchema,
   reply: ReplySchema.default({}),
