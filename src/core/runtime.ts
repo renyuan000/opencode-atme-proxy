@@ -817,7 +817,12 @@ export class ProxyRuntime {
         });
         return truncate(raw.trim(), 600);
       } finally {
-        await this.options.bridge.deleteSession(sessionId);
+        await this.finishSession(
+          sessionId,
+          `${this.config.opencode.sessionTitlePrefix}:analyze:${message.messageId}`,
+          project.worktree,
+          "bot_request_analysis",
+        );
       }
     } catch (error) {
       this.logger.warn("bot request analysis failed", {
@@ -1407,7 +1412,12 @@ export class ProxyRuntime {
         ...(signal ? { signal } : {}),
       });
     } finally {
-      await this.options.bridge.deleteSession(sessionId);
+      await this.finishSession(
+        sessionId,
+        `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
+        repo.path,
+        "task_analysis",
+      );
     }
     const parsed = parseAnalysis(raw, task, repo.id);
     return parsed;
@@ -1461,7 +1471,12 @@ export class ProxyRuntime {
         ...(signal ? { signal } : {}),
       });
     } finally {
-      await this.options.bridge.deleteSession(sessionId);
+      await this.finishSession(
+        sessionId,
+        `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
+        worktree,
+        "task_analysis",
+      );
     }
     return parseAnalysis(raw, task, "auto");
   }
@@ -1926,7 +1941,12 @@ export class ProxyRuntime {
           text: prompt,
         });
       } finally {
-        await this.options.bridge.deleteSession(sessionId);
+        await this.finishSession(
+          sessionId,
+          `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
+          worktree,
+          "task_execution",
+        );
       }
       const execution: ExecutionRecord = {
         taskId: task.id,
@@ -2003,7 +2023,12 @@ export class ProxyRuntime {
           text: prompt,
         });
       } finally {
-        await this.options.bridge.deleteSession(sessionId);
+        await this.finishSession(
+          sessionId,
+          `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
+          worktree.path,
+          "task_execution",
+        );
       }
       const testResult = await this.executor.runConfiguredCommands(repo, worktree);
       const diffStat = await this.executor.diffStat(worktree);
@@ -2040,6 +2065,21 @@ export class ProxyRuntime {
         error: toErrorMessage(error),
       };
     }
+  }
+
+  private async finishSession(
+    sessionId: string,
+    title: string,
+    directory: string,
+    purpose: string,
+  ): Promise<void> {
+    if (this.config.opencode.keepSessions) {
+      if (this.config.opencode.sessionListVisible) {
+        this.logger.info("session kept for review", { sessionId, title, directory, purpose });
+      }
+      return;
+    }
+    await this.options.bridge.deleteSession(sessionId);
   }
 
   private memoryBlock(platform: string, chatId: string | undefined, text: string): string {
@@ -2335,7 +2375,12 @@ export class ProxyRuntime {
       });
       return enforceReplyLength(raw, style, this.replyOptions);
     } finally {
-      await this.options.bridge.deleteSession(sessionId);
+      await this.finishSession(
+        sessionId,
+        `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`,
+        directory,
+        "chat_reply",
+      );
     }
   }
 

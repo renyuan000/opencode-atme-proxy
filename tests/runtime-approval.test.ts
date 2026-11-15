@@ -48,7 +48,7 @@ function cfg(stateDir: string, autoReply = false, filterEnabled = false): Loaded
         overloadReply: "请求有点多，先排队",
         maxMessagesPerSenderPerRun: 20,
       },
-      opencode: { baseUrl: "http://127.0.0.1:19876", passwordEnv: "P", sessionTitlePrefix: "atme" },
+      opencode: { baseUrl: "http://127.0.0.1:19876", passwordEnv: "P", sessionTitlePrefix: "atme", keepSessions: true, sessionListVisible: true },
       reply: { defaultStyle: "concise", maxChars: 40, detailMaxChars: 200, detailTriggers: ["详细"], requireApprovalForMentionMe: true, acknowledgeLongTasks: false, ackDelayMs: 0, ackText: "收到" },
       concurrency: { global: 8, mentionConcurrency: 4, scanConcurrency: 1, perChat: 1, maxQueue: 100, mentionTimeoutMs: 5000, scanTimeoutMs: 5000, analysisTimeoutMs: 5000, maxRetries: 0, retryDelayMs: 1 },
       repos: [],

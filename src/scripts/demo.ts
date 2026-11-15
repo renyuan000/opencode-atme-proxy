@@ -270,6 +270,8 @@ function demoConfig(stateDir: string): LoadedConfig {
         baseUrl: "http://127.0.0.1:19876",
         passwordEnv: "DEMO",
         sessionTitlePrefix: "demo",
+        keepSessions: true,
+        sessionListVisible: true,
       },
       reply: {
         defaultStyle: "concise",

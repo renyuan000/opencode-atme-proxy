@@ -101,6 +101,8 @@ function makeConfig(stateDir: string, filterEnabled = true): LoadedConfig {
         baseUrl: "http://127.0.0.1:19876",
         passwordEnv: "ATME_OPENCODE_PASSWORD",
         sessionTitlePrefix: "atme",
+        keepSessions: true,
+        sessionListVisible: true,
       },
       reply: {
         defaultStyle: "concise",

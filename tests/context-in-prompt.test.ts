@@ -90,7 +90,7 @@ function config(stateDir: string): LoadedConfig {
         overloadReply: "请求有点多，先排队",
         maxMessagesPerSenderPerRun: 20,
       },
-      opencode: { baseUrl: "http://127.0.0.1:19876", passwordEnv: "P", sessionTitlePrefix: "atme" },
+      opencode: { baseUrl: "http://127.0.0.1:19876", passwordEnv: "P", sessionTitlePrefix: "atme", keepSessions: true, sessionListVisible: true },
       reply: {
         defaultStyle: "concise",
         maxChars: 40,

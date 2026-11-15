@@ -110,6 +110,8 @@ const OpenCodeSchema = z.object({
   agent: z.string().optional(),
   analysisAgent: z.string().optional(),
   executionAgent: z.string().optional(),
+  keepSessions: z.boolean().default(true),
+  sessionListVisible: z.boolean().default(true),
 });
 
 const ContextSchema = z

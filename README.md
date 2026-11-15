@@ -339,11 +339,15 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 飞书“群全量消息”依赖敏感权限，需 M0 实测确认。
 - 首期不解析图片/文件内容，只做占位摘要。
 
-### 运行方式
+### 运行方式与目录
 
 - **独立守护进程（推荐）**：`npm start`，与 OpenCode 生命周期解耦。
 - **OpenCode 插件**：构建后把本仓库加入 `opencode.json` 的 `plugin`，插件随 `opencode serve` 启停。
 - 两者共用 `instance.lock`，同一时间只允许一个实例，避免重复回复。
+- 配置默认在 `~/.config/opencode-atme-proxy/config.json`；状态默认在 `~/.local/state/opencode-atme-proxy`。
+- 进程 cwd 不强制切换；但每个 OpenCode 会话都显式使用项目代码目录 `directory`，所以会话归属项目，不归属启动目录。
+- 会话默认保留（`opencode.keepSessions=true`），可在 OpenCode session 列表里看到；标题前缀 `atme:`。设为 `false` 才会用完即删。
+- 项目目录解析：显式 `project.worktree` → `project.id` → 最近有会话的 git 项目 → 最近更新项目 → `repos[0].path` → `fallbackWorktree`；不会用 home/cwd 代替项目。
 
 ### 开发状态
 
@@ -483,7 +487,12 @@ Feishu console:
 2. Scopes: `im:message.group_at_msg:readonly`, `im:message.group_msg` (sensitive, admin approval), `im:message:send_as_bot`; optional `contact:user.base:readonly`.
 3. Add the bot to the target groups.
 
-### Run
+### Run and directories
+
+- Config defaults to `~/.config/opencode-atme-proxy/config.json`; state defaults to `~/.local/state/opencode-atme-proxy`.
+- The process does not `chdir`; each OpenCode session is created with an explicit project `directory`, so sessions belong to the project, not the launch directory.
+- Sessions are kept by default (`opencode.keepSessions=true`) with title prefix `atme:`; set it to `false` to delete after use.
+- Project resolution: explicit `project.worktree` → `project.id` → recent-session git project → most recently updated project → `repos[0].path` → `fallbackWorktree`. It never falls back to home/cwd.
 
 Standalone daemon (recommended):
 
