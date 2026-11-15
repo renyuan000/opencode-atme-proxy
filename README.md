@@ -18,7 +18,9 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 
 ### 核心能力
 
-- **实时 @ 接管**：@机器人 直接回答；@我 默认先私聊请示，批准后引用回复。
+- **发言必要性评估**：@机器人 不必然回复。助手先判断 `answer / need_decision / no_reply`；寒暄或无需介入就不回，避免刷屏。
+- **需要你决策时群里 @ 你**：涉及上线、排期、承诺、资源、风险或信息不足时，机器人在群里 @ 你的主账号，并附问题、来源、原因，不代替你承诺。
+- **实时 @ 接管**：@机器人 按必要性直接回答或升级；@我 默认先私聊请示，批准后引用回复。
 - **周期筛选**：定时拉取群历史，用关键词 + 低成本模型筛出“我的任务”，只在私聊汇总，不刷群。
 - **任务闭环**：任务识别 → 分析 → 审批 → 开发 → 测试 → 回写 → 审计。
 - **并发 @**：不同群并行、同一群 @ 消息并发（默认 4）、批量筛选串行，避免互相拖慢。
@@ -92,10 +94,20 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 | `project.worktree` | 主项目代码目录；不填则自动解析 |
 | `repos[]` | 可选；开发执行的仓库白名单、测试/lint 命令 |
 
+**owner（“我”）怎么确定**
+
+机器人绝不会猜“谁是我”，也不会因为有人在群里说“我是”就相信。三种方式，优先级从高到低：
+
+1. **预配置**：`platforms.feishu.me.openId` 或 `approvers[0].openId`。
+2. **私聊一次性绑定码**：配置 `ATME_CLAIM_CODE`（或 `bootstrap.claimCode`），在飞书私聊机器人发送该码。只能绑定一次；已有 owner 时不会被覆盖；错误尝试有频率限制。
+3. 未配置 owner 时启动直接失败，不会进入“谁都能冒充”的状态。
+
+绑定结果写入 `~/.local/state/opencode-atme-proxy/owner.json`，后续 @ 升级、审批私聊、代答推送都发给这个账号。
+
 飞书后台配置：
 
 1. 事件订阅选择「长连接」，添加 `im.message.receive_v1`、`card.action.trigger`。
-2. 权限：`im:message.group_at_msg:readonly`、`im:message.group_msg`（敏感，需管理员审批）、`im:message:send_as_bot`；可选 `contact:user.base:readonly`。
+2. 权限：`im:message.group_at_msg:readonly`、`im:message.group_msg`（敏感，需管理员审批）、`im:message:send_as_bot`；可选 `im:message.p2p_msg:readonly`（仅私聊 claim 需要）、`contact:user.base:readonly`。
 3. 把机器人拉进目标群；群 `chat_id` 可通过事件日志或开放平台接口获取。
 4. 以上 scope 名称以飞书开放平台后台实际可选项为准；`im:message.group_msg` 需管理员审批。
 
@@ -343,7 +355,9 @@ A platform-agnostic, approval-gated bot framework that:
 
 ### Features
 
-- **Realtime mentions**: `@bot` answers directly; `@me` asks you first, then replies with a quote.
+- **Necessity check**: `@bot` does not always reply. The bot decides `answer / need_decision / no_reply`; trivial messages get no reply.
+- **Escalation**: when a decision is needed (launch, schedule, commitment, resources, risk, missing info), the bot mentions your account in the group with the question, source, and reason. It never commits on your behalf.
+- **Realtime mentions**: `@bot` answers or escalates; `@me` asks you first, then replies with a quote.
 - **Periodic scanning**: history polling + keyword/LLM filtering, private digest only, no group spam.
 - **Task loop**: identify → analyze → approve → execute → test → report → audit.
 - **Concurrent mentions**: per-chat mention concurrency (default 4), while different chats run in parallel; background scans stay serial to avoid context races.

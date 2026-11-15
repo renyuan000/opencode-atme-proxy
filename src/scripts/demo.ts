@@ -20,6 +20,7 @@ import { createLogger } from "../core/logger.js";
 class DemoAdapter implements PlatformAdapter {
   readonly platform = "feishu";
   replies: string[] = [];
+  lastMentionedId?: string;
   privateMessages: string[] = [];
   private handlers?: AdapterHandlers;
 
@@ -65,7 +66,16 @@ class DemoAdapter implements PlatformAdapter {
     message: OutboundMessage,
   ): Promise<{ messageId: string }> {
     void target;
-    this.replies.push(message.kind === "text" ? message.text : "[card]");
+    if (message.kind === "text" && message.mentions?.[0]) {
+      this.lastMentionedId = message.mentions[0].id;
+    }
+    const display =
+      message.kind === "text"
+        ? `${(message.mentions ?? [])
+            .map((mention) => `@${mention.name ?? mention.id}`)
+            .join(" ")}${message.mentions?.length ? " " : ""}${message.text}`
+        : "[card]";
+    this.replies.push(display);
     return { messageId: `reply_${this.replies.length}` };
   }
 
@@ -113,8 +123,28 @@ class DemoLlm implements LlmClient {
   async complete(messages: { role: string; content: string }[]): Promise<LlmCompletion> {
     const payload = messages.find((message) => message.role === "user")?.content ?? "{}";
     const parsed = JSON.parse(payload) as {
+      message?: string;
       messages?: Array<{ message_id: string; text: string }>;
     };
+    if (typeof parsed.message === "string") {
+      const text = parsed.message;
+      const needsDecision = /上线|排期|承诺|发布|灰度多少|资源|预算/.test(text);
+      const noReply = /^(谢谢|收到|好的|测试一下)[！!。.]?$/.test(text.trim());
+      return {
+        text: JSON.stringify({
+          action: noReply ? "no_reply" : needsDecision ? "need_decision" : "answer",
+          style: text.includes("详细") ? "detailed" : "concise",
+          confidence: noReply ? 0.9 : needsDecision ? 0.8 : 0.85,
+          reason: noReply
+            ? "寒暄/确认，无需助手介入"
+            : needsDecision
+              ? "涉及上线/排期，需要用户本人决策"
+              : "信息明确，可直接回答",
+        }),
+        model: "demo-model",
+        usage: { promptTokens: 8, completionTokens: 4, totalTokens: 12 },
+      };
+    }
     const items = (parsed.messages ?? []).map((message) => {
       const workRelated = /支付|灰度/.test(message.text);
       const needsAction = workRelated && /怎么|什么时候|步骤|文档|需要|默认值/.test(message.text);
@@ -156,6 +186,12 @@ function demoConfig(stateDir: string): LoadedConfig {
           domain: "feishu",
           botOpenId: "bot",
           me: { openId: "me" },
+      bootstrap: {
+        claimCodeEnv: "ATME_CLAIM_CODE",
+        allowPrivateClaim: true,
+        maxClaimAttemptsPer10Min: 5,
+      },
+
           approvers: [{ openId: "me", name: "我" }],
           groups: [{ chatId: "chat", name: "研发项目群", enabled: true }],
           receiveAllGroupMessages: true,
@@ -191,6 +227,14 @@ function demoConfig(stateDir: string): LoadedConfig {
         },
       },
       analysis: { mode: "main_agent", timeoutMs: 5000 },
+      botReply: {
+        enabled: true,
+        allowNoReply: true,
+        escalateWhenUnsure: true,
+        minAnswerConfidence: 0.6,
+        decisionMentionText: "需要你确认",
+        maxQuestionChars: 160,
+      },
       opencode: {
         baseUrl: "http://127.0.0.1:19876",
         passwordEnv: "DEMO",
@@ -295,6 +339,17 @@ async function main(): Promise<void> {
     printSection("0) 助手角色");
     process.stdout.write("研发任务助手：只处理工作职责相关消息；群内发言标注（助手代答）；默认极简。\n");
 
+    printSection("0.1) owner 绑定（私聊 claim code）");
+    const dm: IncomingMessage = {
+      ...message("claim-1", "demo-claim", []),
+      chat: { id: "p2p", kind: "direct" },
+      sender: { platform: "feishu", id: "me", displayName: "我" },
+      mentions: [],
+    };
+    // demo config already has me.openId; a claim DM is recorded but cannot override it.
+    await runtime.ingest(dm);
+    process.stdout.write("owner 已由配置确定：me（私聊 claim 不会覆盖）\n");
+
     printSection("1) @机器人：默认极简回复");
     await runtime.ingest(message("m1", "支付回调灰度怎么配？", ["bot"]));
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -305,12 +360,23 @@ async function main(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 200));
     process.stdout.write(`${adapter.replies.at(-1)}\n`);
 
-    printSection("3) @我：生成私聊审批卡（不直接回群）");
-    await runtime.ingest(message("m3", "支付灰度什么时候上？", ["me"]));
+    printSection("3) @机器人：不需要回复（寒暄）");
+    await runtime.ingest(message("m3", "谢谢", ["bot"]));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    process.stdout.write(`群回复数：${adapter.replies.length}（应为 2，未增加）\n`);
+
+    printSection("4) @机器人：需要你决策 -> 群里 @ 你的主账号");
+    await runtime.ingest(message("m4", "支付灰度今天能上线吗？", ["bot"]));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    process.stdout.write(`${adapter.replies.at(-1)}\n`);
+    process.stdout.write(`@ 的主账号：${adapter.lastMentionedId ?? "none"}\n`);
+
+    printSection("5) @我：生成私聊审批卡（不直接回群）");
+    await runtime.ingest(message("m5", "支付灰度什么时候上？", ["me"]));
     await new Promise((resolve) => setTimeout(resolve, 300));
     process.stdout.write(`${adapter.privateMessages.at(-1)}\n`);
 
-    printSection("4) 批准代答：群内出现引用回复 + 助手代答标识");
+    printSection("6) 批准代答：群内出现引用回复 + 助手代答标识");
     const pending = JSON.parse(
       await readFile(join(stateDir, "pending.json"), "utf8"),
     ) as { cards: Record<string, { taskId: string; planHash: string }> };
@@ -328,15 +394,15 @@ async function main(): Promise<void> {
     process.stdout.write(`操作结果：${result.toast}\n`);
     process.stdout.write(`群内最后一条：${adapter.replies.at(-1)}\n`);
 
-    printSection("5) 非 @ 批量筛选：只私聊汇总，不刷群");
+    printSection("7) 非 @ 批量筛选：只私聊汇总，不刷群");
     await runtime.ingestBatch([
-      message("m4", "支付灰度昨天已经上线了", []),
-      message("m5", "中午吃什么？", []),
+      message("m6", "支付灰度昨天已经上线了", []),
+      message("m7", "中午吃什么？", []),
     ]);
     await new Promise((resolve) => setTimeout(resolve, 300));
     process.stdout.write(`${adapter.privateMessages.at(-1)}\n`);
 
-    printSection("6) 运行指标");
+    printSection("8) 运行指标");
     process.stdout.write(`群回复数：${adapter.replies.length}\n`);
     process.stdout.write(`私聊消息数：${adapter.privateMessages.length}\n`);
     process.stdout.write(`调度器：${JSON.stringify(runtime.stats())}\n`);

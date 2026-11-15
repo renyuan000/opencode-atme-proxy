@@ -49,6 +49,16 @@ export interface IncomingMessage {
 
 export type Actionability = "task" | "question" | "fyi" | "noise";
 
+export type BotReplyAction = "answer" | "need_decision" | "no_reply";
+
+export interface BotIntent {
+  action: BotReplyAction;
+  style: "concise" | "detailed";
+  confidence: number;
+  reason: string;
+  question?: string;
+}
+
 export interface TaskHint {
   title: string;
   project?: string;
@@ -205,7 +215,12 @@ export interface ApprovalView {
 }
 
 export type OutboundMessage =
-  | { kind: "text"; text: string; quoteMessageId?: string }
+  | {
+      kind: "text";
+      text: string;
+      quoteMessageId?: string;
+      mentions?: Array<{ id: string; name?: string }>;
+    }
   | { kind: "card"; card: unknown }
   | { kind: "menu"; text: string; options: Array<{ id: string; label: string }> };
 

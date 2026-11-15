@@ -18,10 +18,23 @@ const FeishuSchema = z.object({
   appSecretEnv: z.string().default("FEISHU_APP_SECRET"),
   domain: z.enum(["feishu", "lark"]).default("feishu"),
   botOpenId: z.string().optional(),
-  me: z.object({ openId: z.string().min(1) }),
+  me: z
+    .object({
+      openId: z.string().optional(),
+      name: z.string().optional(),
+    })
+    .default({}),
   approvers: z
     .array(z.object({ openId: z.string().min(1), name: z.string().optional() }))
-    .min(1),
+    .default([]),
+  bootstrap: z
+    .object({
+      claimCode: z.string().optional(),
+      claimCodeEnv: z.string().default("ATME_CLAIM_CODE"),
+      allowPrivateClaim: z.boolean().default(true),
+      maxClaimAttemptsPer10Min: z.number().int().min(1).max(20).default(5),
+    })
+    .default({}),
   groups: z.array(GroupSchema).default([]),
   receiveAllGroupMessages: z.boolean().default(false),
   rateLimit: z
@@ -106,6 +119,17 @@ const ProjectSchema = z
     cacheSeconds: z.number().int().min(1).max(3600).default(60),
     bindChat: z.boolean().default(true),
     includeRecentSessionTitles: z.number().int().min(0).max(20).default(5),
+  })
+  .default({});
+
+const BotReplySchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    allowNoReply: z.boolean().default(true),
+    escalateWhenUnsure: z.boolean().default(true),
+    minAnswerConfidence: z.number().min(0).max(1).default(0.6),
+    decisionMentionText: z.string().default("需要你确认"),
+    maxQuestionChars: z.number().int().min(10).max(500).default(160),
   })
   .default({});
 
@@ -198,6 +222,7 @@ export const AppConfigSchema = z.object({
   opencode: OpenCodeSchema.default({}),
   context: ContextSchema,
   project: ProjectSchema,
+  botReply: BotReplySchema,
   reply: ReplySchema.default({}),
   concurrency: ConcurrencySchema.default({}),
   repos: z.array(RepoSchema).default([]),
@@ -213,6 +238,7 @@ export interface Secrets {
   appSecret?: string;
   filterApiKey?: string;
   opencodePassword?: string;
+  claimCode?: string;
 }
 
 export interface LoadedConfig {
@@ -333,6 +359,10 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Loade
       envValue(env, config.opencode.passwordEnv) ??
       config.opencode.password ??
       undefined,
+    claimCode:
+      envValue(env, config.platforms.feishu.bootstrap.claimCodeEnv) ??
+      config.platforms.feishu.bootstrap.claimCode ??
+      undefined,
   };
 
   if (config.filter.enabled) {
@@ -348,6 +378,21 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Loade
     throw new Error(
       `Feishu app secret is missing: set ${config.platforms.feishu.appSecretEnv} or platforms.feishu.appSecret`,
     );
+  }
+  if (config.platforms.feishu.enabled) {
+    const feishu = config.platforms.feishu;
+    const hasOwner =
+      Boolean(feishu.me.openId) ||
+      Boolean(feishu.approvers[0]?.openId) ||
+      Boolean(secrets.claimCode);
+    if (!hasOwner) {
+      throw new Error(
+        "owner is not configured: set platforms.feishu.me.openId, platforms.feishu.approvers[0].openId, or platforms.feishu.bootstrap.claimCode (ATME_CLAIM_CODE)",
+      );
+    }
+    if (feishu.me.openId && secrets.claimCode) {
+      config.platforms.feishu.bootstrap.allowPrivateClaim = false;
+    }
   }
 
   if (options.enforcePermissions !== false) {

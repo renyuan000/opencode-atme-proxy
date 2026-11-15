@@ -270,10 +270,15 @@ export class FeishuAdapter implements PlatformAdapter {
 
 function toFeishuPayload(receiveId: string | undefined, message: OutboundMessage): Record<string, unknown> {
   if (message.kind === "text") {
+    const mentions = (message.mentions ?? []).filter((mention) => mention.id);
+    const atTags = mentions
+      .map((mention) => `<at user_id="${mention.id}">${mention.name ?? ""}</at>`)
+      .join(" ");
+    const text = atTags ? `${atTags} ${message.text}` : message.text;
     return {
       ...(receiveId ? { receive_id: receiveId } : {}),
       msg_type: "text",
-      content: JSON.stringify({ text: message.text }),
+      content: JSON.stringify({ text }),
     };
   }
   if (message.kind === "menu") {

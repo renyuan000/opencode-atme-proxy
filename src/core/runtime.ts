@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type {
+  BotIntent,
   Classification,
   ExecutionRecord,
   IncomingMessage,
@@ -18,7 +19,9 @@ import type { LlmClient, Profile } from "./relevance.js";
 import {
   OpenAiCompatibleClient,
   RelevanceService,
+  buildBotIntentPrompt,
   makeDedupKey,
+  parseBotIntent,
   parseJsonLoose,
   type KeywordRule,
 } from "./relevance.js";
@@ -43,6 +46,7 @@ import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { ProjectStore } from "./project-store.js";
 import { ChatContextStore } from "./chat-context.js";
+import { OwnerStore, type OwnerBinding } from "./owner-store.js";
 import { assertTransition, canTransition } from "./task-state.js";
 import {
   readJsonFile,
@@ -93,6 +97,7 @@ export class ProxyRuntime {
   private readonly dispatcher: ConcurrentDispatcher;
   private readonly sendLimiter: TokenBucket;
   private readonly relevance: RelevanceService;
+  private readonly llm: LlmClient;
   private readonly replyOptions: ReplyStyleOptions;
   private readonly activeMessageIds = new Set<string>();
   private readonly pending: PendingStore;
@@ -105,6 +110,9 @@ export class ProxyRuntime {
   private readonly filterEnabled: boolean;
   private readonly projectStore: ProjectStore;
   private readonly chatContext: ChatContextStore;
+  private readonly owners: OwnerStore;
+  private resolvedOwner?: OwnerBinding;
+  private readonly claimAttempts = new Map<string, { count: number; firstAt: number }>();
   private projectResolver?: ProjectResolver;
   private readonly projectCache = new Map<
     string,
@@ -140,6 +148,11 @@ export class ProxyRuntime {
       join(this.stateDir, "projects.json"),
       this.logger.child("projects"),
     );
+    this.owners = new OwnerStore(
+      join(this.stateDir, "owner.json"),
+      this.logger.child("owner"),
+    );
+    this.initOwner();
     this.chatContext = new ChatContextStore({
       file: join(this.stateDir, "chat-context.json"),
       maxMessagesPerChat: this.config.context.maxMessagesPerChat,
@@ -196,7 +209,8 @@ export class ProxyRuntime {
       ],
       exclude: this.config.filter.profile.excludeKeywords,
     };
-    const llm = createFilterClient(options, this.logger);
+    const llm = options.llm ?? createFilterClient(options, this.logger);
+    this.llm = llm;
     this.executor = new GitExecutor({
       worktreeRoot: join(this.stateDir, "worktrees"),
       timeoutMs: this.config.policy.executionTimeoutMinutes * 60_000,
@@ -232,6 +246,135 @@ export class ProxyRuntime {
     });
   }
 
+  private initOwner(): void {
+    const feishu = this.config.platforms.feishu;
+    const openId = feishu.me.openId ?? feishu.approvers[0]?.openId;
+    if (!openId) return;
+    this.resolvedOwner = {
+      platform: "feishu",
+      openId,
+      ...(feishu.me.name ?? feishu.approvers[0]?.name
+        ? { displayName: feishu.me.name ?? feishu.approvers[0]?.name }
+        : {}),
+      boundAt: Date.now(),
+      method: "config",
+    };
+  }
+
+  private reconcileOwner(): void {
+    const stored = this.owners.get("feishu");
+    if (!this.resolvedOwner && stored) {
+      this.resolvedOwner = stored;
+      return;
+    }
+    if (!stored && this.resolvedOwner) {
+      this.owners.set(this.resolvedOwner);
+      return;
+    }
+    if (stored && this.resolvedOwner && stored.openId !== this.resolvedOwner.openId) {
+      this.logger.warn("configured owner differs from persisted owner; using config", {
+        configured: this.resolvedOwner.openId,
+        persisted: stored.openId,
+      });
+      this.owners.set(this.resolvedOwner);
+    }
+  }
+
+  private ownerOpenId(): string | undefined {
+    return this.resolvedOwner?.openId ?? this.config.platforms.feishu.me.openId ?? this.config.platforms.feishu.approvers[0]?.openId;
+  }
+
+  private ownerName(): string {
+    return (
+      this.resolvedOwner?.displayName ??
+      this.config.platforms.feishu.me.name ??
+      this.config.filter.profile.name ??
+      "我"
+    );
+  }
+
+  private async claimOwner(message: IncomingMessage): Promise<boolean> {
+    const bootstrap = this.config.platforms.feishu.bootstrap;
+    if (!bootstrap.allowPrivateClaim) return false;
+    const claimCode = this.options.loaded.secrets.claimCode;
+    if (!claimCode) return false;
+    if (message.chat.kind !== "direct") return false;
+
+    const expected = claimCode.trim();
+    const provided = message.text.trim();
+    if (!expected || provided !== expected) {
+      this.recordClaimAttempt(message.sender.id);
+      return false;
+    }
+    if (this.tooManyClaimAttempts(message.sender.id)) {
+      await this.sendToOwner("claim 尝试过于频繁，已暂时拒绝。");
+      return false;
+    }
+
+    const existing = this.resolvedOwner ?? this.owners.get(message.platform);
+    if (existing && existing.openId !== message.sender.id) {
+      await this.audit.append({
+        actor: message.sender,
+        action: "owner_claim_rejected",
+        details: { reason: "owner already bound", existing: existing.openId },
+      });
+      await this.sendToOwner("owner 已绑定，不能通过 claim 覆盖；如需更换请重新生成 claim code 并清空 owner.json。");
+      return false;
+    }
+
+    const binding: OwnerBinding = {
+      platform: message.platform,
+      openId: message.sender.id,
+      ...(message.sender.displayName ? { displayName: message.sender.displayName } : {}),
+      boundAt: Date.now(),
+      method: "claim",
+    };
+    this.owners.set(binding);
+    await this.owners.flush();
+    this.resolvedOwner = binding;
+    this.claimAttempts.delete(message.sender.id);
+    await this.audit.append({
+      actor: message.sender,
+      action: "owner_claimed",
+      details: { method: "claim" },
+    });
+    await this.sendToOwner(
+      `已绑定你为 owner：${message.sender.displayName ?? message.sender.id}。后续 @、升级、审批都发给你。`,
+    );
+    return true;
+  }
+
+  private recordClaimAttempt(senderId: string): void {
+    const now = Date.now();
+    const entry = this.claimAttempts.get(senderId);
+    if (!entry || now - entry.firstAt > 600_000) {
+      this.claimAttempts.set(senderId, { count: 1, firstAt: now });
+      return;
+    }
+    entry.count += 1;
+  }
+
+  private tooManyClaimAttempts(senderId: string): boolean {
+    const entry = this.claimAttempts.get(senderId);
+    if (!entry) return false;
+    if (Date.now() - entry.firstAt > 600_000) {
+      this.claimAttempts.delete(senderId);
+      return false;
+    }
+    return entry.count > this.config.platforms.feishu.bootstrap.maxClaimAttemptsPer10Min;
+  }
+
+  private async sendToOwner(text: string): Promise<void> {
+    const openId = this.ownerOpenId();
+    if (!openId) return;
+    try {
+      await this.sendLimiter.take();
+      await this.options.platform.send({ kind: "user", userId: openId }, { kind: "text", text });
+    } catch (error) {
+      this.logger.error("failed to send to owner", { error: toErrorMessage(error) });
+    }
+  }
+
   private sweepTimer?: NodeJS.Timeout;
 
   async start(): Promise<void> {
@@ -243,6 +386,8 @@ export class ProxyRuntime {
     await this.pending.load();
     await this.projectStore.load();
     await this.chatContext.load();
+    await this.owners.load();
+    this.reconcileOwner();
     await this.options.platform.start({
       onMessage: (message) => this.onMessage(message),
       onAction: (action) => this.onAction(action),
@@ -281,13 +426,19 @@ export class ProxyRuntime {
       this.pending.flush(),
       this.projectStore.flush(),
       this.chatContext.flush(),
+      this.owners.flush(),
     ]);
     this.logger.info("runtime stopped");
   }
 
   private async onMessage(message: IncomingMessage): Promise<void> {
     if (message.senderType !== "user") return;
-    if (message.chat.kind !== "group") return;
+    if (message.chat.kind === "direct") {
+      if (await this.claimOwner(message)) {
+        await this.markProcessed(message);
+      }
+      return;
+    }
     if (this.config.policy.defaultDenyGroups && !this.groupIds.has(message.chat.id)) {
       this.logger.debug("ignoring message from unknown group", { chatId: message.chat.id });
       return;
@@ -352,7 +503,7 @@ export class ProxyRuntime {
   }
 
   private isMention(message: IncomingMessage): boolean {
-    const me = this.config.platforms.feishu.me.openId;
+    const me = this.ownerOpenId();
     const bot = this.options.platform.platform === "feishu"
       ? (this.options.platform as { getBotOpenId?: () => string | undefined }).getBotOpenId?.() ??
         this.config.platforms.feishu.botOpenId
@@ -361,9 +512,8 @@ export class ProxyRuntime {
   }
 
   private isMentionMe(message: IncomingMessage): boolean {
-    return message.mentions.some(
-      (mention) => mention.id === this.config.platforms.feishu.me.openId,
-    );
+    const me = this.ownerOpenId();
+    return Boolean(me) && message.mentions.some((mention) => mention.id === me);
   }
 
   private isMentionBot(message: IncomingMessage): boolean {
@@ -388,7 +538,34 @@ export class ProxyRuntime {
   }
 
   private async handleBotMention(message: IncomingMessage, signal: AbortSignal): Promise<void> {
-    const style = detectReplyStyle(message, this.replyOptions);
+    const intent = await this.decideBotIntent(message, signal);
+    if (intent.action === "no_reply") {
+      this.logger.info("bot mention skipped by necessity check", {
+        messageId: message.messageId,
+        reason: intent.reason,
+        confidence: intent.confidence,
+      });
+      await this.markProcessed(message);
+      await this.audit.append({
+        actor: { system: true },
+        action: "bot_mention_skipped",
+        details: { messageId: message.messageId, reason: intent.reason },
+      });
+      return;
+    }
+
+    if (intent.action === "need_decision") {
+      await this.escalateToOwner(message, intent);
+      await this.markProcessed(message);
+      await this.audit.append({
+        actor: { system: true },
+        action: "bot_mention_escalated",
+        details: { messageId: message.messageId, reason: intent.reason },
+      });
+      return;
+    }
+
+    const style = intent.style;
     const ackTimer = this.config.reply.acknowledgeLongTasks
       ? setTimeout(() => {
           void this.safeReply(message, this.config.reply.ackText);
@@ -412,8 +589,121 @@ export class ProxyRuntime {
     await this.audit.append({
       actor: { system: true },
       action: "bot_mention_replied",
-      details: { messageId: message.messageId, style },
+      details: { messageId: message.messageId, style, reason: intent.reason },
     });
+  }
+
+  private async decideBotIntent(
+    message: IncomingMessage,
+    signal: AbortSignal,
+  ): Promise<BotIntent> {
+    if (!this.config.botReply.enabled) {
+      return {
+        action: "answer",
+        style: detectReplyStyle(message, this.replyOptions),
+        confidence: 1,
+        reason: "necessity check disabled",
+      };
+    }
+    if (!this.config.filter.enabled) {
+      const trivial = /^(谢谢|收到|好的| ok|ok|测试一下|test)[！!。.\s]*$/i.test(message.text.trim());
+      return {
+        action: trivial ? "no_reply" : "answer",
+        style: detectReplyStyle(message, this.replyOptions),
+        confidence: 0.5,
+        reason: trivial ? "寒暄/确认，无需回复" : "未启用筛选模型，按普通问题回答",
+      };
+    }
+    const recent = this.config.context.enabled
+      ? this.chatContext
+          .recent(`${message.platform}:${message.chat.id}`, 6, message.messageId)
+          .map((item) => `${item.senderName ?? item.senderId}: ${truncate(item.text, 160)}`)
+      : [];
+    try {
+      const completion = await this.llm.complete(
+        buildBotIntentPrompt({
+          text: message.text,
+          history: recent,
+          profile: {
+            name: this.config.filter.profile.name,
+            role: this.config.filter.profile.role,
+            keywords: this.config.filter.profile.keywords,
+            projects: this.config.filter.profile.projects,
+            tasks: this.config.filter.profile.tasks,
+          },
+          allowNoReply: this.config.botReply.allowNoReply,
+        }),
+        signal,
+      );
+      const intent = parseBotIntent(completion.text, {
+        text: message.text,
+        history: recent,
+        profile: {
+          name: this.config.filter.profile.name,
+          role: this.config.filter.profile.role,
+          keywords: this.config.filter.profile.keywords,
+          projects: this.config.filter.profile.projects,
+          tasks: this.config.filter.profile.tasks,
+        },
+        allowNoReply: this.config.botReply.allowNoReply,
+      });
+      if (
+        intent.action === "answer" &&
+        intent.confidence < this.config.botReply.minAnswerConfidence
+      ) {
+        return {
+          ...intent,
+          action: this.config.botReply.escalateWhenUnsure ? "need_decision" : "no_reply",
+          reason: `${intent.reason} (low confidence ${intent.confidence.toFixed(2)})`,
+        };
+      }
+      return intent;
+    } catch (error) {
+      this.logger.warn("bot intent classification failed", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
+      });
+      return {
+        action: this.config.botReply.escalateWhenUnsure ? "need_decision" : "no_reply",
+        style: detectReplyStyle(message, this.replyOptions),
+        confidence: 0,
+        reason: "intent classification failed",
+      };
+    }
+  }
+
+  private async escalateToOwner(message: IncomingMessage, intent: BotIntent): Promise<void> {
+    const question = intent.question
+      ? truncate(intent.question, this.config.botReply.maxQuestionChars)
+      : truncate(message.text, this.config.botReply.maxQuestionChars);
+    const text = [
+      this.config.botReply.decisionMentionText,
+      `问题：${question}`,
+      `来源：${message.sender.displayName ?? message.sender.id}`,
+      `原因：${intent.reason || "需要你本人决策"}`,
+    ].join("\n");
+    try {
+      await this.sendLimiter.take();
+      await this.options.platform.reply(
+        { chatId: message.chat.id, messageId: message.messageId },
+        {
+          kind: "text",
+          text,
+          mentions: [
+            {
+              id: this.ownerOpenId() ?? "",
+              name: this.ownerName(),
+            },
+          ].filter((mention) => mention.id),
+        },
+      );
+    } catch (error) {
+      this.logger.error("failed to escalate to owner in group", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
+      });
+      await this.sendToApprover(text);
+    }
   }
 
   private async handleMeMention(message: IncomingMessage, signal: AbortSignal): Promise<void> {
@@ -541,12 +831,9 @@ export class ProxyRuntime {
       openQuestions: [],
     };
     const outbound = this.options.platform.renderApproval(view);
-    const target = {
-      kind: "user" as const,
-      userId:
-        this.config.platforms.feishu.approvers[0]?.openId ??
-        this.config.platforms.feishu.me.openId,
-    };
+    const ownerId = this.ownerOpenId();
+    if (!ownerId) throw new Error("owner is not bound; cannot send approval card");
+    const target = { kind: "user" as const, userId: ownerId };
     await this.sendLimiter.take();
     const result = await this.options.platform.send(target, outbound);
     this.pending.set(`${task.id}:reply`, {
@@ -994,10 +1281,9 @@ export class ProxyRuntime {
       openQuestions: analysis.openQuestions,
     };
     const message = this.options.platform.renderApproval(view);
-    const target = {
-      kind: "user" as const,
-      userId: this.config.platforms.feishu.approvers[0]?.openId ?? this.config.platforms.feishu.me.openId,
-    };
+    const ownerId = this.ownerOpenId();
+    if (!ownerId) throw new Error("owner is not bound; cannot send approval card");
+    const target = { kind: "user" as const, userId: ownerId };
     await this.sendLimiter.take();
     const result = await this.options.platform.send(target, message);
     this.pending.set(`${task.id}:develop`, {
@@ -1037,12 +1323,21 @@ export class ProxyRuntime {
     await this.pending.flush();
   }
 
+  private async isAuthorizedActor(actor: { platform: string; id: string }): Promise<boolean> {
+    const ownerId = this.ownerOpenId();
+    if (ownerId && actor.id === ownerId) return true;
+    if (this.config.platforms.feishu.approvers.some((approver) => approver.openId === actor.id)) {
+      return true;
+    }
+    return this.options.platform.verifyActor(actor as never);
+  }
+
   private async onAction(action: PlatformAction): Promise<PlatformActionResult> {
     const pending =
       this.pending.get(`${action.taskId}:develop`) ??
       this.pending.get(`${action.taskId}:reply`);
     if (!pending) return { ok: false, toast: "任务不存在或已处理" };
-    const actorOk = await this.options.platform.verifyActor(action.actor);
+    const actorOk = await this.isAuthorizedActor(action.actor);
     if (!actorOk) {
       await this.audit.append({
         actor: action.actor,
@@ -1581,18 +1876,7 @@ export class ProxyRuntime {
   }
 
   private async sendToApprover(text: string): Promise<void> {
-    const target = {
-      kind: "user" as const,
-      userId:
-        this.config.platforms.feishu.approvers[0]?.openId ??
-        this.config.platforms.feishu.me.openId,
-    };
-    try {
-      await this.sendLimiter.take();
-      await this.options.platform.send(target, { kind: "text", text });
-    } catch (error) {
-      this.logger.error("failed to send to approver", { error: toErrorMessage(error) });
-    }
+    await this.sendToOwner(text);
   }
 
   private async markProcessed(message: IncomingMessage): Promise<void> {

@@ -29,6 +29,11 @@ function makeConfig(stateDir: string, filterEnabled = true): LoadedConfig {
           appSecretEnv: "FEISHU_APP_SECRET",
           domain: "feishu",
           me: { openId: "me" },
+      bootstrap: {
+        claimCodeEnv: "ATME_CLAIM_CODE",
+        allowPrivateClaim: true,
+        maxClaimAttemptsPer10Min: 5,
+      },
           approvers: [{ openId: "me" }],
           groups: [{ chatId: "chat", enabled: true }],
           receiveAllGroupMessages: false,
@@ -64,6 +69,14 @@ function makeConfig(stateDir: string, filterEnabled = true): LoadedConfig {
         },
       },
       analysis: { mode: "main_agent", timeoutMs: 1000 },
+      botReply: {
+        enabled: true,
+        allowNoReply: true,
+        escalateWhenUnsure: true,
+        minAnswerConfidence: 0.6,
+        decisionMentionText: "需要你确认",
+        maxQuestionChars: 160,
+      },
       opencode: {
         baseUrl: "http://127.0.0.1:19876",
         passwordEnv: "ATME_OPENCODE_PASSWORD",

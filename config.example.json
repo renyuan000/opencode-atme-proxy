@@ -10,8 +10,13 @@
       "appId": "cli_xxxxxxxx",
       "appSecretEnv": "FEISHU_APP_SECRET",
       "domain": "feishu",
-      "me": { "openId": "ou_xxxxxxxx" },
+      "me": { "openId": "ou_xxxxxxxx", "name": "我" },
       "approvers": [{ "openId": "ou_xxxxxxxx", "name": "我" }],
+      "bootstrap": {
+        "claimCodeEnv": "ATME_CLAIM_CODE",
+        "allowPrivateClaim": true,
+        "maxClaimAttemptsPer10Min": 5
+      },
       "groups": [
         { "chatId": "oc_xxxxxxxx", "name": "项目群", "enabled": true }
       ],
@@ -73,6 +78,14 @@
     "cacheSeconds": 60,
     "bindChat": true,
     "includeRecentSessionTitles": 5
+  },
+  "botReply": {
+    "enabled": true,
+    "allowNoReply": true,
+    "escalateWhenUnsure": true,
+    "minAnswerConfidence": 0.6,
+    "decisionMentionText": "需要你确认",
+    "maxQuestionChars": 160
   },
   "reply": {
     "defaultStyle": "concise",
