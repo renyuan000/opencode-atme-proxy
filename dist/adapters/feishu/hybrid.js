@@ -1,0 +1,42 @@
+export class HybridFeishuAdapter {
+    adapter;
+    events;
+    platform = "feishu";
+    constructor(adapter, events) {
+        this.adapter = adapter;
+        this.events = events;
+    }
+    capabilities() {
+        return this.adapter.capabilities();
+    }
+    async start(handlers) {
+        await this.adapter.start(handlers);
+        await this.events.start(handlers);
+    }
+    async stop() {
+        await this.events.stop();
+        await this.adapter.stop();
+    }
+    healthCheck() {
+        return this.adapter.healthCheck();
+    }
+    listMessages(input) {
+        return this.adapter.listMessages(input);
+    }
+    send(target, message) {
+        return this.adapter.send(target, message);
+    }
+    reply(target, message) {
+        return this.adapter.reply(target, message);
+    }
+    renderApproval(view) {
+        return this.adapter.renderApproval(view);
+    }
+    verifyActor(actor) {
+        return this.adapter.verifyActor(actor);
+    }
+    getBotOpenId() {
+        return this.adapter.getBotOpenId();
+    }
+}
+//# sourceMappingURL=hybrid.js.map

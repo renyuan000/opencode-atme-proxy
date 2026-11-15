@@ -13,7 +13,8 @@
     "dist",
     "README.md",
     "config.example.json",
-    ".opencode/agents"
+    ".opencode/agents",
+    "scripts"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -24,7 +25,7 @@
     "test": "tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test",
     "demo": "tsx src/scripts/demo.ts",
-    "prepare": "npm run build"
+    "prepare": "node scripts/prepare.mjs"
   },
   "engines": {
     "node": ">=20.11"
