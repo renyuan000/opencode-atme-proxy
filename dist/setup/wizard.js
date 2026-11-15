@@ -357,7 +357,7 @@ export async function runDoctor(configPath) {
                             ok: false,
                             label: "历史消息权限",
                             detail: data?.msg ?? toErrorMessage(error),
-                            fix: "开放平台添加 im:message.history:readonly（或 im:message:readonly / im:message）并发布",
+                            fix: "开放平台添加 im:message:readonly（或 im:message）并发布",
                         });
                     }
                 }

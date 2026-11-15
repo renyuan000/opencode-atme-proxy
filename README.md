@@ -116,7 +116,7 @@ atme-proxy setup
 扫码会预填：
 
 - 机器人能力（`preset: false` 的最小机器人模板）
-- scopes：`im:message.group_at_msg:readonly`、`im:message.group_msg`、`im:message.p2p_msg:readonly`、`im:message.history:readonly`、`im:message:send_as_bot`、`im:chat:readonly`、`im:resource`、`contact:user.base:readonly`
+- scopes：`im:message.group_at_msg:readonly`、`im:message.group_msg`、`im:message.p2p_msg:readonly`、`im:message:readonly`、`im:message:send_as_bot`、`im:chat:readonly`、`im:resource`、`contact:user.base:readonly`
 - 事件：`im.message.receive_v1`
 - 回调：`card.action.trigger`
 

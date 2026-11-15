@@ -6,7 +6,7 @@ export const ATME_ADDONS = {
             "im:message.group_at_msg:readonly",
             "im:message.group_msg",
             "im:message.p2p_msg:readonly",
-            "im:message.history:readonly",
+            "im:message:readonly",
             "im:message:send_as_bot",
             "im:chat:readonly",
             "im:resource",
