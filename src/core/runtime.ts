@@ -97,6 +97,7 @@ export class ProxyRuntime {
   private readonly sessions: SessionStore;
   private readonly coordinatorLocks = new Map<string, Promise<string>>();
   private readonly childSlots: Semaphore;
+  private readonly taskChildCounts = new Map<string, number>();
   private readonly tasks: TaskStore;
   private readonly approvals: ApprovalStore;
   private readonly audit: AuditLog;
@@ -493,6 +494,15 @@ export class ProxyRuntime {
 
   private async onMessage(message: IncomingMessage, wait = false): Promise<void> {
     if (message.senderType !== "user") return;
+    this.logger.info("inbound routing", {
+      messageId: message.messageId,
+      chatId: message.chat.id,
+      chatKind: message.chat.kind,
+      senderId: message.sender.id,
+      mentionMe: this.isMentionMe(message),
+      mentionBot: this.isMentionBot(message),
+      allowlisted: this.groupIds.has(message.chat.id),
+    });
     if (message.chat.kind === "direct") {
       if (await this.claimOwner(message)) {
         await this.markProcessed(message);
@@ -502,7 +512,12 @@ export class ProxyRuntime {
       return;
     }
     if (this.config.policy.defaultDenyGroups && !this.groupIds.has(message.chat.id)) {
-      this.logger.debug("ignoring message from unknown group", { chatId: message.chat.id });
+      this.logger.info("ignoring message from group not in allowlist", {
+        chatId: message.chat.id,
+        messageId: message.messageId,
+        mentionMe: this.isMentionMe(message),
+        mentionBot: this.isMentionBot(message),
+      });
       return;
     }
     const dedupKey = `${message.platform}:${message.messageId}`;
@@ -2234,7 +2249,9 @@ export class ProxyRuntime {
     const key = `coordinator:${platform}:${chatId}`;
     const existing = this.sessions.get(key);
     if (existing) {
-      const alive = await this.options.bridge.getSession?.(existing.sessionId, existing.directory);
+      const probe = this.options.bridge.getSession;
+      if (!probe) return existing.sessionId;
+      const alive = await probe.call(this.options.bridge, existing.sessionId, existing.directory);
       if (!alive || alive.timeArchived) {
         this.sessions.delete(key);
       } else {
@@ -2284,7 +2301,29 @@ export class ProxyRuntime {
       });
       return { sessionId, release: () => {} };
     }
-    const release = await this.childSlots.acquire(input.signal);
+    if (input.taskId) {
+      const current = this.taskChildCounts.get(input.taskId) ?? 0;
+      if (current >= this.config.subagents.maxChildrenPerTask) {
+        throw new Error(
+          `task ${input.taskId} already has ${current} active children (max ${this.config.subagents.maxChildrenPerTask})`,
+        );
+      }
+    }
+    const releaseSlot = await this.childSlots.acquire(input.signal);
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      releaseSlot();
+      if (input.taskId) {
+        const next = (this.taskChildCounts.get(input.taskId) ?? 1) - 1;
+        if (next <= 0) this.taskChildCounts.delete(input.taskId);
+        else this.taskChildCounts.set(input.taskId, next);
+      }
+    };
+    if (input.taskId) {
+      this.taskChildCounts.set(input.taskId, (this.taskChildCounts.get(input.taskId) ?? 0) + 1);
+    }
     try {
       const coordinator = await this.coordinatorSession(
         input.platform,

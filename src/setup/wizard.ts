@@ -316,9 +316,9 @@ function buildConfig(existing: Partial<AppConfig>, answers: Answers): AppConfig 
       allowPrivateClaim: false,
       maxClaimAttemptsPer10Min: 5,
     },
-    groups: answers.chatIds.map((chatId, index) => ({
+    groups: answers.chatIds.map((chatId) => ({
       chatId,
-      name: `群 ${index + 1}`,
+      name: chatId,
       enabled: true,
     })),
     receiveAllGroupMessages: false,
@@ -483,7 +483,10 @@ export async function runDoctor(configPath?: string): Promise<DoctorCheck[]> {
   checks.push({
     ok: feishu.groups.length > 0,
     label: "群白名单",
-    detail: `${feishu.groups.length} 个群`,
+    detail:
+      feishu.groups.length > 0
+        ? feishu.groups.map((group) => group.chatId).join(", ")
+        : "0 个群",
     fix: feishu.groups.length > 0 ? undefined : "在 config 增加 groups[].chatId",
   });
 

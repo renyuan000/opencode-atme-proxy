@@ -23,6 +23,7 @@ export declare class ProxyRuntime {
     private readonly sessions;
     private readonly coordinatorLocks;
     private readonly childSlots;
+    private readonly taskChildCounts;
     private readonly tasks;
     private readonly approvals;
     private readonly audit;
