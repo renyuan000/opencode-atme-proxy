@@ -1,3 +1,4 @@
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { TaskRecord } from "./types.js";
 import { createLogger } from "./logger.js";
@@ -56,6 +57,25 @@ export class TaskStore {
 
   findByDedupKey(dedupKey: string): string | undefined {
     return this.index.get(dedupKey);
+  }
+
+  async list(): Promise<TaskRecord[]> {
+    try {
+      const files = await readdir(join(this.dir, "tasks"));
+      const tasks: TaskRecord[] = [];
+      for (const file of files) {
+        if (!file.endsWith(".json") || file === "index.json") continue;
+        const task = await readJsonFile<TaskRecord | undefined>(
+          join(this.dir, "tasks", file),
+          undefined,
+        );
+        if (task && typeof task.id === "string") tasks.push(task);
+      }
+      return tasks;
+    } catch (error) {
+      this.logger.error("failed to list tasks", { error: toErrorMessage(error) });
+      return [];
+    }
   }
 
   async save(task: TaskRecord): Promise<void> {

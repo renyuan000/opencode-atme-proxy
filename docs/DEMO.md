@@ -96,6 +96,23 @@ npm start
 8. 群里发一条闲聊
    - 期望：无推送。
 
+## 3.1 重启恢复验证
+
+本演示不重启进程；手动验证真实重启：
+
+1. `npm start`，在群里 @机器人 一条，等它回复。
+2. `Ctrl+C` 停掉。
+3. 再 `npm start`。
+4. 期望：同一条消息不会被重复回复；未完成审批会收到提醒；列表里不会出现重复任务。
+
+状态目录：
+
+```bash
+ls -la ~/.local/state/opencode-atme-proxy
+cat ~/.local/state/opencode-atme-proxy/dedup.json
+cat ~/.local/state/opencode-atme-proxy/outbound.json
+```
+
 ## 4. 出问题看哪里
 
 ```bash

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -18,7 +18,7 @@ export async function readJsonFile<T>(path: string, fallback: T): Promise<T> {
 
 export async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   await ensureDir(dirname(path));
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${path}.${process.pid}.${Date.now()}.${randomUUID().slice(0, 8)}.tmp`;
   await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await rename(tmp, path);
 }
@@ -34,6 +34,11 @@ export function isMissingFile(error: unknown): boolean {
 
 export function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
+}
+
+export function stableUuid(...parts: string[]): string {
+  const hex = sha256(parts.join("|"));
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
 export function sleep(ms: number): Promise<void> {

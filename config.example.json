@@ -24,6 +24,19 @@
       "rateLimit": { "sendPerSecond": 5, "burst": 10 }
     }
   },
+  "recovery": {
+    "enabled": true,
+    "onStartup": true,
+    "lookbackSeconds": 21600,
+    "maxMessages": 200,
+    "maxPlainMessagesPerGroup": 50,
+    "includeMentions": true,
+    "includeRelevantPlain": true,
+    "resumeTasks": true,
+    "resumeMaxAgeDays": 7,
+    "staleRunningMinutes": 30,
+    "nudgeHours": 24
+  },
   "polling": {
     "enabled": true,
     "intervalSeconds": 180,

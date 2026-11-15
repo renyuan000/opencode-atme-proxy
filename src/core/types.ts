@@ -120,6 +120,7 @@ export interface TaskRecord {
   };
   dedupKey: string;
   actionability?: Actionability;
+  lastNudgeAt?: number;
   state: TaskState;
   createdAt: number;
   updatedAt: number;
@@ -232,9 +233,10 @@ export type OutboundMessage =
       text: string;
       quoteMessageId?: string;
       mentions?: Array<{ id: string; name?: string }>;
+      uuid?: string;
     }
-  | { kind: "card"; card: unknown }
-  | { kind: "menu"; text: string; options: Array<{ id: string; label: string }> };
+  | { kind: "card"; card: unknown; uuid?: string }
+  | { kind: "menu"; text: string; options: Array<{ id: string; label: string }>; uuid?: string };
 
 export type OutboundTarget =
   | { kind: "chat"; chatId: string }

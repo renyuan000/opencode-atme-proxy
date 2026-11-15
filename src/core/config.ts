@@ -69,6 +69,22 @@ const FilterSchema = z.object({
   profile: ProfileSchema.default({}),
 });
 
+const RecoverySchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    onStartup: z.boolean().default(true),
+    lookbackSeconds: z.number().int().min(60).max(7 * 24 * 3600).default(6 * 3600),
+    maxMessages: z.number().int().min(1).max(2000).default(200),
+    maxPlainMessagesPerGroup: z.number().int().min(1).max(500).default(50),
+    includeMentions: z.boolean().default(true),
+    includeRelevantPlain: z.boolean().default(true),
+    resumeTasks: z.boolean().default(true),
+    resumeMaxAgeDays: z.number().int().min(1).max(365).default(7),
+    staleRunningMinutes: z.number().int().min(1).max(1440).default(30),
+    nudgeHours: z.number().int().min(0).max(168).default(24),
+  })
+  .default({});
+
 const PollingSchema = z.object({
   enabled: z.boolean().default(true),
   intervalSeconds: z.number().int().min(60).default(180),
@@ -224,6 +240,7 @@ export const AppConfigSchema = z.object({
     .default({}),
   platforms: z.object({ feishu: FeishuSchema }),
   polling: PollingSchema.default({}),
+  recovery: RecoverySchema,
   filter: FilterSchema.default({}),
   analysis: AnalysisSchema.default({}),
   opencode: OpenCodeSchema.default({}),

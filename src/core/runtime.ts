@@ -52,6 +52,7 @@ import { assertTransition, canTransition } from "./task-state.js";
 import {
   readJsonFile,
   sha256,
+  stableUuid,
   toErrorMessage,
   truncate,
   writeJsonAtomic,
@@ -90,6 +91,7 @@ export class ProxyRuntime {
   private readonly config: AppConfig;
   private readonly stateDir: string;
   private readonly dedup: DedupStore;
+  private readonly outbound: DedupStore;
   private readonly cursors: CursorStore;
   private readonly sessions: SessionStore;
   private readonly tasks: TaskStore;
@@ -116,6 +118,7 @@ export class ProxyRuntime {
   private readonly claimAttempts = new Map<string, { count: number; firstAt: number }>();
   private readonly senderLimiter: SenderLimiter;
   private projectResolver?: ProjectResolver;
+  private readonly background = new Set<Promise<unknown>>();
   private readonly projectCache = new Map<
     string,
     { worktree: string; projectId?: string; resolved: boolean; reason: string; at: number }
@@ -130,6 +133,12 @@ export class ProxyRuntime {
       ttlMs: 7 * 24 * 3600 * 1000,
       maxEntries: 100_000,
       logger: this.logger.child("dedup"),
+    });
+    this.outbound = new DedupStore({
+      file: join(this.stateDir, "outbound.json"),
+      ttlMs: 7 * 24 * 3600 * 1000,
+      maxEntries: 50_000,
+      logger: this.logger.child("outbound"),
     });
     this.cursors = new CursorStore({
       file: join(this.stateDir, "cursors.json"),
@@ -371,15 +380,35 @@ export class ProxyRuntime {
     return entry.count > this.config.platforms.feishu.bootstrap.maxClaimAttemptsPer10Min;
   }
 
-  private async sendToOwner(text: string): Promise<void> {
+  private async sendToOwner(text: string): Promise<boolean> {
     const openId = this.ownerOpenId();
-    if (!openId) return;
+    if (!openId) return false;
     try {
       await this.sendLimiter.take();
-      await this.options.platform.send({ kind: "user", userId: openId }, { kind: "text", text });
+      await this.options.platform.send(
+        { kind: "user", userId: openId },
+        { kind: "text", text, uuid: stableUuid("owner", openId, sha256(text).slice(0, 16)) },
+      );
+      return true;
     } catch (error) {
       this.logger.error("failed to send to owner", { error: toErrorMessage(error) });
+      return false;
     }
+  }
+
+  private track<T>(promise: Promise<T>): Promise<T> {
+    this.background.add(promise);
+    promise.finally(() => this.background.delete(promise)).catch(() => {});
+    return promise;
+  }
+
+  private async drainBackground(timeoutMs = 5000): Promise<void> {
+    if (this.background.size === 0) return;
+    const pending = Promise.allSettled([...this.background]);
+    await Promise.race([
+      pending,
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
   }
 
   private sweepTimer?: NodeJS.Timeout;
@@ -387,6 +416,7 @@ export class ProxyRuntime {
   async start(): Promise<void> {
     if (this.started) return;
     await this.dedup.load();
+    await this.outbound.load();
     await this.cursors.load();
     await this.sessions.load();
     await this.tasks.load();
@@ -407,6 +437,11 @@ export class ProxyRuntime {
     this.sweepTimer.unref?.();
     void this.sweepExpiredApprovals();
     this.started = true;
+    setImmediate(() => {
+      void this.recoverOnStartup().catch((error) => {
+        this.logger.error("startup recovery failed", { error: toErrorMessage(error) });
+      });
+    });
     this.logger.info("runtime started", {
       platform: this.options.platform.platform,
       groups: [...this.groupIds],
@@ -424,9 +459,11 @@ export class ProxyRuntime {
     this.sweepTimer = undefined;
     this.poller.stop();
     await this.dispatcher.close(5000);
+    await this.drainBackground();
     await this.options.platform.stop();
     await Promise.all([
       this.dedup.close(),
+      this.outbound.close(),
       this.cursors.flush(),
       this.sessions.flush(),
       this.tasks.close(),
@@ -580,8 +617,8 @@ export class ProxyRuntime {
     }
 
     if (intent.action === "notify_owner") {
-      await this.sendOwnerDecisionCard(message, intent, "notify");
-      await this.markProcessed(message);
+      const notified = await this.sendOwnerDecisionCard(message, intent, "notify");
+      if (notified) await this.markProcessed(message);
       await this.audit.append({
         actor: { system: true },
         action: "bot_mention_owner_notified",
@@ -592,9 +629,9 @@ export class ProxyRuntime {
 
     if (intent.action === "need_decision") {
       const analysis = await this.analyzeBotRequest(message, intent, signal);
-      await this.escalateToOwner(message, intent);
-      await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
-      await this.markProcessed(message);
+      const escalated = await this.escalateToOwner(message, intent);
+      const notified = await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
+      if (escalated || notified) await this.markProcessed(message);
       await this.audit.append({
         actor: { system: true },
         action: "bot_mention_escalated",
@@ -615,20 +652,21 @@ export class ProxyRuntime {
         }, this.config.reply.ackDelayMs)
       : undefined;
     if (ackTimer) ackTimer.unref?.();
+    let replied = false;
     try {
       const reply = await this.askOpenCode(message, style, signal);
       if (ackTimer) clearTimeout(ackTimer);
-      await this.safeReply(message, this.sanitize(reply));
+      replied = await this.safeReply(message, this.sanitize(reply));
     } catch (error) {
       this.logger.error("bot mention handling failed", {
         messageId: message.messageId,
         error: toErrorMessage(error),
       });
-      await this.safeReply(message, "处理失败，请稍后重试或直接联系我。");
+      replied = await this.safeReply(message, "处理失败，请稍后重试或直接联系我。");
     } finally {
       if (ackTimer) clearTimeout(ackTimer);
     }
-    await this.markProcessed(message);
+    if (replied) await this.markProcessed(message);
     await this.audit.append({
       actor: { system: true },
       action: "bot_mention_replied",
@@ -765,7 +803,7 @@ export class ProxyRuntime {
     intent: BotIntent,
     mode: "decision" | "notify",
     analysis?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const text = [
       mode === "decision" ? "群里有人 @机器人，需要你判断是否要做" : "群里有人 @机器人，仅需你知会",
       `类型：${intent.kind}`,
@@ -775,10 +813,10 @@ export class ProxyRuntime {
       ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),
       ...(analysis ? [`分析：\n${analysis}`] : []),
     ].join("\n");
-    await this.sendToOwner(text);
+    return this.sendToOwner(text);
   }
 
-  private async escalateToOwner(message: IncomingMessage, intent: BotIntent): Promise<void> {
+  private async escalateToOwner(message: IncomingMessage, intent: BotIntent): Promise<boolean> {
     const question = intent.question
       ? truncate(intent.question, this.config.botReply.maxQuestionChars)
       : truncate(message.text, this.config.botReply.maxQuestionChars);
@@ -797,6 +835,7 @@ export class ProxyRuntime {
         {
           kind: "text",
           text,
+          uuid: stableUuid("escalate", message.messageId),
           mentions: [
             {
               id: this.ownerOpenId() ?? "",
@@ -805,12 +844,13 @@ export class ProxyRuntime {
           ].filter((mention) => mention.id),
         },
       );
+      return true;
     } catch (error) {
       this.logger.error("failed to escalate to owner in group", {
         messageId: message.messageId,
         error: toErrorMessage(error),
       });
-      await this.sendToApprover(text);
+      return this.sendToApprover(text);
     }
   }
 
@@ -825,7 +865,11 @@ export class ProxyRuntime {
     if (autoReply) {
       try {
         const reply = await this.askOpenCode(message, style, signal);
-        await this.safeReply(message, `${ASSISTANT_LABEL} ${this.sanitize(reply)}`);
+        const replied = await this.safeReply(
+          message,
+          `${ASSISTANT_LABEL} ${this.sanitize(reply)}`,
+        );
+        if (!replied) throw new Error("reply failed");
         task.state = "done";
         task.updatedAt = Date.now();
         await this.tasks.save(task);
@@ -846,16 +890,17 @@ export class ProxyRuntime {
     }
     try {
       await this.sendReplyApproval(task, message);
+      await this.markProcessed(message);
     } catch (error) {
       this.logger.error("failed to send reply approval", {
         taskId: task.id,
         error: toErrorMessage(error),
       });
-      await this.sendToApprover(
+      const notified = await this.sendToApprover(
         `有人 @你，但审批卡发送失败：${truncate(message.text, 200)}\n发送人：${message.sender.displayName ?? message.sender.id}`,
       );
+      if (notified) await this.markProcessed(message);
     }
-    await this.markProcessed(message);
   }
 
   private async createReplyTask(
@@ -1119,14 +1164,15 @@ export class ProxyRuntime {
   private async handleGroupScan(message: IncomingMessage, signal: AbortSignal): Promise<void> {
     const classification = await this.classifyOne(message, signal);
     if (!classification?.relevant) return;
+    let handled = false;
     if (
       classification.actionability === "task" &&
       classification.confidence >= this.config.filter.minTaskConfidence
     ) {
       const task = await this.ensureTask(message, classification, "group_scan");
-      if (task) await this.createApprovalCard(task, "group_scan");
+      if (task) handled = true;
     } else {
-      await this.sendToApprover(
+      handled = await this.sendToApprover(
         [
           "群消息可能与你相关",
           `群：${message.chat.name ?? message.chat.id}`,
@@ -1137,7 +1183,7 @@ export class ProxyRuntime {
         ].join("\n"),
       );
     }
-    await this.markProcessed(message);
+    if (handled) await this.markProcessed(message);
   }
 
   private async classifyOne(
@@ -1222,7 +1268,7 @@ export class ProxyRuntime {
       await this.sendToApprover(`已记录任务，请回复补充信息或手动触发分析：${task.title}`);
       return task;
     }
-    void this.analyzeTask(task).catch((error) => {
+    this.track(this.analyzeTask(task)).catch((error) => {
       this.logger.error("task analysis failed", {
         taskId: task.id,
         error: toErrorMessage(error),
@@ -1420,6 +1466,138 @@ export class ProxyRuntime {
     await this.pending.flush();
   }
 
+  async recoverOnStartup(): Promise<void> {
+    const recovery = this.config.recovery;
+    if (!recovery.enabled) return;
+    if (!this.started) return;
+    if (recovery.resumeTasks) {
+      await this.resumeOpenTasks();
+    }
+    if (recovery.onStartup) {
+      await this.pullStartupWindow();
+    }
+  }
+
+  private async pullStartupWindow(): Promise<void> {
+    const recovery = this.config.recovery;
+    if (!this.options.platform.capabilities().groupHistory) {
+      this.logger.warn("recovery skipped: platform has no groupHistory capability");
+      return;
+    }
+    const endTime = Date.now();
+    const startTime = endTime - recovery.lookbackSeconds * 1000;
+    this.logger.info("startup recovery pull", {
+      startTime: new Date(startTime).toISOString(),
+      endTime: new Date(endTime).toISOString(),
+      groups: this.groupIds.size,
+    });
+    for (const chatId of this.groupIds) {
+      try {
+        const result = await this.options.platform.listMessages({
+          chatId,
+          startTime,
+          endTime,
+          maxPages: 20,
+          maxMessages: recovery.maxMessages,
+        });
+        if (result.messages.length === 0) continue;
+        const messageIds = result.messages.map((message) => `${message.platform}:${message.messageId}`);
+        const unprocessed = result.messages.filter((message) => !this.dedup.has(
+          `${message.platform}:${message.messageId}`,
+        ));
+        this.logger.info("startup recovery fetched", {
+          chatId,
+          fetched: result.messages.length,
+          unprocessed: unprocessed.length,
+          unique: new Set(messageIds).size,
+        });
+        if (unprocessed.length === 0) continue;
+        const mentions = recovery.includeMentions
+          ? unprocessed.filter((message) => this.isMention(message))
+          : [];
+        for (const message of mentions) {
+          await this.ingest(message);
+        }
+        if (recovery.includeRelevantPlain) {
+          const plain = unprocessed
+            .filter((message) => !this.isMention(message))
+            .slice(-recovery.maxPlainMessagesPerGroup);
+          if (plain.length > 0) await this.ingestBatch(plain);
+        }
+      } catch (error) {
+        this.logger.error("startup recovery failed for group; continuing", {
+          chatId,
+          error: toErrorMessage(error),
+        });
+      }
+    }
+  }
+
+  private async resumeOpenTasks(): Promise<void> {
+    const recovery = this.config.recovery;
+    const now = Date.now();
+    const maxAgeMs = recovery.resumeMaxAgeDays * 86_400_000;
+    const tasks = await this.tasks.list();
+    let resumed = 0;
+    let interrupted = 0;
+    for (const task of tasks) {
+      if (now - task.updatedAt > maxAgeMs) continue;
+      if (task.state === "done" || task.state === "rejected" || task.state === "canceled") {
+        continue;
+      }
+      if (task.state === "executing" || task.state === "verifying") {
+        const staleMs = recovery.staleRunningMinutes * 60_000;
+        if (now - task.updatedAt < staleMs) continue;
+        task.state = "awaiting_approval";
+        task.updatedAt = now;
+        await this.tasks.save(task);
+        interrupted++;
+        await this.sendToOwner(
+          `上次执行被中断，已暂停等待你重新批准：${task.title}\n不会自动重放代码修改。`,
+        );
+        continue;
+      }
+      if (
+        (task.state === "awaiting_approval" || task.state === "needs_info") &&
+        this.pending.findForTask(task.id)
+      ) {
+        continue;
+      }
+      if (task.state === "candidate" || task.state === "analyzing") {
+        task.state = "analyzing";
+        task.updatedAt = now;
+        await this.tasks.save(task);
+        this.track(this.analyzeTask(task)).catch((error) => {
+          this.logger.error("resumed task analysis failed", {
+            taskId: task.id,
+            error: toErrorMessage(error),
+          });
+        });
+        resumed++;
+        continue;
+      }
+      const nudgeMs = recovery.nudgeHours * 3600_000;
+      if (
+        (task.state === "awaiting_approval" || task.state === "needs_info") &&
+        (nudgeMs === 0 || now - (task.lastNudgeAt ?? 0) > nudgeMs)
+      ) {
+        task.lastNudgeAt = now;
+        task.updatedAt = now;
+        await this.tasks.save(task);
+        await this.sendToOwner(
+          `未完成任务提醒：${task.title}\n状态：${task.state}\n发送「查看任务」可列出详情（后续实现）。`,
+        );
+        resumed++;
+      }
+    }
+    this.logger.info("task resume finished", { resumed, interrupted });
+    if (resumed > 0 || interrupted > 0) {
+      await this.sendToOwner(
+        `启动恢复：续作 ${resumed} 个未完成任务，中断 ${interrupted} 个执行。`,
+      );
+    }
+  }
+
   private async sweepExpiredApprovals(): Promise<void> {
     const ttlMs = this.config.policy.approvalTimeoutHours * 3600_000;
     const now = Date.now();
@@ -1528,7 +1706,7 @@ export class ProxyRuntime {
     });
     this.pending.deleteForTask(task.id);
     await this.pending.flush();
-    void this.executeTask(task, pending.planHash).catch((error) => {
+    this.track(this.executeTask(task, pending.planHash)).catch((error) => {
       this.logger.error("execution failed", { taskId: task.id, error: toErrorMessage(error) });
     });
   }
@@ -1980,23 +2158,32 @@ export class ProxyRuntime {
     }
   }
 
-  private async safeReply(message: IncomingMessage, text: string): Promise<void> {
+  private async safeReply(message: IncomingMessage, text: string): Promise<boolean> {
+    const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;
+    if (this.outbound.has(key)) {
+      this.logger.info("skip duplicate reply", { messageId: message.messageId });
+      return true;
+    }
     try {
       await this.sendLimiter.take();
       await this.options.platform.reply(
         { chatId: message.chat.id, messageId: message.messageId },
-        { kind: "text", text },
+        { kind: "text", text, uuid: stableUuid(key) },
       );
+      this.outbound.add(key);
+      await this.outbound.flush();
+      return true;
     } catch (error) {
       this.logger.error("failed to reply", {
         messageId: message.messageId,
         error: toErrorMessage(error),
       });
+      return false;
     }
   }
 
-  private async sendToApprover(text: string): Promise<void> {
-    await this.sendToOwner(text);
+  private async sendToApprover(text: string): Promise<boolean> {
+    return this.sendToOwner(text);
   }
 
   private async markProcessed(message: IncomingMessage): Promise<void> {

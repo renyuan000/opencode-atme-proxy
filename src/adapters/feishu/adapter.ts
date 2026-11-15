@@ -269,6 +269,7 @@ export class FeishuAdapter implements PlatformAdapter {
 }
 
 function toFeishuPayload(receiveId: string | undefined, message: OutboundMessage): Record<string, unknown> {
+  const uuid = message.uuid;
   if (message.kind === "text") {
     const mentions = (message.mentions ?? []).filter((mention) => mention.id);
     const atTags = mentions
@@ -277,6 +278,7 @@ function toFeishuPayload(receiveId: string | undefined, message: OutboundMessage
     const text = atTags ? `${atTags} ${message.text}` : message.text;
     return {
       ...(receiveId ? { receive_id: receiveId } : {}),
+      ...(uuid ? { uuid } : {}),
       msg_type: "text",
       content: JSON.stringify({ text }),
     };
@@ -285,12 +287,14 @@ function toFeishuPayload(receiveId: string | undefined, message: OutboundMessage
     const lines = [message.text, ...message.options.map((option, index) => `${index + 1}. ${option.label}`)];
     return {
       ...(receiveId ? { receive_id: receiveId } : {}),
+      ...(uuid ? { uuid } : {}),
       msg_type: "text",
       content: JSON.stringify({ text: lines.join("\n") }),
     };
   }
   return {
     ...(receiveId ? { receive_id: receiveId } : {}),
+    ...(uuid ? { uuid } : {}),
     msg_type: "interactive",
     content: JSON.stringify(message.card),
   };

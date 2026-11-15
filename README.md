@@ -208,6 +208,41 @@ websocket ready
 | 卡片按钮无响应 | 检查 `card.action.trigger` 事件与回调时限 |
 | OpenCode 不可用 | 确认 `opencode serve` 与 `opencode.baseUrl` |
 
+### 重启恢复与不重复
+
+WSL2 可能随时重启，插件启动时会做三件事：
+
+1. **补拉最近的 @我 / @机器人 消息**：`recovery.lookbackSeconds` 默认 6 小时。
+2. **少量补拉非 @ 的群消息**：每个群最多 `maxPlainMessagesPerGroup` 条（默认 50），只做项目相关筛选，不刷屏。
+3. **续作未完成任务**：`candidate/analyzing` 重新分析；`awaiting_approval/needs_info` 到期提醒；`executing/verifying` 若超过 `staleRunningMinutes` 则标记中断并等你重新批准，**不会自动重放代码修改**。
+
+不重复的关键：
+
+- 只有成功回复/通知后才写入去重；发送失败下次会重试。
+- 出站消息带稳定 `uuid`，飞书侧幂等；本地 `outbound.json` 再兜底。
+- 已 `done/rejected/canceled` 的任务不会重跑。
+- `queued`、超时、失败的消息保持未处理，下次补拉会继续。
+
+配置项：
+
+```json
+{
+  "recovery": {
+    "enabled": true,
+    "onStartup": true,
+    "lookbackSeconds": 21600,
+    "maxMessages": 200,
+    "maxPlainMessagesPerGroup": 50,
+    "includeMentions": true,
+    "includeRelevantPlain": true,
+    "resumeTasks": true,
+    "resumeMaxAgeDays": 7,
+    "staleRunningMinutes": 30,
+    "nudgeHours": 24
+  }
+}
+```
+
 ### 目录与上下文
 
 `stateDir` 默认 `~/.local/state/opencode-atme-proxy`，主要文件：
@@ -527,6 +562,16 @@ docs/REQUIREMENTS.md   requirements v0.2
 - No image/file content parsing in the first release; placeholders only.
 - Push/PR/merge is not implemented; the executor never pushes.
 - Running executions are not resumed after a restart.
+
+### Restart recovery
+
+On startup the bot:
+
+1. pulls recent `@me` / `@bot` messages (`recovery.lookbackSeconds`, default 6h);
+2. pulls a bounded sample of non-mention group messages per group (default 50) for relevance filtering only;
+3. resumes open tasks: `candidate/analyzing` re-analyzed; stale `awaiting_approval/needs_info` nudged; stale `executing/verifying` paused for re-approval instead of replaying code changes.
+
+No duplicate work: dedup is written only after a successful reply/notification; outbound messages carry a stable `uuid`; completed/rejected/canceled tasks are never re-run.
 
 ### Roadmap
 

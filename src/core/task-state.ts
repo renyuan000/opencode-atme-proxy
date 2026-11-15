@@ -2,13 +2,13 @@ import type { TaskState } from "./types.js";
 
 const transitions: Record<TaskState, readonly TaskState[]> = {
   candidate: ["analyzing", "rejected", "canceled"],
-  analyzing: ["needs_info", "awaiting_approval", "failed", "canceled"],
+  analyzing: ["needs_info", "awaiting_approval", "failed", "canceled", "candidate"],
   needs_info: ["analyzing", "canceled", "rejected"],
   awaiting_approval: ["approved", "rejected", "expired", "canceled", "done"],
   approved: ["executing", "canceled", "failed"],
-  executing: ["verifying", "failed", "canceled"],
-  verifying: ["awaiting_merge", "done", "failed", "canceled"],
-  awaiting_merge: ["done", "failed", "canceled"],
+  executing: ["verifying", "failed", "canceled", "approved", "awaiting_approval"],
+  verifying: ["awaiting_merge", "done", "failed", "canceled", "executing", "awaiting_approval"],
+  awaiting_merge: ["done", "failed", "canceled", "awaiting_approval"],
   done: [],
   rejected: [],
   failed: ["analyzing", "canceled"],
