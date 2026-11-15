@@ -65,7 +65,21 @@ npm install github:renyuan000/opencode-atme-proxy
 npx atme-proxy version
 ```
 
-首次安装会通过 `prepare` 自动构建。npm 11 可能提示 `install-scripts not yet covered by allowScripts`；需要先批准，或在克隆目录手动构建：
+安装脚本说明：
+
+- 仓库已带预构建 `dist/`，`prepare` 找不到 `tsc` 时会直接使用 `dist`，不会因缺开发依赖失败。
+- npm 11 仍可能提示 `install-scripts ... allowScripts`；这是安全提示，不是错误。
+- 如果公司 npm 策略禁止 `prepare`，直接克隆安装：
+
+```bash
+git clone https://github.com/renyuan000/opencode-atme-proxy.git
+cd opencode-atme-proxy.git
+npm ci
+npm run build
+npm link
+```
+
+手动构建（一般不需要）：
 
 ```bash
 git clone https://github.com/renyuan000/opencode-atme-proxy.git
@@ -495,7 +509,21 @@ npm install github:renyuan000/opencode-atme-proxy
 npx atme-proxy version
 ```
 
-The first install builds via `prepare`. npm 11 may warn about `install-scripts`; approve it or build from a clone:
+Install script notes:
+
+- The repo ships a prebuilt `dist/`; `prepare` falls back to it when `tsc` is unavailable, so a Git install does not fail on missing dev deps.
+- npm 11 may still warn about `install-scripts ... allowScripts`; that is a safety notice, not an error.
+- If your npm policy blocks `prepare`, clone and build:
+
+```bash
+git clone https://github.com/renyuan000/opencode-atme-proxy.git
+cd opencode-atme-proxy.git
+npm ci
+npm run build
+npm link
+```
+
+Manual build (usually unnecessary):
 
 ```bash
 git clone https://github.com/renyuan000/opencode-atme-proxy.git
