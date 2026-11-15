@@ -186,7 +186,7 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 
 1. 事件订阅选择「长连接」，添加 `im.message.receive_v1`、`card.action.trigger`。
 2. 权限：`im:message.group_at_msg:readonly`、`im:message.group_msg`（敏感，需管理员审批）、`im:message:send_as_bot`；可选 `im:message.p2p_msg:readonly`（仅私聊 claim 需要）、`contact:user.base:readonly`。
-3. 把机器人拉进目标群；群 `chat_id` 可通过事件日志或开放平台接口获取。
+3. 把机器人拉进目标群，然后运行 `atme-proxy chats` 获取群 `chat_id`，填到 `platforms.feishu.groups`。
 4. 以上 scope 名称以飞书开放平台后台实际可选项为准；`im:message.group_msg` 需管理员审批。
 
 项目上下文：
@@ -644,7 +644,7 @@ Required `config.json` fields:
 | `platforms.feishu.appId` | Feishu App ID (`cli_...`) |
 | `platforms.feishu.me.openId` | Your `open_id` (`ou_...`) |
 | `platforms.feishu.approvers[0].openId` | Approver `open_id`, usually you |
-| `platforms.feishu.groups[].chatId` | Group `chat_id` (`oc_...`) |
+| `platforms.feishu.groups[].chatId` | Group `chat_id` (`oc_...`); use `atme-proxy chats` to list |
 | `filter.baseUrl/model` | OpenAI-compatible low-cost model |
 | `opencode.baseUrl` | `http://127.0.0.1:19876` |
 | `project.worktree` | Main repo path; optional if auto-resolution works |
@@ -654,7 +654,7 @@ Feishu console:
 
 1. Event subscription: long connection, add `im.message.receive_v1` and `card.action.trigger`.
 2. Scopes: `im:message.group_at_msg:readonly`, `im:message.group_msg` (sensitive, admin approval), `im:message:send_as_bot`; optional `contact:user.base:readonly`.
-3. Add the bot to the target groups.
+3. Add the bot to target groups, then run `atme-proxy chats` to get each `chat_id`.
 
 ### About "configuring an LLM"
 

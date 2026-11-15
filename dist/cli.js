@@ -16,6 +16,7 @@ import { ProxyRuntime } from "./core/runtime.js";
 import { toErrorMessage } from "./core/util.js";
 import { acquireInstanceLock, releaseInstanceLock } from "./core/instance-lock.js";
 import { runSetup, runDoctor } from "./setup/wizard.js";
+import * as Lark from "@larksuiteoapi/node-sdk";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 export async function startDaemon(options = {}) {
     const loaded = await loadConfig({ path: options.configPath });
@@ -80,6 +81,43 @@ function bootstrapEnv() {
     loadDotenv({ path: join(dirname(configPath), ".env"), quiet: true });
     loadDotenv({ quiet: true });
 }
+async function listChats() {
+    const loaded = await loadConfig();
+    const secret = loaded.secrets.appSecret;
+    if (!secret)
+        throw new Error("Feishu app secret is required");
+    const feishu = loaded.config.platforms.feishu;
+    const client = new Lark.Client({
+        appId: feishu.appId,
+        appSecret: secret,
+        domain: feishu.domain === "lark" ? Lark.Domain.Lark : Lark.Domain.Feishu,
+        logger: { error: () => { }, warn: () => { }, info: () => { }, debug: () => { }, trace: () => { } },
+    });
+    let pageToken;
+    let count = 0;
+    do {
+        const response = await client.request({
+            method: "GET",
+            url: "/open-apis/im/v1/chats",
+            params: {
+                page_size: 100,
+                ...(pageToken ? { page_token: pageToken } : {}),
+            },
+        });
+        if (response?.code !== 0) {
+            throw new Error(`飞书群列表失败: ${response?.msg ?? "unknown"}`);
+        }
+        const items = Array.isArray(response?.data?.items) ? response.data.items : [];
+        for (const item of items) {
+            count++;
+            process.stdout.write(`${item.chat_id}\t${item.name ?? ""}\n`);
+        }
+        pageToken = response?.data?.has_more ? response.data.page_token : undefined;
+    } while (pageToken);
+    if (count === 0) {
+        process.stdout.write("没有查到群。先把机器人拉进群，再运行一次。\n");
+    }
+}
 async function main() {
     bootstrapEnv();
     const logger = createLogger({ scope: "cli" });
@@ -95,6 +133,10 @@ async function main() {
                 : {}),
             nonInteractive: process.argv.includes("--yes"),
         });
+        return;
+    }
+    if (command === "chats") {
+        await listChats();
         return;
     }
     if (command === "doctor") {
@@ -164,6 +206,7 @@ async function main() {
         process.stdout.write([
             "usage:",
             "  atme-proxy setup            interactive configuration wizard",
+            "  atme-proxy chats            list chat_id of groups the bot is in",
             "  atme-proxy doctor           check config, credentials, OpenCode and project",
             "  atme-proxy agents           install bundled agents to ~/.config/opencode/agents",
             "  atme-proxy status           show daemon status",

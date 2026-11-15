@@ -67,7 +67,12 @@ export async function runSetup(defaults = {}) {
         output.write("  2. 发布应用\n");
         output.write("  3. 把机器人拉进目标群\n\n");
     }
+    if (answers.chatIds.length === 0) {
+        output.write("未配置群：可先运行 atme-proxy chats 查看机器人所在群的 chat_id，\n");
+        output.write("再把它填到 config.json 的 platforms.feishu.groups，或重新运行 setup。\n\n");
+    }
     output.write("下一步：\n");
+    output.write("  atme-proxy chats\n");
     output.write("  atme-proxy doctor\n");
     output.write("  atme-proxy agents\n");
     output.write("  atme-proxy start\n\n");
@@ -176,7 +181,7 @@ async function ask(existing) {
         (await askText("你的 open_id (ou_...)", feishu?.me?.openId ?? ""));
     const approverOpenId = claimedOpenId ||
         (await askText("审批人 open_id (回车等于你自己)", feishu?.approvers?.[0]?.openId ?? meOpenId));
-    const chatIdsRaw = await askText("群 chat_id (oc_...，多个用逗号分隔)", feishu?.groups?.map((group) => group.chatId).join(",") ?? "");
+    const chatIdsRaw = await askText("群 chat_id (oc_...，多个用逗号分隔；不知道可留空)", feishu?.groups?.map((group) => group.chatId).join(",") ?? "", false);
     const opencodeUrl = await askText("OpenCode 服务地址", existing.opencode?.baseUrl ?? "http://127.0.0.1:19876");
     output.write("\n关于“配置 LLM”：\n" +
         "  OpenCode 已配置的模型用于群回复、任务分析、开发执行。\n" +
