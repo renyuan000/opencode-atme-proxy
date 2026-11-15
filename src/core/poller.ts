@@ -84,12 +84,21 @@ export class PollingService {
       if (result.messages.length > 0) {
         await this.options.onBatch(result.messages);
       }
-      this.options.cursors.set(chatId, endTime);
+      const last = result.messages.reduce<IncomingMessage | undefined>(
+        (latest, message) =>
+          !latest || message.createdAt >= latest.createdAt ? message : latest,
+        undefined,
+      );
+      this.options.cursors.set(chatId, endTime, {
+        ...(last ? { messageId: last.messageId, messageTime: last.createdAt } : {}),
+      });
       await this.options.cursors.flush();
       this.logger.info("poll completed", {
         chatId,
         name,
         messages: result.messages.length,
+        lastMessageId: last?.messageId,
+        lastMessageTime: last?.createdAt,
         windowMs: endTime - startTime,
       });
     } catch (error) {

@@ -2,9 +2,16 @@ import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
 import { readJsonFile, writeJsonAtomic, toErrorMessage } from "./util.js";
 
+export interface CursorRecord {
+  lastEndTime: number;
+  updatedAt: number;
+  lastMessageId?: string;
+  lastMessageTime?: number;
+}
+
 interface CursorFile {
   version: 1;
-  cursors: Record<string, { lastEndTime: number; updatedAt: number }>;
+  cursors: Record<string, CursorRecord>;
 }
 
 export interface CursorStoreOptions {
@@ -14,7 +21,7 @@ export interface CursorStoreOptions {
 }
 
 export class CursorStore {
-  private cursors = new Map<string, { lastEndTime: number; updatedAt: number }>();
+  private cursors = new Map<string, CursorRecord>();
   private dirty = false;
   private readonly logger: Logger;
   private readonly now: () => number;
@@ -50,8 +57,26 @@ export class CursorStore {
     return this.cursors.get(chatId)?.lastEndTime;
   }
 
-  set(chatId: string, lastEndTime: number): void {
-    this.cursors.set(chatId, { lastEndTime, updatedAt: this.now() });
+  record(chatId: string): CursorRecord | undefined {
+    return this.cursors.get(chatId);
+  }
+
+  set(
+    chatId: string,
+    lastEndTime: number,
+    last?: { messageId?: string; messageTime?: number },
+  ): void {
+    const existing = this.cursors.get(chatId);
+    this.cursors.set(chatId, {
+      lastEndTime,
+      updatedAt: this.now(),
+      ...(last?.messageId ?? existing?.lastMessageId
+        ? { lastMessageId: last?.messageId ?? existing?.lastMessageId }
+        : {}),
+      ...(last?.messageTime ?? existing?.lastMessageTime
+        ? { lastMessageTime: last?.messageTime ?? existing?.lastMessageTime }
+        : {}),
+    });
     this.dirty = true;
   }
 

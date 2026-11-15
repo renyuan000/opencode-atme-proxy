@@ -216,6 +216,13 @@ WSL2 可能随时重启，插件启动时会做三件事：
 2. **少量补拉非 @ 的群消息**：每个群最多 `maxPlainMessagesPerGroup` 条（默认 50），只做项目相关筛选，不刷屏。
 3. **续作未完成任务**：`candidate/analyzing` 重新分析；`awaiting_approval/needs_info` 到期提醒；`executing/verifying` 若超过 `staleRunningMinutes` 则标记中断并等你重新批准，**不会自动重放代码修改**。
 
+去重记录的是什么：
+
+- `dedup.json`：`platform:message_id -> 成功处理时间`，只记消息级，不存正文。
+- `cursors.json`：每个群的 `lastEndTime`（上一轮成功窗口结束时间）+ 该窗口最后一条消息的 `lastMessageId / lastMessageTime`。
+- 拉取从 `游标 - overlap` 开始；整批消息（含 @消息）全部处理成功后才推进游标，失败则保持原位。
+- `outbound.json`：出站消息幂等键，防止重复发送。
+
 不重复的关键：
 
 - 只有成功回复/通知后才写入去重；发送失败下次会重试。
@@ -571,7 +578,14 @@ On startup the bot:
 2. pulls a bounded sample of non-mention group messages per group (default 50) for relevance filtering only;
 3. resumes open tasks: `candidate/analyzing` re-analyzed; stale `awaiting_approval/needs_info` nudged; stale `executing/verifying` paused for re-approval instead of replaying code changes.
 
-No duplicate work: dedup is written only after a successful reply/notification; outbound messages carry a stable `uuid`; completed/rejected/canceled tasks are never re-run.
+What dedup stores:
+
+- `dedup.json`: `platform:message_id -> processedAt`; message-level only, no content.
+- `cursors.json`: per-chat `lastEndTime` plus `lastMessageId / lastMessageTime` for the last message in that window.
+- Polling starts at `cursor - overlap`; the cursor advances only after the whole batch (including mentions) succeeds.
+- `outbound.json`: outbound idempotency keys to prevent duplicate sends.
+
+No duplicate work: dedup is written only after a successful reply/notification; failed sends retry; outbound messages carry a stable `uuid`; completed/rejected/canceled tasks are never re-run.
 
 ### Roadmap
 

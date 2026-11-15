@@ -315,7 +315,7 @@ awaiting_approval → rejected / expired
 
 **规则**：
 
-1. 消息去重：`platform + message_id -> 处理状态`；默认 TTL 7 天，最多 100,000 条。
+1. 消息去重：`platform + message_id -> 处理成功时间`；默认 TTL 7 天，最多 100,000 条。不存正文。
 2. 任务去重：按 `platform + chat + 归一化标题 + 项目 + 提出人` 生成指纹；同一任务的后续消息合并到同一任务，不重复建单。
 3. 审批动作幂等：同一卡片、同一操作只执行一次；使用动作 ID + 状态机校验。
 4. 出站消息幂等：优先使用平台幂等键；不支持时本地记录 `outbound_id`，发送前检查。
@@ -935,7 +935,7 @@ type AuditEvent = {
 | 路径 | 内容 | 权限 |
 |------|------|------|
 | `<stateDir>/dedup.json` | 消息去重 | 600 |
-| `<stateDir>/cursors.json` | 每群游标 | 600 |
+| `<stateDir>/cursors.json` | 每群游标：`lastEndTime` + `lastMessageId` + `lastMessageTime` | 600 |
 | `<stateDir>/tasks/<taskId>.json` | 任务与状态 | 600 |
 | `<stateDir>/analyses/<taskId>/<version>.json` | 分析版本 | 600 |
 | `<stateDir>/approvals/<taskId>.json` | 审批记录 | 600 |

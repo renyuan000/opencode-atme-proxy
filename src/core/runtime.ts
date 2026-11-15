@@ -475,7 +475,7 @@ export class ProxyRuntime {
     this.logger.info("runtime stopped");
   }
 
-  private async onMessage(message: IncomingMessage): Promise<void> {
+  private async onMessage(message: IncomingMessage, wait = false): Promise<void> {
     if (message.senderType !== "user") return;
     if (message.chat.kind === "direct") {
       if (await this.claimOwner(message)) {
@@ -526,38 +526,51 @@ export class ProxyRuntime {
         },
       );
     }
-    void this.dispatcher
-      .enqueue({
-        id: message.messageId,
-        key: message.chat.id,
-        priority: mention ? 1 : 5,
-        keyConcurrency: mention
-          ? Math.max(this.config.concurrency.perChat, this.config.concurrency.mentionConcurrency)
-          : this.config.concurrency.scanConcurrency,
-        timeoutMs: mention
-          ? this.config.concurrency.mentionTimeoutMs
-          : this.config.concurrency.scanTimeoutMs,
-        run: async (signal) => {
-          try {
-            await this.handleMessage(message, signal);
-          } finally {
-            this.activeMessageIds.delete(dedupKey);
-            if (limited) this.senderLimiter.release(message.sender.id);
-          }
-        },
-      })
-      .catch((error) => {
+    const job = this.dispatcher.enqueue({
+      id: message.messageId,
+      key: message.chat.id,
+      priority: mention ? 1 : 5,
+      keyConcurrency: mention
+        ? Math.max(this.config.concurrency.perChat, this.config.concurrency.mentionConcurrency)
+        : this.config.concurrency.scanConcurrency,
+      timeoutMs: mention
+        ? this.config.concurrency.mentionTimeoutMs
+        : this.config.concurrency.scanTimeoutMs,
+      run: async (signal) => {
+        try {
+          await this.handleMessage(message, signal);
+        } finally {
+          this.activeMessageIds.delete(dedupKey);
+          if (limited) this.senderLimiter.release(message.sender.id);
+        }
+      },
+    });
+    if (wait) {
+      try {
+        await job;
+      } catch (error) {
         this.activeMessageIds.delete(dedupKey);
         if (limited) this.senderLimiter.release(message.sender.id);
         this.logger.error("failed to process message", {
           messageId: message.messageId,
           error: toErrorMessage(error),
         });
+        throw error;
+      }
+      return;
+    }
+    void job.catch((error) => {
+      this.activeMessageIds.delete(dedupKey);
+      if (limited) this.senderLimiter.release(message.sender.id);
+      this.logger.error("failed to process message", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
       });
+    });
   }
 
   async ingest(message: IncomingMessage): Promise<void> {
-    await this.onMessage(message);
+    await this.onMessage(message, true);
   }
 
   async ingestBatch(messages: IncomingMessage[]): Promise<void> {
@@ -1007,6 +1020,7 @@ export class ProxyRuntime {
   }
 
   private async handlePolledBatch(messages: IncomingMessage[]): Promise<void> {
+    let failed = false;
     const candidates = messages.filter((message) => {
       if (message.senderType !== "user") return false;
       if (message.chat.kind !== "group") return false;
@@ -1016,7 +1030,16 @@ export class ProxyRuntime {
     if (candidates.length === 0) return;
 
     for (const message of candidates) {
-      if (this.isMention(message)) await this.onMessage(message);
+      if (!this.isMention(message)) continue;
+      try {
+        await this.onMessage(message, true);
+      } catch (error) {
+        failed = true;
+        this.logger.error("polled mention handling failed", {
+          messageId: message.messageId,
+          error: toErrorMessage(error),
+        });
+      }
     }
     const plain = candidates.filter((message) => !this.isMention(message));
     if (plain.length === 0) return;
@@ -1068,6 +1091,7 @@ export class ProxyRuntime {
       await this.sendToApprover(
         `本轮消息超过预算，仅处理 ${limitedMessages.length}/${capped.length} 条；剩余留待下一轮。`,
       );
+      failed = true;
     }
     try {
       await this.dispatcher.enqueue({
@@ -1096,6 +1120,9 @@ export class ProxyRuntime {
         error: toErrorMessage(error),
       });
       throw error;
+    }
+    if (failed) {
+      throw new Error("polled batch had failed messages; cursor not advanced");
     }
   }
 
