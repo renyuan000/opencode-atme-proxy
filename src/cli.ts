@@ -1,6 +1,11 @@
+#!/usr/bin/env node
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { copyFile, mkdir } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadConfig, resolveLogFile, resolveStateDir, type LoadedConfig } from "./core/config.js";
 import { createLogger, type Logger } from "./core/logger.js";
 import { FeishuAdapter } from "./adapters/feishu/adapter.js";
@@ -67,11 +72,37 @@ export async function startDaemon(options: StartOptions = {}): Promise<{
   };
 }
 
+async function installAgents(): Promise<void> {
+  const source = join(dirname(fileURLToPath(import.meta.url)), "..", ".opencode", "agents");
+  const target = join(homedir(), ".config", "opencode", "agents");
+  await mkdir(target, { recursive: true });
+  for (const name of ["atme-analyst.md", "atme-executor.md", "atme-reviewer.md"]) {
+    await copyFile(join(source, name), join(target, name));
+  }
+  process.stdout.write(`agents installed to ${target}\n`);
+}
+
 async function main(): Promise<void> {
   const logger = createLogger({ scope: "cli" });
   const command = process.argv[2] ?? "start";
+  if (command === "agents") {
+    await installAgents();
+    return;
+  }
+  if (command === "version" || command === "--version" || command === "-v") {
+    process.stdout.write("0.1.0\n");
+    return;
+  }
   if (command !== "start") {
-    process.stderr.write(`usage: atme-proxy start\n`);
+    process.stderr.write(
+      [
+        "usage:",
+        "  atme-proxy start           start the daemon",
+        "  atme-proxy agents          install bundled agents to ~/.config/opencode/agents",
+        "  atme-proxy version         print version",
+        "",
+      ].join("\n"),
+    );
     process.exitCode = 1;
     return;
   }
@@ -97,7 +128,17 @@ async function main(): Promise<void> {
   logger.info("daemon running", { pid: process.pid, runId: randomUUID() });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+function isEntryPoint(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   void main().catch((error) => {
     process.stderr.write(`${toErrorMessage(error)}\n`);
     process.exit(1);

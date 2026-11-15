@@ -12,7 +12,8 @@
   "files": [
     "dist",
     "README.md",
-    "config.example.json"
+    "config.example.json",
+    ".opencode/agents"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -22,7 +23,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test",
-    "demo": "tsx src/scripts/demo.ts"
+    "demo": "tsx src/scripts/demo.ts",
+    "prepare": "npm run build"
   },
   "engines": {
     "node": ">=20.11"
@@ -46,5 +48,16 @@
     "@opencode-ai/plugin": {
       "optional": true
     }
+  },
+  "bin": {
+    "atme-proxy": "dist/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/renyuan000/opencode-atme-proxy.git"
+  },
+  "homepage": "https://github.com/renyuan000/opencode-atme-proxy#readme",
+  "bugs": {
+    "url": "https://github.com/renyuan000/opencode-atme-proxy/issues"
   }
 }

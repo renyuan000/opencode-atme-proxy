@@ -10,3 +10,4 @@ config.local.json
 coverage/
 .DS_Store
 /tmp/
+*.tgz

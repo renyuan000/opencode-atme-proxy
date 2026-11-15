@@ -52,14 +52,39 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 
 ### 1. 安装
 
+直接从 GitHub 安装（推荐）：
+
+```bash
+npm install -g github:renyuan000/opencode-atme-proxy
+```
+
+或安装到本地项目：
+
+```bash
+npm install github:renyuan000/opencode-atme-proxy
+npx atme-proxy version
+```
+
+首次安装会通过 `prepare` 自动构建。npm 11 可能提示 `install-scripts not yet covered by allowScripts`；需要先批准，或在克隆目录手动构建：
+
 ```bash
 git clone https://github.com/renyuan000/opencode-atme-proxy.git
 cd opencode-atme-proxy.git
-npm ci            # 没有 lockfile 时用 npm install
-npm run build     # 插件模式必须构建；独立进程模式也建议构建
+npm ci
+npm run build
+npm link          # 可选，让 atme-proxy 进入 PATH
 ```
 
-`node_modules/`、`dist/`、`.env` 已在 `.gitignore` 中，不会提交。
+安装 agent 定义（子会话需要）：
+
+```bash
+atme-proxy agents
+# 或 npx atme-proxy agents
+```
+
+这会把 `atme-analyst.md`、`atme-executor.md`、`atme-reviewer.md` 复制到 `~/.config/opencode/agents/`。
+
+`node_modules/`、`dist/`、`.env`、`*.tgz` 已在 `.gitignore` 中，不会提交。
 
 ### 2. 配置
 
@@ -457,12 +482,37 @@ A platform-agnostic, approval-gated bot framework that:
 
 ### Install
 
+From GitHub (recommended):
+
+```bash
+npm install -g github:renyuan000/opencode-atme-proxy
+```
+
+Or into a local project:
+
+```bash
+npm install github:renyuan000/opencode-atme-proxy
+npx atme-proxy version
+```
+
+The first install builds via `prepare`. npm 11 may warn about `install-scripts`; approve it or build from a clone:
+
 ```bash
 git clone https://github.com/renyuan000/opencode-atme-proxy.git
 cd opencode-atme-proxy.git
-npm ci            # use npm install if there is no lockfile
+npm ci
 npm run build
+npm link          # optional: put atme-proxy on PATH
 ```
+
+Install the bundled agents (required for child sessions):
+
+```bash
+atme-proxy agents
+# or: npx atme-proxy agents
+```
+
+This copies `atme-analyst.md`, `atme-executor.md`, `atme-reviewer.md` into `~/.config/opencode/agents/`.
 
 ### Configure
 
