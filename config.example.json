@@ -17,9 +17,7 @@
         "allowPrivateClaim": true,
         "maxClaimAttemptsPer10Min": 5
       },
-      "groups": [
-        { "chatId": "oc_xxxxxxxx", "name": "项目群", "enabled": true }
-      ],
+      "groups": [],
       "receiveAllGroupMessages": false,
       "rateLimit": { "sendPerSecond": 5, "burst": 10 }
     }

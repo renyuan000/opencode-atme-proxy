@@ -9,9 +9,18 @@ import type {
   PlatformActionResult,
 } from "./types.js";
 
+export interface ChatMembershipEvent {
+  platform: string;
+  chatId: string;
+  change: "bot_added" | "bot_removed";
+  actorId?: string;
+  at: number;
+}
+
 export interface AdapterHandlers {
   onMessage(message: IncomingMessage): Promise<void>;
   onAction(action: PlatformAction): Promise<PlatformActionResult>;
+  onChatMembership?(event: ChatMembershipEvent): Promise<void>;
 }
 
 export interface ListMessagesInput {

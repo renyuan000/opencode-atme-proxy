@@ -99,7 +99,7 @@ function bootstrapEnv(): void {
   loadDotenv({ quiet: true });
 }
 
-async function listChats(): Promise<void> {
+async function listChats(sync = false): Promise<void> {
   const loaded = await loadConfig();
   const secret = loaded.secrets.appSecret;
   if (!secret) throw new Error("Feishu app secret is required");
@@ -112,6 +112,7 @@ async function listChats(): Promise<void> {
   });
   let pageToken: string | undefined;
   let count = 0;
+  const discovered: Array<{ chatId: string; name?: string }> = [];
   do {
     const response: any = await client.request({
       method: "GET",
@@ -127,13 +128,43 @@ async function listChats(): Promise<void> {
     const items = Array.isArray(response?.data?.items) ? response.data.items : [];
     for (const item of items) {
       count++;
+      discovered.push({
+        chatId: item.chat_id,
+        ...(item.name ? { name: item.name } : {}),
+      });
       process.stdout.write(`${item.chat_id}\t${item.name ?? ""}\n`);
     }
     pageToken = response?.data?.has_more ? response.data.page_token : undefined;
   } while (pageToken);
   if (count === 0) {
     process.stdout.write("没有查到群。先把机器人拉进群，再运行一次。\n");
+    return;
   }
+  if (!sync) return;
+
+  const { loadConfig: reload, defaultConfigPath } = await import("./core/config.js");
+  const path = process.env.ATME_CONFIG ?? defaultConfigPath();
+  const { readFile, writeFile, chmod } = await import("node:fs/promises");
+  const raw = JSON.parse(await readFile(path, "utf8"));
+  const feishuRaw = (raw.platforms ??= {}).feishu ??= {};
+  const existingGroups: Array<{ chatId: string; name?: string; enabled?: boolean }> =
+    Array.isArray(feishuRaw.groups) ? feishuRaw.groups : [];
+  const byId = new Map(discovered.map((item) => [item.chatId, item]));
+  const merged = existingGroups.map((group) => ({
+    ...group,
+    ...(byId.get(group.chatId)?.name ? { name: byId.get(group.chatId)!.name } : {}),
+  }));
+  for (const item of discovered) {
+    if (!merged.some((group) => group.chatId === item.chatId)) {
+      merged.push({ chatId: item.chatId, name: item.name ?? item.chatId, enabled: true });
+    }
+  }
+  feishuRaw.groups = merged;
+  await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await chmod(path, 0o600);
+  void reload;
+  process.stdout.write(`已同步 ${merged.length} 个群到 ${path}\n`);
+  process.stdout.write("重启 atme-proxy 后生效。\n");
 }
 
 async function main(): Promise<void> {
@@ -154,7 +185,7 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "chats") {
-    await listChats();
+    await listChats(process.argv.includes("--sync"));
     return;
   }
   if (command === "doctor") {
@@ -222,7 +253,7 @@ async function main(): Promise<void> {
       [
         "usage:",
         "  atme-proxy setup            interactive configuration wizard",
-        "  atme-proxy chats            list chat_id of groups the bot is in",
+        "  atme-proxy chats [--sync]   list groups; --sync writes chat ids and names to config",
         "  atme-proxy doctor           check config, credentials, OpenCode and project",
         "  atme-proxy agents           install bundled agents to ~/.config/opencode/agents",
         "  atme-proxy status           show daemon status",

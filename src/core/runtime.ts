@@ -9,7 +9,7 @@ import type {
   TaskAnalysis,
   TaskRecord,
 } from "./types.js";
-import type { PlatformAdapter } from "./ports.js";
+import type { ChatMembershipEvent, PlatformAdapter } from "./ports.js";
 import type { AppConfig, LoadedConfig, RepoConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import { createLogger } from "./logger.js";
@@ -98,6 +98,7 @@ export class ProxyRuntime {
   private readonly coordinatorLocks = new Map<string, Promise<string>>();
   private readonly childSlots: Semaphore;
   private readonly taskChildCounts = new Map<string, number>();
+  private readonly chatNames = new Map<string, { name: string; at: number }>();
   private readonly tasks: TaskStore;
   private readonly approvals: ApprovalStore;
   private readonly audit: AuditLog;
@@ -442,6 +443,7 @@ export class ProxyRuntime {
     await this.options.platform.start({
       onMessage: (message) => this.onMessage(message),
       onAction: (action) => this.onAction(action),
+      onChatMembership: (event) => this.onChatMembership(event),
     });
     this.poller.start();
     this.sweepTimer = setInterval(() => {
@@ -494,9 +496,11 @@ export class ProxyRuntime {
 
   private async onMessage(message: IncomingMessage, wait = false): Promise<void> {
     if (message.senderType !== "user") return;
+    const chatName = await this.chatLabel(message);
     this.logger.info("inbound routing", {
       messageId: message.messageId,
       chatId: message.chat.id,
+      chatName,
       chatKind: message.chat.kind,
       senderId: message.sender.id,
       mentionMe: this.isMentionMe(message),
@@ -514,6 +518,7 @@ export class ProxyRuntime {
     if (this.config.policy.defaultDenyGroups && !this.groupIds.has(message.chat.id)) {
       this.logger.info("ignoring message from group not in allowlist", {
         chatId: message.chat.id,
+        chatName,
         messageId: message.messageId,
         mentionMe: this.isMentionMe(message),
         mentionBot: this.isMentionBot(message),
@@ -630,6 +635,83 @@ export class ProxyRuntime {
     const bot = (this.options.platform as { getBotOpenId?: () => string | undefined })
       .getBotOpenId?.() ?? this.config.platforms.feishu.botOpenId;
     return Boolean(bot) && message.mentions.some((mention) => mention.id === bot);
+  }
+
+  private async onChatMembership(event: ChatMembershipEvent): Promise<void> {
+    if (event.change === "bot_removed") {
+      this.logger.info("bot removed from chat", {
+        chatId: event.chatId,
+        actorId: event.actorId,
+      });
+      return;
+    }
+    const client = this.options.bridge.getClient?.();
+    let name = event.chatId;
+    if (client && "im" in client) {
+      try {
+        const response: any = await (client as any).im.v1.chat.get({
+          path: { chat_id: event.chatId },
+        });
+        if (typeof response?.data?.name === "string" && response.data.name) {
+          name = response.data.name;
+        }
+      } catch (error) {
+        this.logger.debug("chat name lookup failed on join", {
+          chatId: event.chatId,
+          error: toErrorMessage(error),
+        });
+      }
+    }
+    this.chatNames.set(event.chatId, { name, at: Date.now() });
+    this.groupIds.add(event.chatId);
+    this.logger.info("bot added to chat", {
+      chatId: event.chatId,
+      chatName: name,
+      actorId: event.actorId,
+      allowlisted: true,
+    });
+    await this.sendToOwner(
+      `机器人已被加入群：${name}\nchat_id：${event.chatId}\n已自动加入处理白名单；重启后仍生效需写入配置（atme-proxy chats --sync）。`,
+    );
+    await this.audit.append({
+      actor: { system: true },
+      action: "bot_added_to_chat",
+      details: { chatId: event.chatId, chatName: name, actorId: event.actorId },
+    });
+  }
+
+  private async chatLabel(message: IncomingMessage): Promise<string> {
+    const chatId = message.chat.id;
+    const cached = this.chatNames.get(chatId);
+    if (cached && Date.now() - cached.at < 6 * 3600_000) return cached.name;
+    if (message.chat.name) {
+      this.chatNames.set(chatId, { name: message.chat.name, at: Date.now() });
+      return message.chat.name;
+    }
+    const configured = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId);
+    if (configured?.name && configured.name !== chatId) {
+      this.chatNames.set(chatId, { name: configured.name, at: Date.now() });
+      return configured.name;
+    }
+    const client = this.options.bridge.getClient?.();
+    if (client && "im" in client) {
+      try {
+        const response: any = await (client as any).im.v1.chat.get({
+          path: { chat_id: chatId },
+        });
+        const name = response?.data?.name;
+        if (typeof name === "string" && name) {
+          this.chatNames.set(chatId, { name, at: Date.now() });
+          return name;
+        }
+      } catch (error) {
+        this.logger.debug("chat name lookup failed", {
+          chatId,
+          error: toErrorMessage(error),
+        });
+      }
+    }
+    return chatId;
   }
 
   private async handleDirectMessage(message: IncomingMessage): Promise<void> {

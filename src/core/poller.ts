@@ -102,9 +102,13 @@ export class PollingService {
         windowMs: endTime - startTime,
       });
     } catch (error) {
+      const data = (error as { response?: { data?: { code?: number; msg?: string } } })
+        .response?.data;
       this.logger.error("poll failed; cursor not advanced", {
         chatId,
         name,
+        ...(data?.code !== undefined ? { code: data.code } : {}),
+        ...(data?.msg ? { detail: data.msg } : {}),
         error: toErrorMessage(error),
       });
     }

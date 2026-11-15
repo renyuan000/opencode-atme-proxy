@@ -24,6 +24,7 @@ export declare class ProxyRuntime {
     private readonly coordinatorLocks;
     private readonly childSlots;
     private readonly taskChildCounts;
+    private readonly chatNames;
     private readonly tasks;
     private readonly approvals;
     private readonly audit;
@@ -71,6 +72,8 @@ export declare class ProxyRuntime {
     private isMention;
     private isMentionMe;
     private isMentionBot;
+    private onChatMembership;
+    private chatLabel;
     private handleDirectMessage;
     private handleMessage;
     private handleBotMention;

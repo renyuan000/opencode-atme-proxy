@@ -69,8 +69,9 @@ export async function runSetup(defaults = {}) {
         output.write("  3. 把机器人拉进目标群\n\n");
     }
     if (answers.chatIds.length === 0) {
-        output.write("未配置群：可先运行 atme-proxy chats 查看机器人所在群的 chat_id，\n");
-        output.write("再把它填到 config.json 的 platforms.feishu.groups，或重新运行 setup。\n\n");
+        output.write("未配置群（正常）：先把机器人拉进群，再运行：\n");
+        output.write("  atme-proxy chats --sync\n");
+        output.write("它会自动发现群并写入 config。\n\n");
     }
     output.write("下一步：\n");
     output.write("  atme-proxy chats\n");
@@ -182,7 +183,8 @@ async function ask(existing) {
         (await askText("你的 open_id (ou_...)", feishu?.me?.openId ?? ""));
     const approverOpenId = claimedOpenId ||
         (await askText("审批人 open_id (回车等于你自己)", feishu?.approvers?.[0]?.openId ?? meOpenId));
-    const chatIdsRaw = await askText("群 chat_id (oc_...，多个用逗号分隔；不知道可留空)", feishu?.groups?.map((group) => group.chatId).join(",") ?? "", false);
+    output.write("\n群先不用填。机器人进群后运行 atme-proxy chats --sync 会自动发现并写入。\n\n");
+    const chatIdsRaw = await askText("群 chat_id (可留空，回车跳过)", feishu?.groups?.map((group) => group.chatId).join(",") ?? "", false);
     const opencodeUrl = await askText("OpenCode 服务地址", existing.opencode?.baseUrl ?? "http://127.0.0.1:19876");
     output.write("\n关于“配置 LLM”：\n" +
         "  OpenCode 已配置的模型用于群回复、任务分析、开发执行。\n" +
@@ -397,9 +399,13 @@ export async function runDoctor(configPath) {
         ok: feishu.groups.length > 0,
         label: "群白名单",
         detail: feishu.groups.length > 0
-            ? feishu.groups.map((group) => group.chatId).join(", ")
+            ? feishu.groups
+                .map((group) => (group.name && group.name !== group.chatId ? `${group.name} (${group.chatId})` : group.chatId))
+                .join(", ")
             : "0 个群",
-        fix: feishu.groups.length > 0 ? undefined : "在 config 增加 groups[].chatId",
+        fix: feishu.groups.length > 0
+            ? undefined
+            : "先把机器人拉进群，再运行 atme-proxy chats --sync",
     });
     try {
         const client = createOpencodeClient({ baseUrl: loaded.config.opencode.baseUrl });

@@ -83,6 +83,48 @@ export class FeishuEventSource {
         const result = await this.handlers.onAction(action);
         return toCardResponse(result);
       },
+      "im.chat.member.bot.added_v1": async (data: any) => {
+        const chatId = data?.chat_id;
+        if (chatId && this.handlers?.onChatMembership) {
+          this.logger.info("bot added to chat", { chatId, operator: data?.operator_id?.open_id });
+          void this.handlers
+            .onChatMembership({
+              platform: "feishu",
+              chatId,
+              change: "bot_added",
+              ...(data?.operator_id?.open_id ? { actorId: data.operator_id.open_id } : {}),
+              at: Number(data?.create_time ?? Date.now()),
+            })
+            .catch((error) =>
+              this.logger.error("chat membership handler failed", {
+                chatId,
+                error: toErrorMessage(error),
+              }),
+            );
+        }
+        return { ok: true };
+      },
+      "im.chat.member.bot.deleted_v1": async (data: any) => {
+        const chatId = data?.chat_id;
+        if (chatId && this.handlers?.onChatMembership) {
+          this.logger.info("bot removed from chat", { chatId, operator: data?.operator_id?.open_id });
+          void this.handlers
+            .onChatMembership({
+              platform: "feishu",
+              chatId,
+              change: "bot_removed",
+              ...(data?.operator_id?.open_id ? { actorId: data.operator_id.open_id } : {}),
+              at: Number(data?.create_time ?? Date.now()),
+            })
+            .catch((error) =>
+              this.logger.error("chat membership handler failed", {
+                chatId,
+                error: toErrorMessage(error),
+              }),
+            );
+        }
+        return { ok: true };
+      },
       "im.chat.access_event.bot_p2p_chat_entered_v1": async () => ({ ok: true }),
       "im.message.message_read_v1": async () => ({ ok: true }),
     });

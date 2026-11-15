@@ -80,9 +80,13 @@ export class PollingService {
             });
         }
         catch (error) {
+            const data = error
+                .response?.data;
             this.logger.error("poll failed; cursor not advanced", {
                 chatId,
                 name,
+                ...(data?.code !== undefined ? { code: data.code } : {}),
+                ...(data?.msg ? { detail: data.msg } : {}),
                 error: toErrorMessage(error),
             });
         }

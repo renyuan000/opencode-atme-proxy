@@ -15,7 +15,11 @@ export const ATME_ADDONS = {
     },
     events: {
         items: {
-            tenant: ["im.message.receive_v1"],
+            tenant: [
+                "im.message.receive_v1",
+                "im.chat.member.bot.added_v1",
+                "im.chat.member.bot.deleted_v1",
+            ],
         },
     },
     callbacks: {
