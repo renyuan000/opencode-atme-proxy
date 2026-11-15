@@ -332,6 +332,50 @@ export async function runDoctor(configPath) {
                     label: "飞书凭据与机器人",
                     detail: `bot open_id=${botOpenId}`,
                 });
+                const chatId = feishu.groups[0]?.chatId;
+                if (chatId) {
+                    const now = Date.now();
+                    try {
+                        await client.request({
+                            method: "GET",
+                            url: "/open-apis/im/v1/messages",
+                            params: {
+                                container_id_type: "chat",
+                                container_id: chatId,
+                                start_time: String(Math.floor((now - 300_000) / 1000)),
+                                end_time: String(Math.floor(now / 1000)),
+                                page_size: 1,
+                            },
+                        });
+                        checks.push({ ok: true, label: "历史消息权限", detail: "可用" });
+                    }
+                    catch (error) {
+                        const data = error.response?.data;
+                        checks.push({
+                            ok: false,
+                            label: "历史消息权限",
+                            detail: data?.msg ?? toErrorMessage(error),
+                            fix: "开放平台添加 im:message.history:readonly（或 im:message:readonly / im:message）并发布",
+                        });
+                    }
+                }
+                try {
+                    await client.request({
+                        method: "GET",
+                        url: "/open-apis/im/v1/chats",
+                        params: { page_size: 1 },
+                    });
+                    checks.push({ ok: true, label: "群列表权限", detail: "可用" });
+                }
+                catch (error) {
+                    const data = error.response?.data;
+                    checks.push({
+                        ok: false,
+                        label: "群列表权限",
+                        detail: data?.msg ?? toErrorMessage(error),
+                        fix: "开放平台添加 im:chat:readonly（或 im:chat）并发布",
+                    });
+                }
             }
         }
         catch (error) {

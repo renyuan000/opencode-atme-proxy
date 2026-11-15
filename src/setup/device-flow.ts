@@ -19,8 +19,10 @@ export const ATME_ADDONS = {
     tenant: [
       "im:message.group_at_msg:readonly",
       "im:message.group_msg",
-      "im:message:send_as_bot",
       "im:message.p2p_msg:readonly",
+      "im:message.history:readonly",
+      "im:message:send_as_bot",
+      "im:chat:readonly",
       "im:resource",
       "contact:user.base:readonly",
     ],

@@ -73,6 +73,14 @@ export class TaskStore {
       }
       return tasks;
     } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: string }).code === "ENOENT"
+      ) {
+        return [];
+      }
       this.logger.error("failed to list tasks", { error: toErrorMessage(error) });
       return [];
     }

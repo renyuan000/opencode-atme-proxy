@@ -60,6 +60,12 @@ export class TaskStore {
             return tasks;
         }
         catch (error) {
+            if (typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "ENOENT") {
+                return [];
+            }
             this.logger.error("failed to list tasks", { error: toErrorMessage(error) });
             return [];
         }
