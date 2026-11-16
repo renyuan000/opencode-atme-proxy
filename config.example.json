@@ -102,8 +102,8 @@
     "storeRelevantScan": true,
     "storeOwnerDm": true,
     "burstGrouping": true,
-    "burstWaitMs": 1500,
-    "burstWindowSeconds": 15,
+    "burstWaitMs": 5000,
+    "burstWindowSeconds": 5,
     "burstMaxMessages": 5,
     "burstMaxChars": 4000
   },
