@@ -31,7 +31,7 @@ function cfg(stateDir: string, autoReply = false, filterEnabled = false): Loaded
         staleRunningMinutes: 30,
         nudgeHours: 24,
       },
-      filter: { enabled: filterEnabled, keywordPrefilter: true, apiKeyEnv: "K", model: "", maxMessagesPerBatch: 50, maxCharsPerMessage: 800, timeoutMs: 1000, minTaskConfidence: 0.7, minReviewConfidence: 0.5, profile: { name: "", role: "", keywords: [], excludeKeywords: [], projects: [], tasks: [] } },
+      filter: { mode: "external", enabled: filterEnabled, keywordPrefilter: true, apiKeyEnv: "K", model: "", maxMessagesPerBatch: 50, maxCharsPerMessage: 800, timeoutMs: 1000, minTaskConfidence: 0.7, minReviewConfidence: 0.5, profile: { name: "", role: "", keywords: [], excludeKeywords: [], projects: [], tasks: [] } },
       analysis: { mode: "main_agent", timeoutMs: 1000 },
       botReply: {
         enabled: true,

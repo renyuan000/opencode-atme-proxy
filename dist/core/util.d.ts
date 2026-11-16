@@ -2,6 +2,8 @@ export declare function ensureDir(dir: string): Promise<void>;
 export declare function readJsonFile<T>(path: string, fallback: T): Promise<T>;
 export declare function writeJsonAtomic(path: string, value: unknown): Promise<void>;
 export declare function isMissingFile(error: unknown): boolean;
+export declare function localTimestamp(date?: Date): string;
+export declare function formatLocalTime(timestamp: number): string;
 export declare function sha256(input: string): string;
 export declare function stableUuid(...parts: string[]): string;
 export declare function sleep(ms: number): Promise<void>;

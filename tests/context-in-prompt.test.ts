@@ -63,6 +63,7 @@ function config(stateDir: string): LoadedConfig {
         nudgeHours: 24,
       },
       filter: {
+        mode: "external",
         enabled: false,
         keywordPrefilter: true,
         apiKeyEnv: "K",

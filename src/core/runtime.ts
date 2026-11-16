@@ -44,6 +44,7 @@ import { PendingStore } from "./pending-store.js";
 import { Semaphore, TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
+import { OpenCodeLlmClient } from "./opencode-llm.js";
 import { ProjectStore } from "./project-store.js";
 import { ChatContextStore, type ContextOrigin } from "./chat-context.js";
 import { MemoryStore, type MemoryKind } from "./memory-store.js";
@@ -52,6 +53,7 @@ import { OwnerStore, type OwnerBinding } from "./owner-store.js";
 import { assertTransition, canTransition } from "./task-state.js";
 import {
   readJsonFile,
+  formatLocalTime,
   sha256,
   stableUuid,
   toErrorMessage,
@@ -210,13 +212,16 @@ export class ProxyRuntime {
         .filter((group) => group.enabled)
         .map((group) => group.chatId),
     );
-    this.filterEnabled = this.config.filter.enabled && this.config.policy.allowExternalModel;
+    const filterNeedsExternal = this.config.filter.mode === "external";
+    this.filterEnabled =
+      this.config.filter.enabled &&
+      (!filterNeedsExternal || this.config.policy.allowExternalModel);
     this.pollingEnabled =
       this.config.polling.enabled &&
       options.platform.capabilities().groupHistory &&
       this.filterEnabled;
-    if (this.config.filter.enabled && !this.config.policy.allowExternalModel) {
-      this.logger.warn("external model disabled by policy; relevance filter is off");
+    if (filterNeedsExternal && this.config.filter.enabled && !this.config.policy.allowExternalModel) {
+      this.logger.warn("external filter model disabled by policy; relevance filter is off");
     }
     this.replyOptions = {
       defaultStyle: this.config.reply.defaultStyle,
@@ -1313,24 +1318,41 @@ export class ProxyRuntime {
       for (const message of messages) await this.markProcessed(message);
       return;
     }
-    const lines = usable.slice(0, 10).map((message) => {
-      const name = message.sender.displayName ?? message.sender.id;
-      return `- ${name}: ${truncate(message.text, 120)}`;
-    });
-    await this.sendToOwner(
-      [
-        `群消息（未启用筛选，原样转发）：${usable.length} 条`,
-        ...lines,
-        usable.length > 10 ? `…另有 ${usable.length - 10} 条` : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
+    await this.sendOwnerDigest(usable, []);
     for (const message of messages) await this.markProcessed(message);
-    this.logger.info("polled batch forwarded without filter", {
-      chatId: messages[0]?.chat.id,
-      messages: usable.length,
-    });
+  }
+
+  private async sendOwnerDigest(
+    messages: IncomingMessage[],
+    items: import("./types.js").Classification[],
+  ): Promise<void> {
+    const byId = new Map(items.map((item) => [item.messageId, item]));
+    const lines: string[] = [];
+    const related: IncomingMessage[] = [];
+    for (const message of messages) {
+      const item = byId.get(message.messageId);
+      if (item?.relevant) related.push(message);
+    }
+    const highlighted = related.length > 0 ? related : messages.slice(0, 5);
+    for (const message of highlighted.slice(0, 8)) {
+      const item = byId.get(message.messageId);
+      const sender = message.sender.displayName ?? message.sender.id;
+      const time = formatLocalTime(message.createdAt);
+      const reason = item?.reason ? `｜判断：${truncate(item.reason, 80)}` : "";
+      const action = item?.actionability ? `｜类型：${item.actionability}` : "";
+      lines.push(
+        [
+          `• ${time} ${sender}${action}${reason}`,
+          `  ${truncate(message.text.replace(/\s+/g, " "), 160)}`,
+          `  message_id: ${message.messageId}`,
+        ].join("\n"),
+      );
+    }
+    const summary =
+      related.length > 0
+        ? `与你相关 ${related.length} 条，共 ${messages.length} 条`
+        : `本轮 ${messages.length} 条，未识别出强相关；下面是最近的`;
+    await this.sendToOwner([`群消息分析：${summary}`, ...lines].join("\n\n"));
   }
 
   private async handlePolledBatchJob(
@@ -1354,7 +1376,6 @@ export class ProxyRuntime {
       );
     }
     const byId = new Map(items.map((item) => [item.messageId, item]));
-    const notifications: string[] = [];
     const failed = new Set(stats.failedMessageIds);
     for (const message of messages) {
       if (failed.has(message.messageId)) continue;
@@ -1368,34 +1389,17 @@ export class ProxyRuntime {
         item.actionability === "task" &&
         item.confidence >= this.config.filter.minTaskConfidence
       ) {
-        const task = await this.ensureTask(message, item, "group_scan");
-        if (task) {
-          notifications.push(`任务：${task.title}（${Math.round(item.confidence * 100)}%）`);
-        }
-      } else {
-        notifications.push(
-          `${suggestedActionLabel(item.actionability)}：${truncate(message.text, 120)}（${Math.round(item.confidence * 100)}%）`,
-        );
+        await this.ensureTask(message, item, "group_scan");
       }
       await this.markProcessed(message);
     }
-    if (notifications.length > 0) {
-      await this.sendToApprover(
-        [
-          `群消息筛选完成：${messages.length} 条，相关 ${notifications.length} 条`,
-          ...notifications.slice(0, 10),
-          notifications.length > 10 ? `…另有 ${notifications.length - 10} 条` : "",
-        ]
-          .filter(Boolean)
-          .join("\n"),
-      );
-    }
+    await this.sendOwnerDigest(messages, items);
     this.logger.info("polled batch classified", {
       chatId: messages[0]?.chat.id,
       messages: stats.messages,
       batches: stats.batches,
       tokens: stats.totalTokens,
-      relevant: notifications.length,
+      relevant: items.filter((item) => item.relevant).length,
     });
   }
 
@@ -2883,6 +2887,17 @@ function createFilterClient(options: RuntimeOptions, logger: Logger): LlmClient 
         throw new Error("filter disabled");
       },
     };
+  }
+  if (config.filter.mode === "opencode") {
+    return new OpenCodeLlmClient({
+      bridge: options.bridge,
+      directory: config.project.worktree ?? config.repos[0]?.path ?? process.cwd(),
+      titlePrefix: config.opencode.sessionTitlePrefix,
+      keepSessions: config.opencode.keepSessions,
+      ...(config.opencode.analysisAgent ? { agent: config.opencode.analysisAgent } : {}),
+      ...(config.analysis.model ? { model: config.analysis.model } : {}),
+      logger: logger.child("filter"),
+    });
   }
   return new OpenAiCompatibleClient({
     baseUrl: config.filter.baseUrl!,

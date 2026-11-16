@@ -32,6 +32,38 @@ export function isMissingFile(error: unknown): boolean {
   );
 }
 
+export function localTimestamp(date = new Date()): string {
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const abs = Math.abs(offset);
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+    ":",
+    pad(date.getSeconds()),
+    ".",
+    String(date.getMilliseconds()).padStart(3, "0"),
+    sign,
+    pad(Math.floor(abs / 60)),
+    ":",
+    pad(abs % 60),
+  ].join("");
+}
+
+export function formatLocalTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }

@@ -62,6 +62,7 @@ function makeConfig(stateDir: string, filterEnabled = true): LoadedConfig {
         nudgeHours: 24,
       },
       filter: {
+        mode: "external",
         enabled: filterEnabled,
         keywordPrefilter: true,
         baseUrl: "http://localhost",
@@ -306,7 +307,7 @@ test("polled batch only sends one digest for relevant messages", async () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(adapter.sent.length, 1);
     const text = adapter.sent[0]?.message.kind === "text" ? adapter.sent[0].message.text : "";
-    assert.match(text, /筛选完成：3 条，相关 2 条/);
+    assert.match(text, /群消息分析：与你相关 2 条，共 3 条/);
     assert.match(text, /支付进度/);
     assert.doesNotMatch(text, /无关消息/);
     await runtime.stop();

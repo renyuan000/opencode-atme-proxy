@@ -273,6 +273,7 @@ export declare const AppConfigSchema: z.ZodObject<{
     }>>;
     filter: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
+        mode: z.ZodDefault<z.ZodEnum<["opencode", "external"]>>;
         keywordPrefilter: z.ZodDefault<z.ZodBoolean>;
         baseUrl: z.ZodOptional<z.ZodString>;
         apiKey: z.ZodOptional<z.ZodString>;
@@ -306,6 +307,7 @@ export declare const AppConfigSchema: z.ZodObject<{
             tasks?: string[] | undefined;
         }>>;
     }, "strip", z.ZodTypeAny, {
+        mode: "opencode" | "external";
         enabled: boolean;
         keywordPrefilter: boolean;
         apiKeyEnv: string;
@@ -326,6 +328,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         baseUrl?: string | undefined;
         apiKey?: string | undefined;
     }, {
+        mode?: "opencode" | "external" | undefined;
         enabled?: boolean | undefined;
         keywordPrefilter?: boolean | undefined;
         baseUrl?: string | undefined;
@@ -727,6 +730,7 @@ export declare const AppConfigSchema: z.ZodObject<{
     }>>;
 }, "strip", z.ZodTypeAny, {
     filter: {
+        mode: "opencode" | "external";
         enabled: boolean;
         keywordPrefilter: boolean;
         apiKeyEnv: string;
@@ -746,6 +750,17 @@ export declare const AppConfigSchema: z.ZodObject<{
         };
         baseUrl?: string | undefined;
         apiKey?: string | undefined;
+    };
+    opencode: {
+        baseUrl: string;
+        passwordEnv: string;
+        sessionTitlePrefix: string;
+        keepSessions: boolean;
+        sessionListVisible: boolean;
+        password?: string | undefined;
+        agent?: string | undefined;
+        analysisAgent?: string | undefined;
+        executionAgent?: string | undefined;
     };
     version: number;
     app: {
@@ -815,17 +830,6 @@ export declare const AppConfigSchema: z.ZodObject<{
             providerID: string;
             modelID: string;
         } | undefined;
-    };
-    opencode: {
-        baseUrl: string;
-        passwordEnv: string;
-        sessionTitlePrefix: string;
-        keepSessions: boolean;
-        sessionListVisible: boolean;
-        password?: string | undefined;
-        agent?: string | undefined;
-        analysisAgent?: string | undefined;
-        executionAgent?: string | undefined;
     };
     subagents: {
         enabled: boolean;
@@ -977,6 +981,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         };
     };
     filter?: {
+        mode?: "opencode" | "external" | undefined;
         enabled?: boolean | undefined;
         keywordPrefilter?: boolean | undefined;
         baseUrl?: string | undefined;
@@ -996,6 +1001,17 @@ export declare const AppConfigSchema: z.ZodObject<{
             projects?: string[] | undefined;
             tasks?: string[] | undefined;
         } | undefined;
+    } | undefined;
+    opencode?: {
+        baseUrl?: string | undefined;
+        password?: string | undefined;
+        passwordEnv?: string | undefined;
+        sessionTitlePrefix?: string | undefined;
+        agent?: string | undefined;
+        analysisAgent?: string | undefined;
+        executionAgent?: string | undefined;
+        keepSessions?: boolean | undefined;
+        sessionListVisible?: boolean | undefined;
     } | undefined;
     version?: number | undefined;
     app?: {
@@ -1031,17 +1047,6 @@ export declare const AppConfigSchema: z.ZodObject<{
             modelID: string;
         } | undefined;
         timeoutMs?: number | undefined;
-    } | undefined;
-    opencode?: {
-        baseUrl?: string | undefined;
-        password?: string | undefined;
-        passwordEnv?: string | undefined;
-        sessionTitlePrefix?: string | undefined;
-        agent?: string | undefined;
-        analysisAgent?: string | undefined;
-        executionAgent?: string | undefined;
-        keepSessions?: boolean | undefined;
-        sessionListVisible?: boolean | undefined;
     } | undefined;
     subagents?: {
         enabled?: boolean | undefined;

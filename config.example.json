@@ -45,6 +45,7 @@
   },
   "filter": {
     "enabled": true,
+    "mode": "opencode",
     "keywordPrefilter": true,
     "baseUrl": "https://your-openai-compatible-endpoint/v1",
     "apiKeyEnv": "ATME_FILTER_API_KEY",

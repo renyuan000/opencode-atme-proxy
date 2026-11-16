@@ -195,6 +195,7 @@ function demoConfig(stateDir) {
                 nudgeHours: 24,
             },
             filter: {
+                mode: "external",
                 enabled: true,
                 keywordPrefilter: true,
                 baseUrl: "http://demo",

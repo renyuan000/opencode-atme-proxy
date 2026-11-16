@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { expandHome, toErrorMessage } from "./util.js";
+import { expandHome, localTimestamp, toErrorMessage } from "./util.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -74,7 +74,7 @@ export function createLogger(options: LoggerOptions): Logger {
   const write = (level: LogLevel, message: string, fields?: Record<string, unknown>): void => {
     if (levels[level] < threshold) return;
     const entry = {
-      ts: new Date().toISOString(),
+      ts: localTimestamp(),
       level,
       scope: options.scope,
       msg: message,

@@ -19,7 +19,7 @@ function config(stateDir: string): LoadedConfig {
       platforms: { feishu: { enabled: true, appId: "cli", appSecretEnv: "X", domain: "feishu", botOpenId: "bot", me: { openId: "owner" }, approvers: [], bootstrap: { claimCodeEnv: "C", allowPrivateClaim: false, maxClaimAttemptsPer10Min: 5 }, groups: [{ chatId: "oc_1", enabled: true }], receiveAllGroupMessages: true, rateLimit: { sendPerSecond: 1000, burst: 1000 } } },
       recovery: { enabled: false, onStartup: false, lookbackSeconds: 3600, maxMessages: 10, maxPlainMessagesPerGroup: 5, includeMentions: false, includeRelevantPlain: false, resumeTasks: false, resumeMaxAgeDays: 7, staleRunningMinutes: 30, nudgeHours: 0 },
       polling: { enabled: false, intervalSeconds: 180, pageSize: 50, maxPages: 20, lookbackSeconds: 3600, overlapSeconds: 60 },
-      filter: { enabled: false, keywordPrefilter: true, apiKeyEnv: "K", model: "", maxMessagesPerBatch: 50, maxCharsPerMessage: 800, timeoutMs: 1000, minTaskConfidence: 0.7, minReviewConfidence: 0.5, profile: { name: "", role: "", keywords: [], excludeKeywords: [], projects: [], tasks: [] } },
+      filter: { mode: "external", enabled: false, keywordPrefilter: true, apiKeyEnv: "K", model: "", maxMessagesPerBatch: 50, maxCharsPerMessage: 800, timeoutMs: 1000, minTaskConfidence: 0.7, minReviewConfidence: 0.5, profile: { name: "", role: "", keywords: [], excludeKeywords: [], projects: [], tasks: [] } },
       analysis: { mode: "main_agent", timeoutMs: 1000 },
       botReply: { enabled: false, allowNoReply: true, escalateWhenUnsure: true, analyzeBeforeEscalate: false, minAnswerConfidence: 0.6, decisionMentionText: "x", maxQuestionChars: 160, perSenderPerMinute: 60, perSenderConcurrent: 1, cooldownSeconds: 0, ownerBypass: true, overloadReply: "x", maxMessagesPerSenderPerRun: 20 },
       opencode: { baseUrl: "http://127.0.0.1:1", passwordEnv: "P", sessionTitlePrefix: "atme", keepSessions: true, sessionListVisible: true },
@@ -75,7 +75,7 @@ test("filter disabled forwards a raw digest instead of dropping messages", async
     await runtime.start();
     await runtime.ingestBatch([msg("m1", "流分接下来做的事情：资产台账拆表"), msg("m2", "合并代码已更新前后端服务")]);
     await new Promise((r) => setTimeout(r, 150));
-    const digest = adapter.sent.find((text) => text.includes("未启用筛选"));
+    const digest = adapter.sent.find((text) => text.includes("群消息分析"));
     assert.ok(digest, "expected a digest message");
     assert.match(digest!, /流分接下来做的事情/);
     assert.match(digest!, /合并代码/);

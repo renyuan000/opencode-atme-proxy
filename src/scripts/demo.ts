@@ -231,6 +231,7 @@ function demoConfig(stateDir: string): LoadedConfig {
         nudgeHours: 24,
       },
       filter: {
+        mode: "external",
         enabled: true,
         keywordPrefilter: true,
         baseUrl: "http://demo",

@@ -52,6 +52,7 @@ const ProfileSchema = z.object({
 });
 const FilterSchema = z.object({
     enabled: z.boolean().default(true),
+    mode: z.enum(["opencode", "external"]).default("opencode"),
     keywordPrefilter: z.boolean().default(true),
     baseUrl: z.string().optional(),
     apiKey: z.string().optional(),
@@ -384,11 +385,11 @@ export async function loadConfig(options = {}) {
             config.platforms.feishu.bootstrap.claimCode ??
             undefined,
     };
-    if (config.filter.enabled) {
+    if (config.filter.enabled && config.filter.mode === "external") {
         if (!config.filter.baseUrl)
-            throw new Error("filter.baseUrl is required when filter is enabled");
+            throw new Error("filter.baseUrl is required when filter.mode=external");
         if (!config.filter.model)
-            throw new Error("filter.model is required when filter is enabled");
+            throw new Error("filter.model is required when filter.mode=external");
         if (!secrets.filterApiKey) {
             throw new Error(`filter API key is missing: set ${config.filter.apiKeyEnv} or filter.apiKey`);
         }

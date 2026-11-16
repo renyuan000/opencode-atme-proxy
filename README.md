@@ -209,7 +209,8 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 ### 2.1 关于“配置 LLM”
 
 - **OpenCode 已配置的模型**用于：群回复、任务分析、开发执行、评审。这部分不用重复配置，只要 `opencode serve` 在跑。
-- **批量筛选**建议单独配一个低成本 OpenAI 兼容模型（`filter.baseUrl/model/apiKey`），因为它是高频、低价值的分类调用，用主模型会烧钱。
+- **批量筛选**默认用 OpenCode 的主模型（`filter.mode="opencode"`），不需要额外配置 baseUrl/API Key。
+- 想省钱可改成独立低成本模型：`filter.mode="external"`，再配 `baseUrl/model/apiKey`。
 - 如果你想先用起来、不想单独配筛选模型：把 `filter.enabled` 设为 `false`，@ 消息仍会走 OpenCode 主模型，但周期筛选会关闭。
 - 你的 OpenCode 已配好，**不需要再配一遍模型**；`setup` 里的“低成本模型”是可选项。
 
@@ -668,7 +669,8 @@ If your console offers `im.chat.member.bot.added_v1`, the bot also auto-allowlis
 ### About "configuring an LLM"
 
 - Your existing OpenCode model is reused for replies, analysis, execution, and review. No duplicate setup; just keep `opencode serve` running.
-- Batch filtering benefits from a separate low-cost OpenAI-compatible model (`filter.baseUrl/model/apiKey`); using the main model for every message is expensive.
+- Batch filtering uses the OpenCode model by default (`filter.mode="opencode"`); no extra base URL or key needed.
+- Set `filter.mode="external"` to use a separate low-cost model.
 - If you do not want a separate filter model yet, set `filter.enabled=false`. Mentions still use the OpenCode model; periodic scanning is disabled.
 - A model already configured in OpenCode does not need to be configured again here; the low-cost model in `setup` is optional.
 

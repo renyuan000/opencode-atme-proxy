@@ -87,6 +87,7 @@ export declare class ProxyRuntime {
     private sendReplyApproval;
     private handlePolledBatch;
     private digestWithoutFilter;
+    private sendOwnerDigest;
     private handlePolledBatchJob;
     private handleGroupScan;
     private classifyOne;
