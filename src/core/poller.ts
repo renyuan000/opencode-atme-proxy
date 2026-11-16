@@ -6,6 +6,7 @@ import { createLogger } from "./logger.js";
 import { toErrorMessage } from "./util.js";
 
 export interface PollingOptions {
+  enabled: boolean;
   platform: PlatformAdapter;
   cursors: CursorStore;
   groups: Array<{ chatId: string; name?: string; enabled: boolean }>;
@@ -34,6 +35,10 @@ export class PollingService {
 
   start(): void {
     if (this.timer) return;
+    if (!this.options.enabled) {
+      this.logger.info("polling disabled by config");
+      return;
+    }
     if (!this.options.platform.capabilities().groupHistory) {
       this.logger.warn("platform has no groupHistory capability; polling disabled");
       return;

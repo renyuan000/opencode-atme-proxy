@@ -3,6 +3,7 @@ import type { PlatformAdapter } from "./ports.js";
 import type { CursorStore } from "./cursor.js";
 import type { Logger } from "./logger.js";
 export interface PollingOptions {
+    enabled: boolean;
     platform: PlatformAdapter;
     cursors: CursorStore;
     groups: Array<{

@@ -69,6 +69,7 @@ test("poll advances cursor after a successful batch", async () => {
     await cursors.load();
     const seen: IncomingMessage[] = [];
     const poller = new PollingService({
+      enabled: true,
       platform: adapter(true),
       cursors,
       groups: [{ chatId: "chat1", enabled: true }],
@@ -96,6 +97,7 @@ test("poll keeps cursor on failure", async () => {
     const cursors = new CursorStore({ file: join(dir, "cursors.json") });
     await cursors.load();
     const poller = new PollingService({
+      enabled: true,
       platform: adapter(true, true),
       cursors,
       groups: [{ chatId: "chat1", enabled: true }],
@@ -121,6 +123,7 @@ test("poll does nothing when platform lacks history", async () => {
     await cursors.load();
     let called = false;
     const poller = new PollingService({
+      enabled: true,
       platform: adapter(false),
       cursors,
       groups: [{ chatId: "chat1", enabled: true }],

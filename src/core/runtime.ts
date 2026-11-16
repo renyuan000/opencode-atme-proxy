@@ -247,6 +247,7 @@ export class ProxyRuntime {
       logger: this.logger.child("executor"),
     });
     this.poller = new PollingService({
+      enabled: this.config.polling.enabled,
       platform: options.platform,
       cursors: this.cursors,
       groups: this.config.platforms.feishu.groups,
@@ -1304,11 +1305,42 @@ export class ProxyRuntime {
     }
   }
 
+  private async digestWithoutFilter(messages: IncomingMessage[]): Promise<void> {
+    const usable = messages.filter(
+      (message) => message.senderType === "user" && message.text.trim().length > 0,
+    );
+    if (usable.length === 0) {
+      for (const message of messages) await this.markProcessed(message);
+      return;
+    }
+    const lines = usable.slice(0, 10).map((message) => {
+      const name = message.sender.displayName ?? message.sender.id;
+      return `- ${name}: ${truncate(message.text, 120)}`;
+    });
+    await this.sendToOwner(
+      [
+        `群消息（未启用筛选，原样转发）：${usable.length} 条`,
+        ...lines,
+        usable.length > 10 ? `…另有 ${usable.length - 10} 条` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    for (const message of messages) await this.markProcessed(message);
+    this.logger.info("polled batch forwarded without filter", {
+      chatId: messages[0]?.chat.id,
+      messages: usable.length,
+    });
+  }
+
   private async handlePolledBatchJob(
     messages: IncomingMessage[],
     signal: AbortSignal,
   ): Promise<void> {
-    if (!this.filterEnabled) return;
+    if (!this.filterEnabled) {
+      await this.digestWithoutFilter(messages);
+      return;
+    }
     const { items, stats } = await this.relevance.classify(messages, signal);
     if (stats.totalTokens > this.config.budget.maxTokensPerRun) {
       await this.sendToApprover(

@@ -16,6 +16,10 @@ export class PollingService {
     start() {
         if (this.timer)
             return;
+        if (!this.options.enabled) {
+            this.logger.info("polling disabled by config");
+            return;
+        }
         if (!this.options.platform.capabilities().groupHistory) {
             this.logger.warn("platform has no groupHistory capability; polling disabled");
             return;
