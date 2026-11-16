@@ -300,7 +300,36 @@ function toFeishuPayload(receiveId: string | undefined, message: OutboundMessage
   };
 }
 
+function buttonState(
+  resolved: boolean,
+  base: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!resolved) return base;
+  return {
+    ...base,
+    type: "default",
+    disabled: true,
+    value: {},
+  };
+}
+
+function resolutionLine(view: Parameters<PlatformAdapter["renderApproval"]>[0]): string {
+  if (!view.resolution) return "";
+  const label =
+    view.resolution === "approved"
+      ? "已批准"
+      : view.resolution === "rejected"
+        ? "已拒绝"
+        : view.resolution === "self"
+          ? "已标记我自己回"
+          : view.resolution === "revised"
+            ? "已请求修改"
+            : "已过期";
+  return `\n**处理结果**：${label}${view.resolutionNote ? `（${view.resolutionNote}）` : ""}`;
+}
+
 export function renderApprovalCard(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage {
+  const resolved = Boolean(view.resolution);
   if (view.mode === "reply") {
     return {
       kind: "card",
@@ -308,7 +337,10 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
         config: { wide_screen_mode: true },
         header: {
           template: "blue",
-          title: { tag: "plain_text", content: "需要你确认：是否代答" },
+          title: {
+          tag: "plain_text",
+          content: resolved ? "已处理：代答审批" : "需要你确认：是否代答",
+        },
         },
         elements: [
           {
@@ -319,30 +351,30 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
                 `**来源**：${view.summary}`,
                 ...(view.draft ? [`**拟回复**：${view.draft}`] : []),
                 `**方式**：${view.title}`,
-              ].join("\n"),
+              ].join("\n") + resolutionLine(view),
             },
           },
           {
             tag: "action",
             actions: [
-              {
+              buttonState(resolved, {
                 tag: "button",
                 text: { tag: "plain_text", content: "代答" },
                 type: "primary",
                 value: { a: "approve", t: view.taskId, h: view.planHash },
-              },
-              {
+              }),
+              buttonState(resolved, {
                 tag: "button",
                 text: { tag: "plain_text", content: "忽略" },
                 type: "default",
                 value: { a: "reject", t: view.taskId, h: view.planHash },
-              },
-              {
+              }),
+              buttonState(resolved, {
                 tag: "button",
                 text: { tag: "plain_text", content: "我自己回" },
                 type: "default",
                 value: { a: "self", t: view.taskId, h: view.planHash },
-              },
+              }),
             ],
           },
         ],
@@ -368,31 +400,34 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
       config: { wide_screen_mode: true },
       header: {
         template: "blue",
-        title: { tag: "plain_text", content: `任务待批准：${view.title}` },
+        title: {
+          tag: "plain_text",
+          content: resolved ? `已处理：${view.title}` : `任务待批准：${view.title}`,
+        },
       },
       elements: [
-        { tag: "div", text: { tag: "lark_md", content: lines.join("\n") } },
+        { tag: "div", text: { tag: "lark_md", content: lines.join("\n") + resolutionLine(view) } },
         {
           tag: "action",
           actions: [
-            {
+            buttonState(resolved, {
               tag: "button",
               text: { tag: "plain_text", content: "批准开发" },
               type: "primary",
               value: { a: "approve", t: view.taskId, h: view.planHash },
-            },
-            {
+            }),
+            buttonState(resolved, {
               tag: "button",
               text: { tag: "plain_text", content: "修改计划" },
               type: "default",
               value: { a: "revise", t: view.taskId, h: view.planHash },
-            },
-            {
+            }),
+            buttonState(resolved, {
               tag: "button",
               text: { tag: "plain_text", content: "拒绝" },
               type: "danger",
               value: { a: "reject", t: view.taskId, h: view.planHash },
-            },
+            }),
           ],
         },
       ],

@@ -102,6 +102,7 @@ export declare class ProxyRuntime {
     private resumeOpenTasks;
     private sweepExpiredApprovals;
     private isAuthorizedActor;
+    private resolvedCardFor;
     private onAction;
     private approveTask;
     private approveReply;

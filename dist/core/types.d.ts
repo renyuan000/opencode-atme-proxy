@@ -171,6 +171,7 @@ export interface PlatformAction {
 export interface PlatformActionResult {
     ok: boolean;
     toast?: string;
+    card?: unknown;
 }
 export interface ApprovalView {
     taskId: string;
@@ -189,6 +190,8 @@ export interface ApprovalView {
     risks: string[];
     acceptanceCriteria: string[];
     openQuestions: string[];
+    resolution?: "approved" | "rejected" | "self" | "revised" | "expired";
+    resolutionNote?: string;
 }
 export type OutboundMessage = {
     kind: "text";

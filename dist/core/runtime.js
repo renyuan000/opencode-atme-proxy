@@ -1745,6 +1745,31 @@ export class ProxyRuntime {
         }
         return this.options.platform.verifyActor(actor);
     }
+    resolvedCardFor(pending, resolution) {
+        const taskId = pending.taskId;
+        const title = pending.mode === "reply"
+            ? pending.style === "detailed"
+                ? "对方要求详细回答"
+                : "代答"
+            : `任务 ${taskId}`;
+        const view = {
+            taskId,
+            planHash: pending.planHash,
+            mode: pending.mode,
+            title,
+            summary: pending.draft ?? "（无草稿）",
+            repo: "—",
+            baseBranch: "—",
+            targetBranch: "—",
+            commands: [],
+            risks: [],
+            acceptanceCriteria: [],
+            openQuestions: [],
+            resolution,
+        };
+        const rendered = this.options.platform.renderApproval(view);
+        return rendered.kind === "card" ? rendered.card : undefined;
+    }
     async onAction(action) {
         const pending = this.pending.get(`${action.taskId}:develop`) ??
             this.pending.get(`${action.taskId}:reply`);
@@ -1765,14 +1790,26 @@ export class ProxyRuntime {
         }
         if (action.action === "approve") {
             await this.approveTask(action);
-            return { ok: true, toast: "已批准" };
+            return {
+                ok: true,
+                toast: "已批准",
+                card: this.resolvedCardFor(pending, "approved"),
+            };
         }
         if (action.action === "reject") {
             await this.rejectTask(action);
-            return { ok: true, toast: "已拒绝" };
+            return {
+                ok: true,
+                toast: "已拒绝",
+                card: this.resolvedCardFor(pending, "rejected"),
+            };
         }
         if (action.action === "revise") {
-            return { ok: true, toast: "请回复补充信息" };
+            return {
+                ok: true,
+                toast: "请回复补充信息",
+                card: this.resolvedCardFor(pending, "revised"),
+            };
         }
         if (action.action === "self") {
             const task = await this.tasks.get(action.taskId);
@@ -1783,7 +1820,11 @@ export class ProxyRuntime {
             }
             this.pending.deleteForTask(action.taskId);
             await this.pending.flush();
-            return { ok: true, toast: "已标记为我自己回" };
+            return {
+                ok: true,
+                toast: "已标记为我自己回",
+                card: this.resolvedCardFor(pending, "self"),
+            };
         }
         return { ok: false, toast: "未知操作" };
     }

@@ -137,6 +137,7 @@ function toCardResponse(result) {
             type: result.ok ? "success" : "error",
             content: result.toast ?? (result.ok ? "已处理" : "处理失败"),
         },
+        ...(result.card ? { card: { type: "raw", data: result.card } } : {}),
     };
 }
 //# sourceMappingURL=events.js.map
