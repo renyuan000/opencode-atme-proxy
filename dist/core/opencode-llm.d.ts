@@ -5,7 +5,6 @@ export interface OpenCodeLlmOptions {
     bridge: OpenCodeBridge;
     directory: string;
     titlePrefix: string;
-    keepSessions: boolean;
     agent?: string;
     model?: {
         providerID: string;

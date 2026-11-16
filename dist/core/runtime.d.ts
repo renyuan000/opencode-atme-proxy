@@ -113,6 +113,7 @@ export declare class ProxyRuntime {
     private runOpenCodeExecution;
     private coordinatorSession;
     private createChildSession;
+    private archiveTaskChildren;
     private sweepSessions;
     private finishSession;
     private memoryBlock;

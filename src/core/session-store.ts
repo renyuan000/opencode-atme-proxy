@@ -11,6 +11,7 @@ export interface SessionRecord {
   createdAt: number;
   kind: SessionKind;
   taskId?: string;
+  archivedAt?: number;
 }
 
 interface SessionFile {
@@ -47,6 +48,7 @@ export class SessionStore {
                   : 0,
             kind: value.kind === "child" ? "child" : "coordinator",
             ...(typeof value.taskId === "string" ? { taskId: value.taskId } : {}),
+            ...(typeof value.archivedAt === "number" ? { archivedAt: value.archivedAt } : {}),
           });
         }
       }
@@ -65,7 +67,7 @@ export class SessionStore {
     key: string,
     sessionId: string,
     directory: string,
-    meta?: { kind?: SessionKind; taskId?: string; createdAt?: number },
+    meta?: { kind?: SessionKind; taskId?: string; createdAt?: number; archivedAt?: number },
   ): void {
     const now = Date.now();
     const existing = this.sessions.get(key);
@@ -76,6 +78,9 @@ export class SessionStore {
       createdAt: meta?.createdAt ?? existing?.createdAt ?? now,
       kind: meta?.kind ?? existing?.kind ?? "coordinator",
       ...(meta?.taskId ?? existing?.taskId ? { taskId: meta?.taskId ?? existing?.taskId } : {}),
+      ...(meta?.archivedAt ?? existing?.archivedAt
+        ? { archivedAt: meta?.archivedAt ?? existing?.archivedAt }
+        : {}),
     });
     this.dirty = true;
   }
@@ -87,6 +92,12 @@ export class SessionStore {
 
   delete(key: string): void {
     if (this.sessions.delete(key)) this.dirty = true;
+  }
+
+  findByTask(taskId: string, kind: SessionKind = "child"): Array<[string, SessionRecord]> {
+    return [...this.sessions.entries()].filter(
+      ([, record]) => record.kind === kind && record.taskId === taskId,
+    );
   }
 
   async flush(): Promise<void> {

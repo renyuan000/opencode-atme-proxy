@@ -37,14 +37,12 @@ export class OpenCodeLlmClient {
             };
         }
         finally {
-            if (!this.options.keepSessions) {
-                await this.options.bridge.deleteSession(sessionId).catch((error) => {
-                    this.logger.warn("failed to delete filter session", {
-                        sessionId,
-                        error: toErrorMessage(error),
-                    });
+            await this.options.bridge.deleteSession(sessionId).catch((error) => {
+                this.logger.warn("failed to delete filter session", {
+                    sessionId,
+                    error: toErrorMessage(error),
                 });
-            }
+            });
         }
     }
 }

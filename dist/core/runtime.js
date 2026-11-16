@@ -1942,6 +1942,7 @@ export class ProxyRuntime {
                 taskId: task.id,
                 details: { branch: execution.branch, repo: execution.repoId },
             });
+            await this.archiveTaskChildren(task.id);
         }
         finally {
             release();
@@ -2032,6 +2033,7 @@ export class ProxyRuntime {
                 taskId: task.id,
                 details: { worktree },
             });
+            await this.archiveTaskChildren(task.id);
         }
         catch (error) {
             task.state = "failed";
@@ -2267,6 +2269,31 @@ export class ProxyRuntime {
             throw error;
         }
     }
+    async archiveTaskChildren(taskId) {
+        if (!this.config.subagents.enabled)
+            return;
+        for (const [key, record] of this.sessions.findByTask(taskId)) {
+            if (record.archivedAt)
+                continue;
+            try {
+                await this.options.bridge.archiveSession?.(record.sessionId, record.directory);
+                this.sessions.set(key, record.sessionId, record.directory, {
+                    ...(record.taskId ? { taskId: record.taskId } : {}),
+                    kind: "child",
+                    createdAt: record.createdAt,
+                    archivedAt: Date.now(),
+                });
+            }
+            catch (error) {
+                this.logger.warn("failed to archive task child session", {
+                    sessionId: record.sessionId,
+                    taskId,
+                    error: toErrorMessage(error),
+                });
+            }
+        }
+        await this.sessions.flush();
+    }
     async sweepSessions() {
         if (!this.config.subagents.enabled)
             return;
@@ -2275,16 +2302,22 @@ export class ProxyRuntime {
         const deleteMs = this.config.subagents.deleteAfterDays * 86_400_000;
         for (const [key, record] of this.sessions.list("child")) {
             const age = now - record.createdAt;
-            if (age < archiveMs)
+            const archivedAge = record.archivedAt ? now - record.archivedAt : 0;
+            if (age < archiveMs && archivedAge < deleteMs)
                 continue;
             try {
                 if (age >= deleteMs) {
                     await this.options.bridge.deleteSession(record.sessionId);
                     this.sessions.delete(key);
                 }
-                else {
+                else if (!record.archivedAt) {
                     await this.options.bridge.archiveSession?.(record.sessionId, record.directory);
-                    this.sessions.delete(key);
+                    this.sessions.set(key, record.sessionId, record.directory, {
+                        ...(record.taskId ? { taskId: record.taskId } : {}),
+                        kind: "child",
+                        createdAt: record.createdAt,
+                        archivedAt: now,
+                    });
                 }
             }
             catch (error) {
@@ -2625,7 +2658,6 @@ function createFilterClient(options, logger) {
             bridge: options.bridge,
             directory: config.project.worktree ?? config.repos[0]?.path ?? process.cwd(),
             titlePrefix: config.opencode.sessionTitlePrefix,
-            keepSessions: config.opencode.keepSessions,
             ...(config.opencode.analysisAgent ? { agent: config.opencode.analysisAgent } : {}),
             ...(config.analysis.model ? { model: config.analysis.model } : {}),
             logger: logger.child("filter"),

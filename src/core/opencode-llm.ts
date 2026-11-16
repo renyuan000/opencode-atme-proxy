@@ -8,7 +8,6 @@ export interface OpenCodeLlmOptions {
   bridge: OpenCodeBridge;
   directory: string;
   titlePrefix: string;
-  keepSessions: boolean;
   agent?: string;
   model?: { providerID: string; modelID: string };
   logger?: Logger;
@@ -50,14 +49,12 @@ export class OpenCodeLlmClient implements LlmClient {
         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
       };
     } finally {
-      if (!this.options.keepSessions) {
-        await this.options.bridge.deleteSession(sessionId).catch((error) => {
-          this.logger.warn("failed to delete filter session", {
-            sessionId,
-            error: toErrorMessage(error),
-          });
+      await this.options.bridge.deleteSession(sessionId).catch((error) => {
+        this.logger.warn("failed to delete filter session", {
+          sessionId,
+          error: toErrorMessage(error),
         });
-      }
+      });
     }
   }
 }
