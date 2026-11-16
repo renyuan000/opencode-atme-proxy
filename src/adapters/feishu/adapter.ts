@@ -44,6 +44,7 @@ export function mapFeishuMessage(raw: FeishuRawMessage): IncomingMessage | undef
     ...(mention.name ? { displayName: mention.name } : {}),
   }));
   const text = extractText(raw, mentions);
+  const attachments = extractAttachments(raw);
   return {
     platform: "feishu",
     messageId,
@@ -60,6 +61,7 @@ export function mapFeishuMessage(raw: FeishuRawMessage): IncomingMessage | undef
     mentions,
     createdAt: Number(raw.create_time ?? Date.now()),
     rawType: raw.message_type ?? "unknown",
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
 
@@ -72,6 +74,7 @@ function normalizeSenderType(value: string | undefined): "user" | "bot" | "syste
 function extractText(raw: FeishuRawMessage, mentions: ActorRef[]): string {
   const type = raw.message_type ?? "";
   if (!raw.content) return type ? `[${type}]` : "";
+  if (type === "image") return "[图片]";
   if (type !== "text" && type !== "post") return `[${type}]`;
   try {
     const parsed = JSON.parse(raw.content) as Record<string, unknown>;
@@ -98,13 +101,67 @@ function extractPostText(content: unknown[]): string {
   for (const block of content) {
     if (!Array.isArray(block)) continue;
     for (const item of block) {
-      if (item && typeof item === "object" && "text" in item) {
-        const value = (item as { text?: unknown }).text;
-        if (typeof value === "string") parts.push(value);
+      if (!item || typeof item !== "object") continue;
+      const record = item as Record<string, unknown>;
+      if (typeof record.text === "string") {
+        parts.push(record.text);
+        continue;
+      }
+      if (record.tag === "img") {
+        const width = typeof record.width === "number" ? record.width : undefined;
+        const height = typeof record.height === "number" ? record.height : undefined;
+        parts.push(
+          width && height ? `[图片 ${width}x${height}，未解析]` : "[图片，未解析]",
+        );
+        continue;
+      }
+      if (record.tag === "media") {
+        parts.push("[视频，未解析]");
+        continue;
+      }
+      if (record.tag === "file") {
+        const name = typeof record.file_name === "string" ? record.file_name : "";
+        parts.push(name ? `[文件 ${name}，未解析]` : "[文件，未解析]");
       }
     }
   }
   return parts.join("");
+}
+
+function extractAttachments(raw: FeishuRawMessage): Array<{
+  kind: "image" | "file" | "audio" | "video";
+  name?: string;
+}> {
+  const type = raw.message_type ?? "";
+  if (!raw.content) return [];
+  try {
+    const parsed = JSON.parse(raw.content) as Record<string, unknown>;
+    if (type === "image") {
+      const key = typeof parsed.image_key === "string" ? parsed.image_key : undefined;
+      return [{ kind: "image", ...(key ? { name: key } : {}) }];
+    }
+    if (type === "post" && Array.isArray(parsed.content)) {
+      const result: Array<{ kind: "image" | "file" | "audio" | "video"; name?: string }> = [];
+      for (const block of parsed.content) {
+        if (!Array.isArray(block)) continue;
+        for (const item of block) {
+          if (!item || typeof item !== "object") continue;
+          const record = item as Record<string, unknown>;
+          if (record.tag === "img") {
+            const key = typeof record.image_key === "string" ? record.image_key : undefined;
+            result.push({ kind: "image", ...(key ? { name: key } : {}) });
+          } else if (record.tag === "file") {
+            const name = typeof record.file_name === "string" ? record.file_name : undefined;
+            result.push({ kind: "file", ...(name ? { name } : {}) });
+          }
+        }
+      }
+      return result;
+    }
+  } catch {
+    return [];
+  }
+  return [];
 }
 
 function escapeRegExp(value: string): string {

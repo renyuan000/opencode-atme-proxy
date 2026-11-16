@@ -120,6 +120,7 @@ export interface TaskRecord {
   };
   dedupKey: string;
   actionability?: Actionability;
+  burstMessages?: Array<{ messageId: string; text: string; at: number }>;
   lastNudgeAt?: number;
   state: TaskState;
   createdAt: number;

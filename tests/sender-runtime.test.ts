@@ -22,7 +22,7 @@ function config(stateDir: string): LoadedConfig {
     secrets: { appSecret: "s", filterApiKey: "k" },
     config: {
       version: 1,
-      app: { stateDir, logLevel: "error" },
+      app: { stateDir, logLevel: "error", logToFile: false },
       platforms: {
         feishu: {
           enabled: true,
@@ -82,7 +82,8 @@ function config(stateDir: string): LoadedConfig {
         deleteAfterDays: 30,
       },
       directChat: { enabled: false, onlyOwner: true },
-      context: { enabled: false, maxMessagesPerChat: 20, maxCharsPerMessage: 300, ttlDays: 7, maxChats: 100, includeInAnalysis: false, storeAnalysisSnippets: false, storeMentions: true, storeRelevantScan: true, storeOwnerDm: true },
+      context: { enabled: false, maxMessagesPerChat: 20, maxCharsPerMessage: 300, ttlDays: 7, maxChats: 100, includeInAnalysis: false, storeAnalysisSnippets: false, storeMentions: true, storeRelevantScan: true, storeOwnerDm: true, burstWindowSeconds: 15,
+        burstWaitMs: 0, burstMaxMessages: 5, burstMaxChars: 4000, burstGrouping: false },
       memory: {
         enabled: false,
         extract: false,

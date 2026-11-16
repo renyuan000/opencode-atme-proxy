@@ -137,6 +137,11 @@ const ContextSchema = z
     storeMentions: z.boolean().default(true),
     storeRelevantScan: z.boolean().default(true),
     storeOwnerDm: z.boolean().default(true),
+    burstWindowSeconds: z.number().int().min(1).max(300).default(15),
+    burstWaitMs: z.number().int().min(0).max(10_000).default(1500),
+    burstMaxMessages: z.number().int().min(1).max(20).default(5),
+    burstMaxChars: z.number().int().min(100).max(20000).default(4000),
+    burstGrouping: z.boolean().default(true),
 })
     .default({});
 const MemorySchema = z
@@ -222,7 +227,7 @@ const ConcurrencySchema = z.object({
     scanConcurrency: z.number().int().min(1).default(1),
     perChat: z.number().int().min(1).default(1),
     maxQueue: z.number().int().min(1).default(200),
-    mentionTimeoutMs: z.number().int().min(1000).default(60_000),
+    mentionTimeoutMs: z.number().int().min(1000).default(120_000),
     scanTimeoutMs: z.number().int().min(1000).default(120_000),
     analysisTimeoutMs: z.number().int().min(1000).default(180_000),
     maxRetries: z.number().int().min(0).default(1),
@@ -261,6 +266,7 @@ export const AppConfigSchema = z.object({
         stateDir: z.string().default("~/.local/state/opencode-atme-proxy"),
         logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
         logFile: z.string().optional(),
+        logToFile: z.boolean().default(true),
     })
         .default({}),
     platforms: z.object({ feishu: FeishuSchema }),
@@ -418,6 +424,10 @@ export function resolveStateDir(config) {
     return expandHome(config.app.stateDir);
 }
 export function resolveLogFile(config) {
-    return config.app.logFile ? expandHome(config.app.logFile) : undefined;
+    if (config.app.logFile)
+        return expandHome(config.app.logFile);
+    if (!config.app.logToFile)
+        return undefined;
+    return expandHome(`${config.app.stateDir}/proxy.log`);
 }
 //# sourceMappingURL=config.js.map

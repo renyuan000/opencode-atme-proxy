@@ -100,7 +100,12 @@
     "storeAnalysisSnippets": false,
     "storeMentions": true,
     "storeRelevantScan": true,
-    "storeOwnerDm": true
+    "storeOwnerDm": true,
+    "burstGrouping": true,
+    "burstWaitMs": 1500,
+    "burstWindowSeconds": 15,
+    "burstMaxMessages": 5,
+    "burstMaxChars": 4000
   },
   "memory": {
     "enabled": true,

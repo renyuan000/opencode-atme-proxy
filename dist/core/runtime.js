@@ -16,6 +16,7 @@ import { Semaphore, TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
+import { selectBurstExtensions } from "./burst.js";
 import { ProjectStore } from "./project-store.js";
 import { ChatContextStore } from "./chat-context.js";
 import { MemoryStore } from "./memory-store.js";
@@ -49,6 +50,7 @@ export class ProxyRuntime {
     childSlots;
     taskChildCounts = new Map();
     chatNames = new Map();
+    recentMessages = new Map();
     tasks;
     approvals;
     audit;
@@ -451,6 +453,7 @@ export class ProxyRuntime {
         if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey))
             return;
         this.activeMessageIds.add(dedupKey);
+        this.rememberRecent(message);
         const mention = this.isMention(message);
         const mentionBot = this.isMentionBot(message);
         const ownerId = this.ownerOpenId();
@@ -697,7 +700,85 @@ export class ProxyRuntime {
                 messageId: message.messageId,
                 error: toErrorMessage(error),
             });
+            await this.safeReply(message, `处理失败：${toErrorMessage(error)}\n请检查 opencode serve 是否运行，或稍后重试。`);
         }
+    }
+    recentKey(message) {
+        return `${message.platform}:${message.chat.id}:${message.sender.id}`;
+    }
+    rememberRecent(message) {
+        if (!this.config.context.burstGrouping)
+            return;
+        const key = this.recentKey(message);
+        const list = this.recentMessages.get(key) ?? [];
+        list.push(message);
+        const cutoff = Date.now() - 5 * 60_000;
+        const trimmed = list.filter((item) => item.createdAt >= cutoff).slice(-20);
+        this.recentMessages.set(key, trimmed);
+    }
+    collectBurst(message) {
+        if (!this.config.context.burstGrouping)
+            return [];
+        const key = this.recentKey(message);
+        const all = this.recentMessages.get(key) ?? [];
+        const windowMs = this.config.context.burstWindowSeconds * 1000;
+        const result = [];
+        let lastAt = message.createdAt;
+        let chars = 0;
+        for (const item of all) {
+            if (item.messageId === message.messageId)
+                continue;
+            if (item.chat.id !== message.chat.id)
+                continue;
+            if (item.sender.id !== message.sender.id)
+                continue;
+            if (item.createdAt <= message.createdAt)
+                continue;
+            if (item.createdAt - lastAt > windowMs)
+                break;
+            if (result.length >= this.config.context.burstMaxMessages)
+                break;
+            chars += item.text.length;
+            if (chars > this.config.context.burstMaxChars)
+                break;
+            result.push(item);
+            lastAt = item.createdAt;
+        }
+        return result;
+    }
+    async waitForBurst(message, signal) {
+        if (!this.config.context.burstGrouping)
+            return;
+        const waitMs = this.config.context.burstWaitMs;
+        if (signal.aborted)
+            return;
+        await new Promise((resolve) => {
+            const timer = setTimeout(resolve, waitMs);
+            timer.unref?.();
+            signal.addEventListener("abort", () => {
+                clearTimeout(timer);
+                resolve();
+            }, { once: true });
+        });
+    }
+    async applyBurstGrouping(message, signal) {
+        const candidates = this.collectBurst(message);
+        if (candidates.length === 0)
+            return [];
+        const decision = await selectBurstExtensions(this.llm, message, candidates);
+        if (decision.usedFallback) {
+            this.logger.warn("burst grouping fell back; keeping followups together", {
+                base: message.messageId,
+                candidates: candidates.length,
+            });
+        }
+        if (decision.rejected.length > 0) {
+            this.logger.info("burst grouping rejected unrelated followups", {
+                base: message.messageId,
+                rejected: decision.rejected.map((item) => item.messageId),
+            });
+        }
+        return decision.selected;
     }
     async handleMessage(message, signal) {
         const mentionMe = this.isMentionMe(message);
@@ -715,7 +796,8 @@ export class ProxyRuntime {
         await this.handleGroupScan(message, signal);
     }
     async handleBotMention(message, signal) {
-        const intent = await this.decideBotIntent(message, signal);
+        const enriched = message;
+        const intent = await this.decideBotIntent(enriched, signal);
         if (intent.action === "no_reply") {
             this.logger.info("bot mention skipped by necessity check", {
                 messageId: message.messageId,
@@ -771,7 +853,7 @@ export class ProxyRuntime {
             ackTimer.unref?.();
         let replied = false;
         try {
-            const reply = await this.askOpenCode(message, style, signal);
+            const reply = await this.askOpenCode(enriched, style, signal);
             if (ackTimer)
                 clearTimeout(ackTimer);
             replied = await this.safeReply(message, this.sanitize(reply));
@@ -963,7 +1045,10 @@ export class ProxyRuntime {
         }
     }
     async handleMeMention(message, signal) {
-        const classification = await this.classifyOne(message, signal);
+        await this.waitForBurst(message, signal);
+        const burst = await this.applyBurstGrouping(message, signal);
+        const enriched = mergeBurst(message, burst);
+        const classification = await this.classifyOne(enriched, signal);
         const style = detectReplyStyle(message, this.replyOptions);
         const task = await this.createReplyTask(message, classification);
         const autoReply = this.config.policy.autoReplyOnMention &&
@@ -2772,5 +2857,18 @@ function stringArray(value) {
     return Array.isArray(value)
         ? value.filter((item) => typeof item === "string")
         : [];
+}
+function mergeBurst(base, followups) {
+    if (followups.length === 0)
+        return base;
+    const attachments = [
+        ...(base.attachments ?? []),
+        ...followups.flatMap((item) => item.attachments ?? []),
+    ];
+    return {
+        ...base,
+        text: [base.text, ...followups.map((item) => item.text)].filter(Boolean).join("\n"),
+        ...(attachments.length > 0 ? { attachments } : {}),
+    };
 }
 //# sourceMappingURL=runtime.js.map

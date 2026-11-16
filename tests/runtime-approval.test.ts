@@ -15,7 +15,7 @@ function cfg(stateDir: string, autoReply = false, filterEnabled = false): Loaded
     secrets: { appSecret: "s", filterApiKey: "k" },
     config: {
       version: 1,
-      app: { stateDir, logLevel: "error" },
+      app: { stateDir, logLevel: "error", logToFile: false },
       platforms: { feishu: { enabled: true, appId: "cli", appSecretEnv: "X", domain: "feishu", botOpenId: "bot", me: { openId: "me" }, approvers: [{ openId: "me" }], bootstrap: { claimCodeEnv: "ATME_CLAIM_CODE", allowPrivateClaim: true, maxClaimAttemptsPer10Min: 5 }, groups: [{ chatId: "chat", enabled: true }], receiveAllGroupMessages: false, rateLimit: { sendPerSecond: 1000, burst: 1000 } } },
       polling: { enabled: false, intervalSeconds: 180, pageSize: 50, maxPages: 20, lookbackSeconds: 3600, overlapSeconds: 60 },
       recovery: {
@@ -77,6 +77,11 @@ function cfg(stateDir: string, autoReply = false, filterEnabled = false): Loaded
         storeMentions: true,
         storeRelevantScan: true,
         storeOwnerDm: true,
+        burstWindowSeconds: 15,
+      burstWaitMs: 0,
+        burstMaxMessages: 5,
+        burstMaxChars: 4000,
+        burstGrouping: false,
       },
       memory: {
         enabled: false,

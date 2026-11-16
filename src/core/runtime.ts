@@ -45,6 +45,7 @@ import { Semaphore, TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
+import { selectBurstExtensions } from "./burst.js";
 import { ProjectStore } from "./project-store.js";
 import { ChatContextStore, type ContextOrigin } from "./chat-context.js";
 import { MemoryStore, type MemoryKind } from "./memory-store.js";
@@ -101,6 +102,7 @@ export class ProxyRuntime {
   private readonly childSlots: Semaphore;
   private readonly taskChildCounts = new Map<string, number>();
   private readonly chatNames = new Map<string, { name: string; at: number }>();
+  private readonly recentMessages = new Map<string, IncomingMessage[]>();
   private readonly tasks: TaskStore;
   private readonly approvals: ApprovalStore;
   private readonly audit: AuditLog;
@@ -534,6 +536,7 @@ export class ProxyRuntime {
     const dedupKey = `${message.platform}:${message.messageId}`;
     if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey)) return;
     this.activeMessageIds.add(dedupKey);
+    this.rememberRecent(message);
     const mention = this.isMention(message);
     const mentionBot = this.isMentionBot(message);
     const ownerId = this.ownerOpenId();
@@ -784,7 +787,88 @@ export class ProxyRuntime {
         messageId: message.messageId,
         error: toErrorMessage(error),
       });
+      await this.safeReply(
+        message,
+        `处理失败：${toErrorMessage(error)}\n请检查 opencode serve 是否运行，或稍后重试。`,
+      );
     }
+  }
+
+  private recentKey(message: IncomingMessage): string {
+    return `${message.platform}:${message.chat.id}:${message.sender.id}`;
+  }
+
+  private rememberRecent(message: IncomingMessage): void {
+    if (!this.config.context.burstGrouping) return;
+    const key = this.recentKey(message);
+    const list = this.recentMessages.get(key) ?? [];
+    list.push(message);
+    const cutoff = Date.now() - 5 * 60_000;
+    const trimmed = list.filter((item) => item.createdAt >= cutoff).slice(-20);
+    this.recentMessages.set(key, trimmed);
+  }
+
+  private collectBurst(message: IncomingMessage): IncomingMessage[] {
+    if (!this.config.context.burstGrouping) return [];
+    const key = this.recentKey(message);
+    const all = this.recentMessages.get(key) ?? [];
+    const windowMs = this.config.context.burstWindowSeconds * 1000;
+    const result: IncomingMessage[] = [];
+    let lastAt = message.createdAt;
+    let chars = 0;
+    for (const item of all) {
+      if (item.messageId === message.messageId) continue;
+      if (item.chat.id !== message.chat.id) continue;
+      if (item.sender.id !== message.sender.id) continue;
+      if (item.createdAt <= message.createdAt) continue;
+      if (item.createdAt - lastAt > windowMs) break;
+      if (result.length >= this.config.context.burstMaxMessages) break;
+      chars += item.text.length;
+      if (chars > this.config.context.burstMaxChars) break;
+      result.push(item);
+      lastAt = item.createdAt;
+    }
+    return result;
+  }
+
+  private async waitForBurst(message: IncomingMessage, signal: AbortSignal): Promise<void> {
+    if (!this.config.context.burstGrouping) return;
+    const waitMs = this.config.context.burstWaitMs;
+    if (signal.aborted) return;
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, waitMs);
+      timer.unref?.();
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
+    });
+  }
+
+  private async applyBurstGrouping(
+    message: IncomingMessage,
+    signal: AbortSignal,
+  ): Promise<IncomingMessage[]> {
+    const candidates = this.collectBurst(message);
+    if (candidates.length === 0) return [];
+    const decision = await selectBurstExtensions(this.llm, message, candidates);
+    if (decision.usedFallback) {
+      this.logger.warn("burst grouping fell back; keeping followups together", {
+        base: message.messageId,
+        candidates: candidates.length,
+      });
+    }
+    if (decision.rejected.length > 0) {
+      this.logger.info("burst grouping rejected unrelated followups", {
+        base: message.messageId,
+        rejected: decision.rejected.map((item) => item.messageId),
+      });
+    }
+    return decision.selected;
   }
 
   private async handleMessage(message: IncomingMessage, signal: AbortSignal): Promise<void> {
@@ -803,7 +887,8 @@ export class ProxyRuntime {
   }
 
   private async handleBotMention(message: IncomingMessage, signal: AbortSignal): Promise<void> {
-    const intent = await this.decideBotIntent(message, signal);
+    const enriched = message;
+    const intent = await this.decideBotIntent(enriched, signal);
     if (intent.action === "no_reply") {
       this.logger.info("bot mention skipped by necessity check", {
         messageId: message.messageId,
@@ -859,7 +944,7 @@ export class ProxyRuntime {
     if (ackTimer) ackTimer.unref?.();
     let replied = false;
     try {
-      const reply = await this.askOpenCode(message, style, signal);
+      const reply = await this.askOpenCode(enriched, style, signal);
       if (ackTimer) clearTimeout(ackTimer);
       replied = await this.safeReply(message, this.sanitize(reply));
       this.rememberFromMention(message, intent, reply);
@@ -1071,7 +1156,10 @@ export class ProxyRuntime {
   }
 
   private async handleMeMention(message: IncomingMessage, signal: AbortSignal): Promise<void> {
-    const classification = await this.classifyOne(message, signal);
+    await this.waitForBurst(message, signal);
+    const burst = await this.applyBurstGrouping(message, signal);
+    const enriched = mergeBurst(message, burst);
+    const classification = await this.classifyOne(enriched, signal);
     const style = detectReplyStyle(message, this.replyOptions);
     const task = await this.createReplyTask(message, classification);
     const autoReply =
@@ -3053,3 +3141,15 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function mergeBurst(base: IncomingMessage, followups: IncomingMessage[]): IncomingMessage {
+  if (followups.length === 0) return base;
+  const attachments = [
+    ...(base.attachments ?? []),
+    ...followups.flatMap((item) => item.attachments ?? []),
+  ];
+  return {
+    ...base,
+    text: [base.text, ...followups.map((item) => item.text)].filter(Boolean).join("\n"),
+    ...(attachments.length > 0 ? { attachments } : {}),
+  };
+}

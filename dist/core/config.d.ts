@@ -5,14 +5,17 @@ export declare const AppConfigSchema: z.ZodObject<{
         stateDir: z.ZodDefault<z.ZodString>;
         logLevel: z.ZodDefault<z.ZodEnum<["debug", "info", "warn", "error"]>>;
         logFile: z.ZodOptional<z.ZodString>;
+        logToFile: z.ZodDefault<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
         stateDir: string;
         logLevel: "debug" | "info" | "warn" | "error";
+        logToFile: boolean;
         logFile?: string | undefined;
     }, {
         stateDir?: string | undefined;
         logLevel?: "debug" | "info" | "warn" | "error" | undefined;
         logFile?: string | undefined;
+        logToFile?: boolean | undefined;
     }>>;
     platforms: z.ZodObject<{
         feishu: z.ZodObject<{
@@ -460,6 +463,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMentions: z.ZodDefault<z.ZodBoolean>;
         storeRelevantScan: z.ZodDefault<z.ZodBoolean>;
         storeOwnerDm: z.ZodDefault<z.ZodBoolean>;
+        burstWindowSeconds: z.ZodDefault<z.ZodNumber>;
+        burstWaitMs: z.ZodDefault<z.ZodNumber>;
+        burstMaxMessages: z.ZodDefault<z.ZodNumber>;
+        burstMaxChars: z.ZodDefault<z.ZodNumber>;
+        burstGrouping: z.ZodDefault<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
         enabled: boolean;
         maxCharsPerMessage: number;
@@ -471,6 +479,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMentions: boolean;
         storeRelevantScan: boolean;
         storeOwnerDm: boolean;
+        burstWindowSeconds: number;
+        burstWaitMs: number;
+        burstMaxMessages: number;
+        burstMaxChars: number;
+        burstGrouping: boolean;
     }, {
         enabled?: boolean | undefined;
         maxCharsPerMessage?: number | undefined;
@@ -482,6 +495,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMentions?: boolean | undefined;
         storeRelevantScan?: boolean | undefined;
         storeOwnerDm?: boolean | undefined;
+        burstWindowSeconds?: number | undefined;
+        burstWaitMs?: number | undefined;
+        burstMaxMessages?: number | undefined;
+        burstMaxChars?: number | undefined;
+        burstGrouping?: boolean | undefined;
     }>>;
     memory: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
@@ -766,6 +784,7 @@ export declare const AppConfigSchema: z.ZodObject<{
     app: {
         stateDir: string;
         logLevel: "debug" | "info" | "warn" | "error";
+        logToFile: boolean;
         logFile?: string | undefined;
     };
     platforms: {
@@ -857,6 +876,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMentions: boolean;
         storeRelevantScan: boolean;
         storeOwnerDm: boolean;
+        burstWindowSeconds: number;
+        burstWaitMs: number;
+        burstMaxMessages: number;
+        burstMaxChars: number;
+        burstGrouping: boolean;
     };
     memory: {
         enabled: boolean;
@@ -1018,6 +1042,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         stateDir?: string | undefined;
         logLevel?: "debug" | "info" | "warn" | "error" | undefined;
         logFile?: string | undefined;
+        logToFile?: boolean | undefined;
     } | undefined;
     polling?: {
         enabled?: boolean | undefined;
@@ -1074,6 +1099,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMentions?: boolean | undefined;
         storeRelevantScan?: boolean | undefined;
         storeOwnerDm?: boolean | undefined;
+        burstWindowSeconds?: number | undefined;
+        burstWaitMs?: number | undefined;
+        burstMaxMessages?: number | undefined;
+        burstMaxChars?: number | undefined;
+        burstGrouping?: boolean | undefined;
     } | undefined;
     memory?: {
         enabled?: boolean | undefined;

@@ -21,7 +21,7 @@ function makeConfig(stateDir: string, filterEnabled = true): LoadedConfig {
     secrets: { appSecret: "s", filterApiKey: "k" },
     config: {
       version: 1,
-      app: { stateDir, logLevel: "error" },
+      app: { stateDir, logLevel: "error", logToFile: false },
       platforms: {
         feishu: {
           enabled: true,
@@ -168,6 +168,11 @@ function makeConfig(stateDir: string, filterEnabled = true): LoadedConfig {
         storeMentions: true,
         storeRelevantScan: true,
         storeOwnerDm: true,
+        burstWindowSeconds: 15,
+      burstWaitMs: 0,
+        burstMaxMessages: 5,
+        burstMaxChars: 4000,
+        burstGrouping: false,
       },
       memory: {
         enabled: false,

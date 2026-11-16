@@ -153,7 +153,7 @@ function demoConfig(stateDir) {
         secrets: { appSecret: "demo", filterApiKey: "demo" },
         config: {
             version: 1,
-            app: { stateDir, logLevel: "warn" },
+            app: { stateDir, logLevel: "warn", logToFile: false },
             platforms: {
                 feishu: {
                     enabled: true,
@@ -283,6 +283,11 @@ function demoConfig(stateDir) {
                 storeMentions: true,
                 storeRelevantScan: true,
                 storeOwnerDm: true,
+                burstWindowSeconds: 15,
+                burstWaitMs: 0,
+                burstMaxMessages: 5,
+                burstMaxChars: 4000,
+                burstGrouping: false,
             },
             memory: {
                 enabled: false,

@@ -30,7 +30,7 @@ function buttons(card: any): any[] {
 test("unresolved card has enabled buttons", () => {
   const out = renderApprovalCard(view());
   assert.equal(out.kind, "card");
-  const actions = buttons(out.card);
+  const actions = buttons((out as { card: unknown }).card);
   assert.equal(actions.length, 3);
   for (const button of actions) {
     assert.notEqual(button.disabled, true);
@@ -39,7 +39,7 @@ test("unresolved card has enabled buttons", () => {
 
 test("resolved card disables buttons and shows the result", () => {
   const out = renderApprovalCard(view({ resolution: "approved" }));
-  const card = out.card as any;
+  const card = (out as { card: any }).card;
   const actions = buttons(card);
   for (const button of actions) {
     assert.equal(button.disabled, true);

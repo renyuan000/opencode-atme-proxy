@@ -9,7 +9,7 @@ function config(maxPerTask: number, maxGlobal: number): LoadedConfig {
     secrets: { appSecret: "s", filterApiKey: "k" },
     config: {
       version: 1,
-      app: { stateDir: "/tmp/x", logLevel: "error" },
+      app: { stateDir: "/tmp/x", logLevel: "error", logToFile: false },
       platforms: { feishu: { enabled: true, appId: "cli", appSecretEnv: "X", domain: "feishu", botOpenId: "bot", me: { openId: "owner" }, approvers: [], bootstrap: { claimCodeEnv: "C", allowPrivateClaim: false, maxClaimAttemptsPer10Min: 5 }, groups: [], receiveAllGroupMessages: false, rateLimit: { sendPerSecond: 1000, burst: 1000 } } },
       recovery: { enabled: false, onStartup: false, lookbackSeconds: 3600, maxMessages: 10, maxPlainMessagesPerGroup: 5, includeMentions: true, includeRelevantPlain: false, resumeTasks: false, resumeMaxAgeDays: 7, staleRunningMinutes: 30, nudgeHours: 0 },
       polling: { enabled: false, intervalSeconds: 180, pageSize: 50, maxPages: 20, lookbackSeconds: 3600, overlapSeconds: 60 },
@@ -19,7 +19,8 @@ function config(maxPerTask: number, maxGlobal: number): LoadedConfig {
       opencode: { baseUrl: "http://127.0.0.1:1", passwordEnv: "P", sessionTitlePrefix: "atme", keepSessions: true, sessionListVisible: true },
       subagents: { enabled: true, analyst: "a", executor: "e", reviewer: "r", maxChildrenPerTask: maxPerTask, maxChildrenGlobal: maxGlobal, depth: 1, archiveAfterDays: 7, deleteAfterDays: 30 },
       directChat: { enabled: false, onlyOwner: true },
-      context: { enabled: false, maxMessagesPerChat: 20, maxCharsPerMessage: 300, ttlDays: 7, maxChats: 100, includeInAnalysis: false, storeAnalysisSnippets: false, storeMentions: true, storeRelevantScan: false, storeOwnerDm: false },
+      context: { enabled: false, maxMessagesPerChat: 20, maxCharsPerMessage: 300, ttlDays: 7, maxChats: 100, includeInAnalysis: false, storeAnalysisSnippets: false, storeMentions: true, storeRelevantScan: false, storeOwnerDm: false, burstWindowSeconds: 15,
+        burstWaitMs: 0, burstMaxMessages: 5, burstMaxChars: 4000, burstGrouping: false },
       memory: { enabled: false, extract: false, maxEntries: 100, ttlDays: 90, pinnedKinds: [], injectLimit: 8, injectMaxChars: 2000, includeInAnalysis: false, autoExtractFromMentions: false, autoExtractFromAnalysis: false },
       reply: { defaultStyle: "concise", maxChars: 80, detailMaxChars: 300, detailTriggers: [], requireApprovalForMentionMe: true, acknowledgeLongTasks: false, ackDelayMs: 0, ackText: "x" },
       concurrency: { global: 8, mentionConcurrency: 4, scanConcurrency: 1, perChat: 1, maxQueue: 100, mentionTimeoutMs: 5000, scanTimeoutMs: 5000, analysisTimeoutMs: 5000, maxRetries: 0, retryDelayMs: 1 },

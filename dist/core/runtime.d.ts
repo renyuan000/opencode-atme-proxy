@@ -25,6 +25,7 @@ export declare class ProxyRuntime {
     private readonly childSlots;
     private readonly taskChildCounts;
     private readonly chatNames;
+    private readonly recentMessages;
     private readonly tasks;
     private readonly approvals;
     private readonly audit;
@@ -76,6 +77,11 @@ export declare class ProxyRuntime {
     private fetchChatName;
     private chatLabel;
     private handleDirectMessage;
+    private recentKey;
+    private rememberRecent;
+    private collectBurst;
+    private waitForBurst;
+    private applyBurstGrouping;
     private handleMessage;
     private handleBotMention;
     private decideBotIntent;

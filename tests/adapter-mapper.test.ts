@@ -33,7 +33,8 @@ test("non-text message becomes placeholder", () => {
     create_time: "1700000000000",
     sender: { sender_id: { open_id: "ou_li" }, sender_type: "user" },
   });
-  assert.equal(mapped?.text, "[image]");
+  assert.equal(mapped?.text, "[图片]");
+  assert.equal(mapped?.attachments?.[0]?.kind, "image");
 });
 
 test("p2p chat maps to direct", () => {
