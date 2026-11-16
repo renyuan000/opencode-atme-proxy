@@ -426,7 +426,7 @@ awaiting_approval → rejected / expired
 
 **规则**：
 
-1. 每个群保留最近 `maxMessagesPerChat` 条（默认 20），单条截断 `maxCharsPerMessage`（默认 300 字）。
+1. 每个群保留最近 `maxMessagesPerChat` 条逻辑消息（默认 50），范围 7 天，单条截断 `maxCharsPerMessage`（默认 300 字）。
 2. 默认保留 7 天；超过 TTL 自动清理；最多保留 `maxChats` 个群（默认 100）。
 3. 回复时只带最近 6 条（可在实现中调整），排除当前消息，避免模型重复自己的话。
 4. 上下文只作为“参考数据”，不是指令；提示词明确标注，防止群消息注入。

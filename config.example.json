@@ -92,7 +92,7 @@
   },
   "context": {
     "enabled": true,
-    "maxMessagesPerChat": 20,
+    "maxMessagesPerChat": 50,
     "maxCharsPerMessage": 300,
     "ttlDays": 7,
     "maxChats": 100,

@@ -128,7 +128,7 @@ const DirectChatSchema = z
 const ContextSchema = z
     .object({
     enabled: z.boolean().default(true),
-    maxMessagesPerChat: z.number().int().min(1).max(200).default(20),
+    maxMessagesPerChat: z.number().int().min(1).max(200).default(50),
     maxCharsPerMessage: z.number().int().min(20).max(2000).default(300),
     ttlDays: z.number().int().min(1).max(90).default(7),
     maxChats: z.number().int().min(1).max(1000).default(100),

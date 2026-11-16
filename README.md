@@ -42,7 +42,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - 每个飞书群会绑定解析到的项目（`projects.json`），后续同一群的对话与任务使用同一目录。
 - 可用 `project.allowlist` 限制只能在哪些仓库下工作，防止越界。
 - 解析结果写入日志：`projectId / worktree / reason / score`，便于排查“为什么选了这个项目”。
-- 群聊上下文默认保留最近 20 条、7 天，只用于回答与任务分析，不写进群；可在 `context` 中关闭。
+- 群聊上下文默认保留最近 50 条逻辑消息、7 天，用于回答、任务分析与历史关联，不写进群；可在 `context` 中关闭。
 
 ### 环境要求
 
@@ -321,7 +321,7 @@ websocket ready
 
 | 层 | 文件 | 存什么 | 默认 |
 |----|------|--------|------|
-| 聊天上下文 | `chat-context.json` | 只存 @我/@机器人 消息，以及**被判定相关**的批量消息；不存闲聊 | 每群 20 条 / 7 天 |
+| 聊天上下文 | `chat-context.json` | 只存 @我/@机器人 消息，以及**被判定相关**的批量消息；不存闲聊 | 每群 50 条 / 7 天 |
 | 关键信息记忆 | `memory.json` | 任务、决策、事实、偏好、截止时间、结论；主动 upsert、可 pin、可 TTL | 2000 条 / 90 天 |
 | 运行日志 | stderr / `logFile` | `messageId/chatId/类型/结果` 等元数据，**不存正文** | 关 |
 
@@ -379,7 +379,7 @@ WSL2 可能随时重启，插件启动时会做三件事：
 dedup.json          消息去重
 cursors.json        每群拉取游标
 projects.json       群 → 项目绑定
-chat-context.json   最近群聊上下文（默认 20 条 / 7 天）
+chat-context.json   最近群聊上下文（默认 50 条 / 7 天）
 tasks/              任务
 analyses/           任务分析（按版本）
 approvals/          审批记录
@@ -498,6 +498,7 @@ P2：
 ### 文档
 
 - 需求：`docs/REQUIREMENTS.md`
+- 记忆与证据设计：`docs/MEMORY-DESIGN.md`
 - 待办与决策（P0/P1/P2、参考实现、AgentSoul 评估）：`docs/BACKLOG.md`
 - 配置示例：`config.example.json`
 - 环境变量：`.env.example`
@@ -854,6 +855,7 @@ P2:
 ### Docs
 
 - Requirements: `docs/REQUIREMENTS.md`
+- Memory and evidence design: `docs/MEMORY-DESIGN.md`
 - Backlog and decisions (P0/P1/P2, reference review, AgentSoul): `docs/BACKLOG.md`
 - Config example: `config.example.json`
 - Env example: `.env.example`
