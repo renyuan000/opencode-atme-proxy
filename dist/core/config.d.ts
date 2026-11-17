@@ -504,6 +504,19 @@ export declare const AppConfigSchema: z.ZodObject<{
         burstMaxChars?: number | undefined;
         burstGrouping?: boolean | undefined;
     }>>;
+    evidence: z.ZodOptional<z.ZodDefault<z.ZodObject<{
+        enabled: z.ZodDefault<z.ZodBoolean>;
+        retentionDays: z.ZodDefault<z.ZodNumber>;
+        maxChars: z.ZodDefault<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        enabled: boolean;
+        retentionDays: number;
+        maxChars: number;
+    }, {
+        enabled?: boolean | undefined;
+        retentionDays?: number | undefined;
+        maxChars?: number | undefined;
+    }>>>;
     memory: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
         extract: z.ZodDefault<z.ZodBoolean>;
@@ -625,8 +638,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         ackDelayMs: z.ZodDefault<z.ZodNumber>;
         ackText: z.ZodDefault<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
-        defaultStyle: "concise" | "detailed";
         maxChars: number;
+        defaultStyle: "concise" | "detailed";
         detailMaxChars: number;
         detailTriggers: string[];
         requireApprovalForMentionMe: boolean;
@@ -634,8 +647,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         ackDelayMs: number;
         ackText: string;
     }, {
-        defaultStyle?: "concise" | "detailed" | undefined;
         maxChars?: number | undefined;
+        defaultStyle?: "concise" | "detailed" | undefined;
         detailMaxChars?: number | undefined;
         detailTriggers?: string[] | undefined;
         requireApprovalForMentionMe?: boolean | undefined;
@@ -926,8 +939,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         maxMessagesPerSenderPerRun: number;
     };
     reply: {
-        defaultStyle: "concise" | "detailed";
         maxChars: number;
+        defaultStyle: "concise" | "detailed";
         detailMaxChars: number;
         detailTriggers: string[];
         requireApprovalForMentionMe: boolean;
@@ -973,6 +986,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         maxMessagesPerRun: number;
         maxExecutionsPerDay: number;
     };
+    evidence?: {
+        enabled: boolean;
+        retentionDays: number;
+        maxChars: number;
+    } | undefined;
 }, {
     platforms: {
         feishu: {
@@ -1110,6 +1128,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         burstMaxChars?: number | undefined;
         burstGrouping?: boolean | undefined;
     } | undefined;
+    evidence?: {
+        enabled?: boolean | undefined;
+        retentionDays?: number | undefined;
+        maxChars?: number | undefined;
+    } | undefined;
     memory?: {
         enabled?: boolean | undefined;
         ttlDays?: number | undefined;
@@ -1150,8 +1173,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         maxMessagesPerSenderPerRun?: number | undefined;
     } | undefined;
     reply?: {
-        defaultStyle?: "concise" | "detailed" | undefined;
         maxChars?: number | undefined;
+        defaultStyle?: "concise" | "detailed" | undefined;
         detailMaxChars?: number | undefined;
         detailTriggers?: string[] | undefined;
         requireApprovalForMentionMe?: boolean | undefined;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ async function store(dir: string, now?: () => number): Promise<MemoryStore> {
     maxEntries: 100,
     ttlMs: 86_400_000,
     pinnedKinds: ["task", "decision", "deadline"],
+    requireSource: false,
     ...(now ? { now } : {}),
   });
   await s.load();
@@ -100,6 +101,52 @@ test("chatless memory does not leak into chat queries", async () => {
     s.upsert({ platform: "feishu", kind: "fact", key: "local", value: "本群记忆", chatId: "chat1" });
     const result = s.query({ platform: "feishu", chatId: "chat1", limit: 10 });
     assert.deepEqual(result.map((item) => item.key), ["local"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("rejects writes without source ids when required", () => {
+  const s = new MemoryStore({
+    file: "/tmp/atme-memory-source.json",
+    maxEntries: 10,
+    ttlMs: 86_400_000,
+    pinnedKinds: ["task", "decision", "deadline"],
+  });
+  assert.throws(
+    () => s.upsert({ platform: "feishu", kind: "fact", key: "k", value: "v" }),
+    /sourceMessageIds/,
+  );
+});
+
+test("writes per-chat records and history shards", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-memory-"));
+  try {
+    const s = new MemoryStore({
+      file: join(dir, "memory.json"),
+      shardDir: join(dir, "memory"),
+      maxEntries: 100,
+      ttlMs: 86_400_000,
+      pinnedKinds: ["task", "decision", "deadline"],
+      requireSource: true,
+    });
+    await s.load();
+    s.upsert({
+      platform: "feishu",
+      chatId: "chat1",
+      kind: "fact",
+      key: "表名",
+      value: "asset_account",
+      sourceMessageIds: ["m1"],
+    });
+    await s.flush();
+    const records = JSON.parse(
+      await readFile(join(dir, "memory", "chat1", "records.json"), "utf8"),
+    ) as { records: Record<string, unknown> };
+    assert.equal(Object.keys(records.records).length, 1);
+    const historyDir = join(dir, "memory", "chat1", "history");
+    const files = await readFile(join(historyDir, `${new Date().toISOString().slice(0, 10)}.jsonl`), "utf8");
+    assert.ok(files.includes("asset_account"));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

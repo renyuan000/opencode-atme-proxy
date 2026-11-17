@@ -45,6 +45,7 @@ export declare class ProxyRuntime {
     private readonly filterEnabled;
     private readonly projectStore;
     private readonly chatContext;
+    private readonly evidence;
     private readonly memory;
     private readonly owners;
     private resolvedOwner?;
@@ -76,6 +77,10 @@ export declare class ProxyRuntime {
     private onChatMembership;
     private fetchChatName;
     private chatLabel;
+    private handleOwnerCommand;
+    private latestReplyPending;
+    private replyOriginal;
+    private resendReplyCard;
     private handleDirectMessage;
     private recentKey;
     private rememberRecent;

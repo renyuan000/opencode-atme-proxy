@@ -49,8 +49,10 @@ import { OpenCodeLlmClient } from "./opencode-llm.js";
 import { selectBurstExtensions } from "./burst.js";
 import { ProjectStore } from "./project-store.js";
 import { ChatContextStore, type ContextOrigin } from "./chat-context.js";
+import { EvidenceStore } from "./evidence-store.js";
 import { MemoryStore, type MemoryKind } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
+import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
 import {
   deterministicVerification,
   mergeVerification,
@@ -129,6 +131,7 @@ export class ProxyRuntime {
   private readonly filterEnabled: boolean;
   private readonly projectStore: ProjectStore;
   private readonly chatContext: ChatContextStore;
+  private readonly evidence: EvidenceStore;
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
   private resolvedOwner?: OwnerBinding;
@@ -196,10 +199,18 @@ export class ProxyRuntime {
     });
     this.memory = new MemoryStore({
       file: join(this.stateDir, "memory.json"),
+      shardDir: join(this.stateDir, "memory"),
       maxEntries: this.config.memory.maxEntries,
       ttlMs: this.config.memory.ttlDays * 86_400_000,
       pinnedKinds: this.config.memory.pinnedKinds,
       logger: this.logger.child("memory"),
+    });
+    this.evidence = new EvidenceStore({
+      dir: join(this.stateDir, "replies"),
+      enabled: this.config.evidence?.enabled ?? true,
+      retentionDays: this.config.evidence?.retentionDays ?? 720,
+      maxChars: this.config.evidence?.maxChars ?? 4000,
+      logger: this.logger.child("evidence"),
     });
     this.dispatcher = new ConcurrentDispatcher({
       concurrency: this.config.concurrency.global,
@@ -453,6 +464,8 @@ export class ProxyRuntime {
     await this.projectStore.load();
     await this.chatContext.load();
     await this.memory.load();
+    await this.memory.migrateShards();
+    this.evidence.prune();
     await this.owners.load();
     this.reconcileOwner();
     await this.options.platform.start({
@@ -563,6 +576,11 @@ export class ProxyRuntime {
     }
     const mentionMe2 = this.isMentionMe(message);
     if (this.shouldStoreContext(message, mentionMe2, mentionBot)) {
+      const origin: ContextOrigin = mentionBot
+        ? "mention_bot"
+        : mentionMe2
+          ? "mention_me"
+          : "media_placeholder";
       this.chatContext.append(
         `${message.platform}:${message.chat.id}`,
         {
@@ -573,7 +591,7 @@ export class ProxyRuntime {
           at: message.createdAt,
           mentionMe: mentionMe2,
           mentionBot,
-          origin: mentionBot ? "mention_bot" : mentionMe2 ? "mention_me" : "media_placeholder",
+          origin,
         },
         {
           platform: message.platform,
@@ -581,6 +599,19 @@ export class ProxyRuntime {
           ...(message.chat.name ? { chatName: message.chat.name } : {}),
         },
       );
+      this.evidence.append({
+        ts: message.createdAt,
+        platform: message.platform,
+        chatId: message.chat.id,
+        ...(message.chat.name ? { chatName: message.chat.name } : {}),
+        messageId: message.messageId,
+        direction: "inbound",
+        senderId: message.sender.id,
+        ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
+        origin,
+        text: message.text,
+        ...(message.attachments ? { attachments: message.attachments } : {}),
+      });
     }
     const job = this.dispatcher.enqueue({
       id: message.messageId,
@@ -732,6 +763,145 @@ export class ProxyRuntime {
     return chatId;
   }
 
+  private async handleOwnerCommand(
+    message: IncomingMessage,
+    command: OwnerCommand,
+  ): Promise<string> {
+    if (command.command === "help") {
+      return [
+        "可用命令：",
+        "/改写 <新内容>  替换当前草稿",
+        "/重写 <要求>    重新生成草稿",
+        "/发送           发送当前草稿到群里",
+        "/取消           取消当前提问，不发送",
+      ].join("\n");
+    }
+    const entry = this.latestReplyPending();
+    if (!entry) return "当前没有待处理的代答草稿。";
+    const [key, pending] = entry;
+    const task = await this.tasks.get(pending.taskId);
+    if (command.command === "cancel") {
+      this.pending.delete(key);
+      await this.pending.flush();
+      if (task && canTransition(task.state, "canceled")) {
+        task.state = "canceled";
+        task.updatedAt = Date.now();
+        await this.tasks.save(task);
+      }
+      await this.audit.append({
+        actor: message.sender,
+        action: "question_cancelled",
+        taskId: pending.taskId,
+        details: { messageId: pending.sourceMessageId },
+      });
+      return "已取消，草稿不会发送。";
+    }
+    if (command.command === "send") {
+      const action: PlatformAction = {
+        platform: message.platform,
+        actionId: `dm:${message.messageId}`,
+        taskId: pending.taskId,
+        planHash: pending.planHash,
+        action: "approve",
+        ...(pending.chatId ? { chatId: pending.chatId } : {}),
+        ...(pending.sourceMessageId ? { messageId: pending.sourceMessageId } : {}),
+        actor: message.sender,
+      };
+      await this.approveReply(action, pending);
+      return "已按当前草稿发送到群里。";
+    }
+    if (!command.arg) {
+      return command.command === "rewrite" ? "用法：/改写 <新内容>" : "用法：/重写 <要求>";
+    }
+    let draft = command.arg;
+    if (command.command === "regenerate") {
+      const original = this.replyOriginal(pending, task);
+      if (!original) return "缺少原消息，无法重写。";
+      const controller = new AbortController();
+      const timer = setTimeout(
+        () => controller.abort(new Error("rewrite timed out")),
+        this.config.concurrency.analysisTimeoutMs,
+      );
+      try {
+        draft = await this.askOpenCode(
+          { ...original, text: `${original.text}\n\n请按以下要求重写：${command.arg}` },
+          pending.style ?? this.replyOptions.defaultStyle,
+          controller.signal,
+        );
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    const planHash = sha256(
+      `${pending.taskId}:${pending.sourceMessageId}:${pending.style ?? ""}:${draft}`,
+    ).slice(0, 16);
+    const updated = { ...pending, draft, planHash, createdAt: Date.now() };
+    this.pending.set(key, updated);
+    await this.pending.flush();
+    await this.resendReplyCard(updated, task);
+    return command.command === "rewrite" ? "已更新草稿，审批卡已重发。" : "已重写并重发审批卡。";
+  }
+
+  private latestReplyPending(): [string, PendingCard] | undefined {
+    return this.pending
+      .snapshot()
+      .filter(([key, card]) => key.endsWith(":reply") && card.mode === "reply")
+      .sort((a, b) => b[1].createdAt - a[1].createdAt)[0];
+  }
+
+  private replyOriginal(
+    pending: PendingCard,
+    task?: TaskRecord,
+  ): IncomingMessage | undefined {
+    if (!pending.chatId || !pending.sourceMessageId) return undefined;
+    return {
+      platform: pending.platform,
+      messageId: pending.sourceMessageId,
+      chat: { id: pending.chatId, kind: "group" },
+      sender: { platform: pending.platform, id: pending.actorId },
+      senderType: "user",
+      text: task?.excerpt ?? "",
+      mentions: [],
+      createdAt: task?.createdAt ?? Date.now(),
+      rawType: "text",
+    };
+  }
+
+  private async resendReplyCard(pending: PendingCard, task?: TaskRecord): Promise<void> {
+    const ownerId = this.ownerOpenId();
+    if (!ownerId) throw new Error("owner is not bound; cannot send approval card");
+    const view = {
+      taskId: pending.taskId,
+      planHash: pending.planHash,
+      mode: "reply" as const,
+      title: pending.style === "detailed" ? "对方要求详细回答，将给出完整信息" : "将用极简格式代答",
+      summary: task?.title ?? pending.draft ?? "代答草稿",
+      ...(pending.draft ? { draft: pending.draft } : {}),
+      chatId: pending.chatId ?? "",
+      sourceMessageId: pending.sourceMessageId ?? "",
+      senderId: pending.actorId,
+      repo: "—",
+      baseBranch: "—",
+      targetBranch: "—",
+      commands: [],
+      risks: ["代答会以机器人身份发送并标注（助手代答）"],
+      acceptanceCriteria: ["引用原消息", "简洁回复，除非对方要求详细"],
+      openQuestions: [],
+    };
+    const outbound = this.options.platform.renderApproval(view);
+    await this.sendLimiter.take();
+    const result = await this.options.platform.send(
+      { kind: "user", userId: ownerId },
+      outbound,
+    );
+    this.pending.set(`${pending.taskId}:reply`, {
+      ...pending,
+      ...(result.messageId ? { messageId: result.messageId } : {}),
+      createdAt: Date.now(),
+    });
+    await this.pending.flush();
+  }
+
   private async handleDirectMessage(message: IncomingMessage): Promise<void> {
     if (!this.config.directChat.enabled) return;
     const ownerId = this.ownerOpenId();
@@ -744,6 +914,23 @@ export class ProxyRuntime {
     const dedupKey = `${message.platform}:${message.messageId}`;
     if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey)) return;
     this.activeMessageIds.add(dedupKey);
+    const command = parseOwnerCommand(message.text);
+    if (command) {
+      try {
+        const reply = await this.handleOwnerCommand(message, command);
+        await this.safeReply(message, reply);
+      } catch (error) {
+        this.logger.error("owner command failed", {
+          command: command.command,
+          error: toErrorMessage(error),
+        });
+        await this.safeReply(message, `命令失败：${toErrorMessage(error)}`);
+      } finally {
+        this.activeMessageIds.delete(dedupKey);
+      }
+      await this.markProcessed(message);
+      return;
+    }
     if (this.config.context.enabled && this.config.context.storeOwnerDm) {
       this.chatContext.append(
         `${message.platform}:${message.chat.id}`,
@@ -3189,6 +3376,16 @@ export class ProxyRuntime {
       );
       this.outbound.add(key);
       await this.outbound.flush();
+      this.evidence.append({
+        ts: Date.now(),
+        platform: message.platform,
+        chatId: message.chat.id,
+        ...(message.chat.name ? { chatName: message.chat.name } : {}),
+        messageId: message.messageId,
+        direction: "outbound",
+        origin: "reply",
+        text,
+      });
       return true;
     } catch (error) {
       this.logger.error("failed to reply", {

@@ -108,6 +108,11 @@
     "burstMaxMessages": 5,
     "burstMaxChars": 4000
   },
+  "evidence": {
+    "enabled": true,
+    "retentionDays": 720,
+    "maxChars": 4000
+  },
   "memory": {
     "enabled": true,
     "extract": true,

@@ -18,6 +18,8 @@ export interface MemoryRecord {
 }
 export interface MemoryStoreOptions {
     file: string;
+    shardDir?: string;
+    requireSource?: boolean;
     maxEntries: number;
     ttlMs: number;
     pinnedKinds: MemoryKind[];
@@ -48,9 +50,13 @@ export declare class MemoryStore {
     private readonly options;
     private entries;
     private dirty;
+    private readonly dirtyShards;
+    private readonly history;
     private readonly logger;
     private readonly now;
     private readonly pinnedKinds;
+    private readonly shardDir?;
+    private readonly requireSource;
     constructor(options: MemoryStoreOptions);
     load(): Promise<void>;
     upsert(input: MemoryInput): MemoryRecord;
@@ -60,4 +66,6 @@ export declare class MemoryStore {
     prune(): void;
     size(): number;
     flush(): Promise<void>;
+    migrateShards(): Promise<void>;
+    private writeShards;
 }

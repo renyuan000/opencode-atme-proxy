@@ -19,6 +19,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 ### 核心能力
 
 - **私聊对话**：和机器人单独聊天会直接回复（默认仅限 owner）。
+- **私聊改稿**：审批卡发出后，可私聊 `/改写 <新内容>`、`/重写 <要求>`、`/发送`、`/取消`；`/帮助` 查看命令。
 
 - **消息类型识别**：@机器人 先判断是询问、任务、提醒、通知还是闲聊，再决定动作。
 - **发言必要性评估**：@机器人 不必然回复。助手判断 `answer / need_decision / notify_owner / no_reply`；寒暄或无需介入就不回，避免刷屏。
@@ -174,6 +175,7 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 | `project.worktree`                     | 主项目代码目录；不填则自动解析            |
 | `repos[]`                              | 可选；开发执行的仓库白名单、测试/lint 命令 |
 | `context.storeMediaPlaceholders`       | 非 @ 的图片/文件等也存占位符，默认 true   |
+| `evidence.retentionDays`               | 群证据保留天数，默认 720                  |
 
 **owner（“我”）怎么确定**
 
@@ -468,7 +470,7 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 群聊上下文记忆、项目解析与群绑定
 - 去重、游标、任务、分析、审批、执行、审计骨架
 - 简洁/详细回复策略、审批门禁、失败降级
-- 106 个单元/集成测试
+- 114 个单元/集成测试
 
 未完成 / 下一步：
 

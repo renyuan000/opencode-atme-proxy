@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -41,6 +41,7 @@ function config(stateDir: string, enabled = true, onlyOwner = true): LoadedConfi
 class Adapter implements PlatformAdapter {
   readonly platform = "feishu";
   replies: string[] = [];
+  sent: string[] = [];
   async start(): Promise<void> {}
   async stop(): Promise<void> {}
   capabilities(): CapabilitySet {
@@ -48,12 +49,15 @@ class Adapter implements PlatformAdapter {
   }
   async healthCheck() { return { ok: true }; }
   async listMessages() { return { messages: [] }; }
-  async send(_t: OutboundTarget, _m: OutboundMessage) { return { messageId: "s" }; }
+  async send(_t: OutboundTarget, message: OutboundMessage) {
+    this.sent.push(JSON.stringify(message));
+    return { messageId: "s" };
+  }
   async reply(_t: { chatId: string; messageId: string }, m: OutboundMessage) {
     this.replies.push(m.kind === "text" ? m.text : "[card]");
     return { messageId: "r" };
   }
-  renderApproval(_v: ApprovalView): OutboundMessage { return { kind: "text", text: "approval" }; }
+  renderApproval(view: ApprovalView): OutboundMessage { return { kind: "text", text: `approval:${view.draft ?? ""}` }; }
   async verifyActor() { return true; }
 }
 
@@ -109,6 +113,86 @@ test("non-owner direct message is answered when onlyOwner is false", async () =>
     await runtime.ingest(dm("m1", "stranger"));
     await new Promise((r) => setTimeout(r, 100));
     assert.deepEqual(adapter.replies, ["私聊回复"]);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("owner can rewrite a pending reply draft", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    await writeFile(
+      join(dir, "pending.json"),
+      JSON.stringify({
+        version: 1,
+        cards: {
+          "task_x:reply": {
+            platform: "feishu",
+            taskId: "task_x",
+            analysisVersion: 1,
+            planHash: "old",
+            actorId: "owner",
+            mode: "reply",
+            chatId: "chat",
+            sourceMessageId: "m0",
+            style: "concise",
+            draft: "旧草稿",
+            createdAt: Date.now(),
+          },
+        },
+      }),
+    );
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    await runtime.ingest(dm("m1", "owner", "/改写 新草稿"));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.ok(adapter.sent.some((text) => text.includes("新草稿")));
+    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as {
+      cards: Record<string, { draft: string }>;
+    };
+    assert.equal(pending.cards["task_x:reply"]?.draft, "新草稿");
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("owner can cancel a pending reply draft", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    await writeFile(
+      join(dir, "pending.json"),
+      JSON.stringify({
+        version: 1,
+        cards: {
+          "task_x:reply": {
+            platform: "feishu",
+            taskId: "task_x",
+            analysisVersion: 1,
+            planHash: "old",
+            actorId: "owner",
+            mode: "reply",
+            chatId: "chat",
+            sourceMessageId: "m0",
+            style: "concise",
+            draft: "旧草稿",
+            createdAt: Date.now(),
+          },
+        },
+      }),
+    );
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    await runtime.ingest(dm("m1", "owner", "/取消"));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.ok(adapter.replies.some((text) => text.includes("已取消")));
+    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as {
+      cards: Record<string, unknown>;
+    };
+    assert.equal(Object.keys(pending.cards).length, 0);
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

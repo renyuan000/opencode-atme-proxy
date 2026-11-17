@@ -161,6 +161,13 @@ const MemorySchema = z
     autoExtractFromAnalysis: z.boolean().default(true),
 })
     .default({});
+const EvidenceSchema = z
+    .object({
+    enabled: z.boolean().default(true),
+    retentionDays: z.number().int().min(30).max(3650).default(720),
+    maxChars: z.number().int().min(100).max(20000).default(4000),
+})
+    .default({});
 const ProjectSchema = z
     .object({
     mode: z.enum(["auto", "explicit"]).default("auto"),
@@ -279,6 +286,7 @@ export const AppConfigSchema = z.object({
     subagents: SubagentsSchema,
     directChat: DirectChatSchema,
     context: ContextSchema,
+    evidence: EvidenceSchema.optional(),
     memory: MemorySchema,
     project: ProjectSchema,
     botReply: BotReplySchema,

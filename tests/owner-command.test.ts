@@ -1,0 +1,19 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { parseOwnerCommand } from "../src/core/owner-command.js";
+
+test("parses slash commands", () => {
+  assert.deepEqual(parseOwnerCommand("/改写 新内容"), { command: "rewrite", arg: "新内容" });
+  assert.deepEqual(parseOwnerCommand("/重写 更简洁一点"), {
+    command: "regenerate",
+    arg: "更简洁一点",
+  });
+  assert.deepEqual(parseOwnerCommand("/发送"), { command: "send", arg: "" });
+  assert.deepEqual(parseOwnerCommand("/取消"), { command: "cancel", arg: "" });
+  assert.deepEqual(parseOwnerCommand("／帮助"), { command: "help", arg: "" });
+});
+
+test("ignores normal messages", () => {
+  assert.equal(parseOwnerCommand("帮我看看这个"), undefined);
+  assert.equal(parseOwnerCommand("/unknown"), undefined);
+});
