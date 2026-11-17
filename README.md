@@ -837,7 +837,7 @@ docs/REQUIREMENTS.md   requirements v0.2
 
 See `docs/SESSION-ARCHITECTURE-REVIEW.md`. Summary:
 
-- **Adopt**: one coordinator session per chat/project plus three child roles (analyst/executor/reviewer), created deterministically with `parentID + agent`.
+- **Adopt**: one coordinator anchor per chat/project plus a persistent group summary session; `reply` / `analysis` / `review` reuse per-group persistent workers, while `execution` stays a per-task child.
 - **Reject**: per-person subagents, using subagents as pollers, storing chat history in the main session, or creating a root session per message.
 - **Fast/slow paths**: classification and notification are seconds; analysis/execution/review run in children without blocking.
 - **Lifecycle**: keep roots; archive children after 7 days, delete after 30; max 3 children per task, 8 global, depth=1.
@@ -846,13 +846,13 @@ See `docs/SESSION-ARCHITECTURE-REVIEW.md`. Summary:
 
 Three layers, so irrelevant chat is not persisted:
 
-| Layer        | File                | Stores                                                                                | Default               |
-|--------------|---------------------|---------------------------------------------------------------------------------------|-----------------------|
-| Chat context | `chat-context.json` | mentions, **relevant** scan messages, and media placeholders (including non-mentions) | 20 msgs/chat, 7 days  |
-| Key memory   | `memory.json`       | task, decision, fact, preference, deadline, outcome; proactive upsert, pinnable, TTL  | 2000 entries, 90 days |
-| Run log      | stderr / `logFile`  | metadata only, no message body                                                        | off                   |
+| Layer        | File                | Stores                                                                               | Default               |
+|--------------|---------------------|--------------------------------------------------------------------------------------|-----------------------|
+| Chat context | `chat-context.json` | group text (excluding pure emoji/acks), mentions, and media placeholders             | 50 msgs/chat, 7 days  |
+| Key memory   | `memory.json`       | task, decision, fact, preference, deadline, outcome; proactive upsert, pinnable, TTL | 2000 entries, 90 days |
+| Run log      | stderr / `logFile`  | metadata only, no message body                                                       | off                   |
 
-Non-mention polled messages are persisted only when classified as relevant. Key facts are extracted after mentions and task analysis, then injected into replies and analysis.
+Non-mention group text is persisted unless it is only emoji or a pure acknowledgement. Evidence is written by date under `replies/`; short references trigger a recent-7-day lookup. Key facts are extracted after mentions and task analysis, then injected into replies and analysis.
 
 ### Restart recovery
 

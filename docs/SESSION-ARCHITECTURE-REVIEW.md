@@ -254,6 +254,8 @@ coordinator（每群/项目 1 个 root，仅作锚点，不跑 prompt）
 
 ## 10. 实施记录（v0.2）
 
+> 本节是 v0.2 历史记录；当前实现（群摘要会话、持久 worker）见第 12 节。
+
 | 项                      | 状态   | 位置                                                     |
 |-------------------------|--------|----------------------------------------------------------|
 | coordinator 复用        | 已实现 | `runtime.ts` `coordinatorSession`；`sessions.json` 持久化 |
@@ -267,7 +269,7 @@ coordinator（每群/项目 1 个 root，仅作锚点，不跑 prompt）
 
 仍待 P0-1/P0-2 真实验证：`SessionBusyError` 是否只在 coordinator 出现、child 并发是否受 OpenCode 自身限制、归档 API 是否按预期生效。
 
-## 11. 最终建议
+## 11. 最终建议（v0.2 历史结论）
 
 - **采纳**：主 coordinator + 3 类 child + 确定性分派 + 快慢路径分离。
 - **不采纳**：按人分 subagent、subagent 做轮询、主 session 存历史、每消息建 root。

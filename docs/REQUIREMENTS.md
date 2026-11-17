@@ -417,7 +417,8 @@ awaiting_approval → rejected / expired
 7. 可通过 `context.enabled=false` 完全关闭。
 8. 历史关联：不完整事件单元才回溯，硬上限 50 条 / 7 天；结合 pinned 记忆与未关闭任务，判断是延续、并入任务、相关记忆还是新事项；置信度低于 0.8 不自动合并，只提示。
 9. 已批准 / 执行中 / 已完成的任务不自动并入，只提示；合并必须写审计并可回溯 `sourceMessageIds`。
-10. 媒体消息（图片 / 文件 / 视频 / 音频）存占位符；非 @ 也保存，可通过 `context.storeMediaPlaceholders=false` 关闭。超长文本保留头尾并标注 `…[截断]…`。
+10. 媒体消息（图片 / 文件 / 视频 / 音频）存占位符；非 @ 也保存，可通过 `context.storeMediaPlaceholders=false` 关闭。普通群文本（纯表情/回执除外）写入上下文与证据。超长文本保留头尾并标注 `…[截断]…`。
+11. 短指代或引用消息时，回查最近 7 天证据并注入回答；证据按日期保存，可直接删日期文件。
 
 **验收标准**：
 
@@ -707,7 +708,7 @@ awaiting_approval → rejected / expired
 3. 批量筛选按群串行（`scanConcurrency=1`），避免同一群上下文重复、token 浪费。
 4. 队列有界（`maxQueue`），满时拒绝并告警，不无限堆积。
 5. 优先级：@消息 > 批量筛选；等待超过 30s 的任务逐步提升优先级，避免饿死。
-6. 每群一个 coordinator 会话做锚点；分析/执行/评审用 child 会话（`parentID`），每任务最多 3 个 child；群回复和批量筛选用临时 child，用完即删。
+6. 每群一个 coordinator 会话做锚点；reply/analysis/review 每群持久 worker，execution 每任务临时 child（`parentID`）；群回复和批量筛选用临时 child，用完即删。
 7. 单条 @ 超时（`mentionTimeoutMs`，默认 120s，需覆盖短聚合等待）后取消并回复失败提示；不拖垮其他消息。
 8. 同一 `message_id` 并发到达只处理一次（in-flight + 持久化去重）。
 9. 发送侧使用 token bucket 限流，避免触发平台频率限制。
