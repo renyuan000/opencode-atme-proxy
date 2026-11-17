@@ -75,6 +75,36 @@ test("pinned records survive ttl and are never evicted first", async () => {
   }
 });
 
+test("same key in different chats stays isolated", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-memory-"));
+  try {
+    const s = await store(dir);
+    s.upsert({ platform: "feishu", kind: "fact", key: "表名", value: "chat1 的表", chatId: "chat1" });
+    s.upsert({ platform: "feishu", kind: "fact", key: "表名", value: "chat2 的表", chatId: "chat2" });
+    const one = s.query({ platform: "feishu", chatId: "chat1", limit: 10 });
+    const two = s.query({ platform: "feishu", chatId: "chat2", limit: 10 });
+    assert.equal(one.length, 1);
+    assert.equal(one[0]?.value, "chat1 的表");
+    assert.equal(two.length, 1);
+    assert.equal(two[0]?.value, "chat2 的表");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("chatless memory does not leak into chat queries", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-memory-"));
+  try {
+    const s = await store(dir);
+    s.upsert({ platform: "feishu", kind: "fact", key: "global", value: "全局记忆" });
+    s.upsert({ platform: "feishu", kind: "fact", key: "local", value: "本群记忆", chatId: "chat1" });
+    const result = s.query({ platform: "feishu", chatId: "chat1", limit: 10 });
+    assert.deepEqual(result.map((item) => item.key), ["local"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("persists and reloads records", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-memory-"));
   try {

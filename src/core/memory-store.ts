@@ -88,7 +88,7 @@ export class MemoryStore {
   }
 
   upsert(input: MemoryInput): MemoryRecord {
-    const id = sha256(`${input.platform}:${input.key}`).slice(0, 20);
+    const id = sha256(`${input.platform}:${input.chatId ?? ""}:${input.kind}:${input.key}`).slice(0, 20);
     const now = this.now();
     const existing = this.entries.get(id);
     const pinned = Boolean(input.pinned || this.pinnedKinds.has(input.kind));
@@ -140,7 +140,7 @@ export class MemoryStore {
     for (const record of this.entries.values()) {
       if (record.platform !== input.platform) continue;
       if (!record.pinned && record.expiresAt !== undefined && record.expiresAt <= now) continue;
-      if (record.chatId && input.chatId && record.chatId !== input.chatId) continue;
+      if (input.chatId && record.chatId !== input.chatId) continue;
       if (record.projectId && input.projectId && record.projectId !== input.projectId) continue;
       let score = record.pinned ? 100 : 0;
       if (record.chatId && record.chatId === input.chatId) score += 20;

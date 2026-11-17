@@ -25,7 +25,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **防刷屏**：按发送者限流、限并发、加冷却；同一人连续刷只警告一次，不同同事仍可并发处理。
 - **需要你决策时群里 @ 你**：涉及上线、排期、承诺、资源、风险或信息不足时，机器人在群里 @ 你的主账号，并附问题、来源、原因，不代替你承诺。
 - **实时 @ 接管**：@机器人 按必要性直接回答或升级；@我 默认先私聊请示，批准后引用回复。
-- **周期筛选**：定时拉取群历史，用关键词 + 低成本模型筛出“我的任务”，只在私聊汇总，不刷群。
+- **周期筛选**：定时拉取群历史，用关键词 + 筛选模型（默认复用 OpenCode 模型）筛出“我的任务”，只在私聊汇总，不刷群。
 - **任务闭环**：任务识别 → 分析 → 审批 → 开发 → 测试 → 回写 → 审计。
 - **并发 @**：不同群并行、同一群 @ 消息并发（默认 4）、批量筛选串行，避免互相拖慢。
 - **简洁回复**：默认极简；只有对方明确说“详细/展开/步骤/why/how”等才展开。
@@ -297,7 +297,9 @@ websocket ready
 | 卡片按钮无响应                 | 检查 `card.action.trigger` 事件与回调时限           |
 | OpenCode 不可用                | 确认 `opencode serve` 与 `opencode.baseUrl`         |
 
-### 会话架构（已实现）
+### 会话架构（当前实现 v0.2）
+
+> v1.3 目标（主 session / 群会话 / 角色 worker）见 `docs/MEMORY-DESIGN.md` 与 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 12 节。
 
 - 每个群/项目一个 coordinator session（`atme:chat:<chatId>`），只作锚点，不跑 prompt，避免 `SessionBusyError`。
 - 实际工作在 child session：`reply`、`analysis`、`execution`、`review`，通过 `parentID` 挂在 coordinator 下。
@@ -465,7 +467,7 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 群聊上下文记忆、项目解析与群绑定
 - 去重、游标、任务、分析、审批、执行、审计骨架
 - 简洁/详细回复策略、审批门禁、失败降级
-- 49 个单元/集成测试
+- 97 个单元/集成测试
 
 未完成 / 下一步：
 
@@ -781,7 +783,9 @@ docs/REQUIREMENTS.md   requirements v0.2
 - Push/PR/merge is not implemented; the executor never pushes.
 - Running executions are not resumed after a restart.
 
-### Session architecture (implemented)
+### Session architecture (current implementation v0.2)
+
+> The v1.3 target (main session / group session / role workers) is described in `docs/MEMORY-DESIGN.md` and section 12 of `docs/SESSION-ARCHITECTURE-REVIEW.md`.
 
 - One coordinator session per chat/project (`atme:chat:<chatId>`), used only as an anchor; it never runs prompts, avoiding `SessionBusyError`.
 - Real work runs in child sessions: `reply`, `analysis`, `execution`, `review`, attached via `parentID`.

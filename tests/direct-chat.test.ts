@@ -9,7 +9,7 @@ import type { PlatformAdapter } from "../src/core/ports.js";
 import type { ApprovalView, CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget } from "../src/core/types.js";
 import type { OpenCodeBridge } from "../src/core/opencode.js";
 
-function config(stateDir: string, enabled = true): LoadedConfig {
+function config(stateDir: string, enabled = true, onlyOwner = true): LoadedConfig {
   return {
     path: join(stateDir, "config.json"),
     secrets: { appSecret: "s", filterApiKey: "k" },
@@ -24,7 +24,7 @@ function config(stateDir: string, enabled = true): LoadedConfig {
       botReply: { enabled: false, allowNoReply: true, escalateWhenUnsure: true, analyzeBeforeEscalate: false, minAnswerConfidence: 0.6, decisionMentionText: "需要你确认", maxQuestionChars: 160, perSenderPerMinute: 6, perSenderConcurrent: 1, cooldownSeconds: 0, ownerBypass: true, overloadReply: "稍后", maxMessagesPerSenderPerRun: 20 },
       opencode: { baseUrl: "http://127.0.0.1:19876", passwordEnv: "P", sessionTitlePrefix: "atme", keepSessions: true, sessionListVisible: true },
       subagents: { enabled: false, analyst: "atme-analyst", executor: "atme-executor", reviewer: "atme-reviewer", maxChildrenPerTask: 3, maxChildrenGlobal: 8, depth: 1, archiveAfterDays: 7, deleteAfterDays: 30 },
-      directChat: { enabled, onlyOwner: true },
+      directChat: { enabled, onlyOwner },
       context: { enabled: false, maxMessagesPerChat: 20, maxCharsPerMessage: 300, ttlDays: 7, maxChats: 100, includeInAnalysis: false, storeAnalysisSnippets: false, storeMentions: true, storeRelevantScan: true, storeOwnerDm: true, burstWindowSeconds: 15,
         burstWaitMs: 0, burstMaxMessages: 5, burstMaxChars: 4000, burstGrouping: false },
       memory: { enabled: false, extract: false, maxEntries: 2000, ttlDays: 90, pinnedKinds: ["task", "decision", "deadline"], injectLimit: 8, injectMaxChars: 2000, includeInAnalysis: false, autoExtractFromMentions: false, autoExtractFromAnalysis: false },
@@ -94,6 +94,21 @@ test("non-owner direct message is ignored", async () => {
     await runtime.ingest(dm("m1", "stranger"));
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(adapter.replies.length, 0);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("non-owner direct message is answered when onlyOwner is false", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir, true, false) });
+    await runtime.start();
+    await runtime.ingest(dm("m1", "stranger"));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(adapter.replies, ["私聊回复"]);
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

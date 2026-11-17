@@ -103,7 +103,7 @@ npm start
 8. 群里发一条闲聊
    - 期望：无推送。
 
-## 3.0 会话结构验证
+### 3.0 会话结构验证
 
 真实运行时，在项目目录执行：
 
@@ -119,7 +119,7 @@ opencode session list
 
 如果看到每个消息一个 root，说明 `subagents.enabled=false` 或 child 创建失败，查日志 `createChildSession`。
 
-## 3.1 重启恢复验证
+### 3.1 重启恢复验证
 
 本演示不重启进程；手动验证真实重启：
 
@@ -136,7 +136,7 @@ cat ~/.local/state/opencode-atme-proxy/dedup.json
 cat ~/.local/state/opencode-atme-proxy/outbound.json
 ```
 
-## 3.2 上下文与记忆检查
+### 3.2 上下文与记忆检查
 
 ```bash
 cat ~/.local/state/opencode-atme-proxy/chat-context.json
