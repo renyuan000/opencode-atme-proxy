@@ -132,7 +132,11 @@ class Bridge implements OpenCodeBridge {
       experimental: { session: { list: async () => ({ data: [] }) } },
     };
   }
-  async createSession() { return "s"; }
+  async createSession(input?: { title?: string; permission?: Array<{ permission: string; action: string }> }) {
+    this.created.push(input ?? {});
+    return "s";
+  }
+  created: Array<{ title?: string; permission?: Array<{ permission: string; action: string }> }> = [];
   prompts = 0;
   texts: string[] = [];
   async prompt(_sessionId?: string, input?: { text?: string }) {
@@ -276,6 +280,8 @@ test("group summary is stored and injected into replies", async () => {
     const { readFile } = await import("node:fs/promises");
     const context = JSON.parse(await readFile(join(dir, "group-context.json"), "utf8"));
     assert.match(context.chats["feishu:chat"].summary, /第 3 步/);
+    const groupSession = bridge.created.find((item) => item.title?.includes(":group:"));
+    assert.ok(groupSession?.permission?.some((item) => item.permission === "edit" && item.action === "deny"));
     await runtime.ingest(mention("m1", "接下来呢？"));
     await new Promise((r) => setTimeout(r, 150));
     assert.ok(

@@ -591,8 +591,8 @@ worker 执行     并行（受全局 / 每任务上限约束）
 9. 历史聊天关联：50 条 / 7 天窗口、关联决策、审计、阈值。
 10. `chat-context.json` 从 30 条调整为 50 条，并保存逻辑消息。
 11. 测试：来源缺失拒收、未确认不 pin、supersede、重跑幂等、删除生效、历史关联、已批准任务不自动并入。
-12. 全局主 session 与群会话分层：群会话承接聚合、组装、调度；主 session 只做管理与汇总。
-13. 角色 worker 持久化：reply / analyst / executor / reviewer 按角色复用，任务上下文按 job 隔离。
+12. 全局主 session 暂不做；群摘要会话已实现，承接上下文与摘要；主 session 管理需求待评估。
+13. 角色 worker 持久化：reply / analysis / review 每群持久；executor 每任务临时（已实现）。
 14. 上下文信封与幂等键：群会话 → worker 的单向投递契约。
 15. 事件单元完整性判断与按需回溯；回执策略；busy 拒绝改为排队。
 16. 先查后问：`resolveReferences()`、`contextSufficiency`、提问三态。

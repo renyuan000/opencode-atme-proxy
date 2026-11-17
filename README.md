@@ -333,7 +333,7 @@ websocket ready
 
 详细评审见 `docs/SESSION-ARCHITECTURE-REVIEW.md`。结论：
 
-- **采纳**：每群/项目一个 coordinator session + 3 类 child（analyst/executor/reviewer），确定性 `parentID + agent` 创建。
+- **采纳**：每群一个 coordinator 锚点 + 持久群摘要会话；reply/analysis/review 每群持久 worker，execution 每任务临时 child。
 - **不采纳**：按人拆 subagent、用 subagent 做轮询、主 session 存聊天历史、每条消息建 root session。
 - **快慢路径分离**：分类/必要性/通知走快路径（秒级）；分析/执行/评审走 child（分钟级，不阻塞）。
 - **生命周期**：root 长期保留；child 完成 7 天归档、30 天删除；每任务最多 3 个 child，全局 8，depth=1。
@@ -403,6 +403,11 @@ dedup.json          消息去重
 cursors.json        每群拉取游标
 projects.json       群 → 项目绑定
 chat-context.json   最近群聊上下文（默认 50 条 / 7 天）
+group-context.json  群摘要（决策 / 假设 / 未解决问题）
+replies/            群证据（按群 + 日期）
+memory.json         聚合记忆（兼容保留）
+memory/             按群记忆分片 + history/
+sessions.json       coordinator / group / worker / child 映射
 tasks/              任务
 analyses/           任务分析（按版本）
 approvals/          审批记录
@@ -820,10 +825,11 @@ docs/REQUIREMENTS.md   requirements v0.2
 
 > The v1.3 target (main session / group session / role workers) is described in `docs/MEMORY-DESIGN.md` and section 12 of `docs/SESSION-ARCHITECTURE-REVIEW.md`.
 
-- One coordinator session per chat/project (`atme:chat:<chatId>`), used only as an anchor; it never runs prompts, avoiding `SessionBusyError`.
-- Real work runs in child sessions: `reply`, `analysis`, `execution`, `review`, attached via `parentID`.
-- Children are hidden by default (`session list` shows roots), so you see one root per chat.
-- Children are archived after 7 days and deleted after 30; max 3 per task, 8 global, `depth=1`.
+- One coordinator anchor per chat/project (`atme:chat:<chatId>`); it never runs prompts, avoiding `SessionBusyError`.
+- One persistent group summary session per chat (`atme:group:<chatId>`), used for long-term context and decisions.
+- `reply`, `analysis`, and `review` reuse a per-group persistent worker; each worker runs one job at a time.
+- `execution` remains a per-task child in its own worktree.
+- Workers and group sessions are not swept; execution children archive after 7 days and delete after 30.
 - Set `subagents.enabled=false` to fall back to one session per message.
 - Bundled agent files: `.opencode/agents/atme-analyst.md`, `atme-executor.md`, `atme-reviewer.md`.
 

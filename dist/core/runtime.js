@@ -2998,6 +2998,7 @@ export class ProxyRuntime {
         const sessionId = await this.options.bridge.createSession({
             directory,
             title: `${this.config.opencode.sessionTitlePrefix}:group:${chatId}`,
+            permission: READ_ONLY_PERMISSION,
             ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
         });
         this.sessions.set(key, sessionId, directory, { kind: "group", createdAt: Date.now() });
