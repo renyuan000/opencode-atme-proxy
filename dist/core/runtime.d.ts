@@ -98,6 +98,7 @@ export declare class ProxyRuntime {
     private sendOwnerDecisionCard;
     private escalateToOwner;
     private handleMeMention;
+    private shouldReplyToMention;
     private createReplyTask;
     private sendReplyApproval;
     private handlePolledBatch;

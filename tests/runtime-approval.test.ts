@@ -289,6 +289,32 @@ test("group summary is stored and injected into replies", async () => {
   }
 });
 
+test("reply necessity can skip a mention", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-appr-"));
+  try {
+    const adapter = new Fake();
+    const bridge = new Bridge();
+    const llm = {
+      async complete() {
+        return {
+          text: JSON.stringify({ reply: false, reason: "通知，无需代答" }),
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          model: "test",
+        };
+      },
+    };
+    const runtime = new ProxyRuntime({ platform: adapter, bridge, loaded: cfg(dir), llm });
+    await runtime.start();
+    await runtime.ingest(mention("m1", "通知：今晚 10 点升级"));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(adapter.sent.length, 0);
+    assert.equal(bridge.prompts, 0);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("stale plan hash is rejected", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-appr-"));
   try {

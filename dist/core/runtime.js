@@ -1286,6 +1286,22 @@ export class ProxyRuntime {
         }
         const style = detectReplyStyle(enriched, this.replyOptions);
         const depth = detectReplyDepth(enriched, this.replyOptions);
+        const decision = await this.shouldReplyToMention(enriched, classification);
+        if (!decision.reply) {
+            this.logger.info("mention skipped by reply necessity", {
+                messageId: message.messageId,
+                reason: decision.reason,
+            });
+            await this.markProcessed(message);
+            for (const followup of burst)
+                await this.markProcessed(followup);
+            await this.audit.append({
+                actor: { system: true },
+                action: "mention_skipped",
+                details: { messageId: message.messageId, reason: decision.reason },
+            });
+            return;
+        }
         const task = await this.createReplyTask(enriched, classification);
         const autoReply = this.config.policy.autoReplyOnMention &&
             classification?.actionability !== "task" &&
@@ -1331,6 +1347,67 @@ export class ProxyRuntime {
             const notified = await this.sendToApprover(`有人 @你，但审批卡发送失败：${truncate(message.text, 200)}\n发送人：${message.sender.displayName ?? message.sender.id}`);
             if (notified)
                 await this.markProcessed(message);
+        }
+    }
+    async shouldReplyToMention(message, classification) {
+        if (detectReplyDepth(message, this.replyOptions) === "ack") {
+            return { reply: true, reason: "ack" };
+        }
+        if (classification) {
+            if (!classification.relevant)
+                return { reply: false, reason: "not relevant" };
+            if (classification.actionability === "noise") {
+                return { reply: false, reason: "noise" };
+            }
+            return { reply: true, reason: "classified" };
+        }
+        const recent = this.config.context.enabled
+            ? this.chatContext
+                .recent(`${message.platform}:${message.chat.id}`, 6, message.messageId)
+                .map((item) => `${item.senderName ?? item.senderId}: ${truncate(item.text, 160)}`)
+            : [];
+        const timer = setTimeout(() => { }, 8000);
+        timer.unref?.();
+        try {
+            const completion = await Promise.race([
+                this.llm.complete([
+                    {
+                        role: "system",
+                        content: [
+                            "你是群聊助理。判断这条 @owner 的消息是否需要机器人代答。",
+                            "需要：明确请求 owner 回答/确认/决策，且当前没有其他人给出答案。",
+                            "不需要：通知、公告、闲聊、只是 @ 一下、问题已有人回答、与 owner 无关。",
+                            '输出严格 JSON：{"reply": true|false, "reason": "..."}。',
+                        ].join("\n"),
+                    },
+                    {
+                        role: "user",
+                        content: JSON.stringify({
+                            sender: message.sender.displayName ?? message.sender.id,
+                            text: message.text,
+                            recent,
+                        }),
+                    },
+                ]),
+                new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error("reply intent timed out")), 8000).unref?.();
+                }),
+            ]);
+            const parsed = parseJsonLoose(completion.text);
+            if (parsed && parsed.reply === false) {
+                return { reply: false, reason: String(parsed.reason ?? "model declined") };
+            }
+            return { reply: true, reason: String(parsed?.reason ?? "model allowed") };
+        }
+        catch (error) {
+            this.logger.warn("reply necessity check failed; defaulting to reply", {
+                messageId: message.messageId,
+                error: toErrorMessage(error),
+            });
+            return { reply: true, reason: "intent check failed" };
+        }
+        finally {
+            clearTimeout(timer);
         }
     }
     async createReplyTask(message, classification) {
@@ -3229,7 +3306,8 @@ export class ProxyRuntime {
                     : []),
             ...(contextBlock ? [contextBlock] : []),
             "你在飞书群里以机器人身份回答。不要冒充用户。",
-            "如果只是代答，请用一句话结论 + 一个下一步；不要展开。",
+            "如果只是代答，先给结论；只有对方需要行动时才给下一步，否则不要补。",
+            "引用文件行号前必须实际读取；未读取就不要写行号，只写文件/表名。",
             "如果当前消息是“哪个/这个/那个”等短指代，先在被回复消息和上下文中找对应项；能找到就直接回答，不要反问。",
             "先自查：能从上下文、记忆、任务或仓库确认的，不要提问。",
             "涉及表名、接口、字段、配置时，先在仓库中检索确认，不要凭印象猜。",
@@ -3320,13 +3398,6 @@ function createFilterClient(options, logger) {
     if (options.llm)
         return options.llm;
     const { config, secrets } = options.loaded;
-    if (!config.filter.enabled) {
-        return {
-            async complete() {
-                throw new Error("filter disabled");
-            },
-        };
-    }
     if (config.filter.mode === "opencode") {
         return new OpenCodeLlmClient({
             bridge: options.bridge,
@@ -3336,6 +3407,13 @@ function createFilterClient(options, logger) {
             ...(config.analysis.model ? { model: config.analysis.model } : {}),
             logger: logger.child("filter"),
         });
+    }
+    if (!config.filter.enabled) {
+        return {
+            async complete() {
+                throw new Error("filter disabled");
+            },
+        };
     }
     return new OpenAiCompatibleClient({
         baseUrl: config.filter.baseUrl,
