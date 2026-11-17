@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -134,7 +134,12 @@ class Bridge implements OpenCodeBridge {
   }
   async createSession() { return "s"; }
   prompts = 0;
-  async prompt() { this.prompts += 1; return "短回复"; }
+  texts: string[] = [];
+  async prompt(_sessionId?: string, input?: { text?: string }) {
+    this.prompts += 1;
+    this.texts.push(input?.text ?? "");
+    return "短回复";
+  }
   async deleteSession() {}
 }
 
@@ -185,6 +190,48 @@ test("simple confirmation gets an ack draft without a model call", async () => {
     assert.equal(sent?.kind, "text");
     if (sent?.kind === "text") assert.match(sent.text, /收到/);
     assert.equal(bridge.prompts, 0);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("quoted reply includes the referenced message", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-appr-"));
+  try {
+    await writeFile(
+      join(dir, "chat-context.json"),
+      JSON.stringify({
+        version: 1,
+        chats: {
+          "feishu:chat": {
+            platform: "feishu",
+            chatId: "chat",
+            messages: [
+              {
+                messageId: "om_owner",
+                senderId: "me",
+                senderName: "任元",
+                text: "@杨丰印 这个你看看：但第 3 步有个语义要定：被过滤掉的 IP 是“不入库”还是“入库但标记排除”？",
+                at: Date.now() - 1000,
+                mentionMe: false,
+                mentionBot: false,
+                origin: "owner_group",
+              },
+            ],
+            updatedAt: Date.now(),
+          },
+        },
+      }),
+    );
+    const adapter = new Fake();
+    const bridge = new Bridge();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge, loaded: cfg(dir) });
+    await runtime.start();
+    await runtime.ingest({ ...mention("m1", "哪个？"), replyToMessageId: "om_owner" });
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(bridge.texts.some((text) => text.includes("被回复的消息")));
+    assert.ok(bridge.texts.some((text) => text.includes("第 3 步")));
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });
