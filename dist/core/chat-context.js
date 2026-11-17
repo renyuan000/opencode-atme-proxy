@@ -85,6 +85,13 @@ export class ChatContextStore {
             : chat.messages;
         return messages.slice(-limit);
     }
+    find(chatKey, messageIds) {
+        const chat = this.chats.get(chatKey);
+        if (!chat || messageIds.length === 0)
+            return [];
+        const wanted = new Set(messageIds);
+        return chat.messages.filter((message) => wanted.has(message.messageId));
+    }
     prune() {
         const now = this.now();
         for (const [key, chat] of this.chats) {

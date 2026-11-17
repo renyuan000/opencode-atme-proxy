@@ -368,6 +368,8 @@ awaiting_approval → rejected / expired
 5. 分析阶段禁止修改文件、禁止执行写操作、禁止访问未授权仓库。
 6. 分析结果生成 `planHash`，覆盖：仓库、基础分支、目标分支、变更范围、拟执行命令、验收标准。
 7. 分析版本化保存；修改计划生成新版本与新 `planHash`，旧批准失效。
+8. 分析完成后必须核实：确定性核对标识符（表名 / 接口 / 字段 / 配置），并由只读 reviewer 对照事件单元、pinned 记忆与未关闭任务，输出 `drift / reasons / unverified_identifiers / checked / assumptions`。
+9. `drift=major` 必须转 `needs_info`；`minor` 写入审批卡风险区并标注 `[核实]`；核实失败不阻塞，保留确定性结果。
 
 **验收标准**：
 
@@ -375,6 +377,8 @@ awaiting_approval → rejected / expired
 - [ ] 无仓库匹配时不会进入审批，而是要求补充。
 - [ ] 分析阶段失败不会产生任何代码修改。
 - [ ] 修改计划后旧批准自动失效。
+- [ ] 分析中的未知标识符会被标出。
+- [ ] `drift=major` 不进入审批，转 `needs_info`。
 
 ### FR-7a 项目上下文解析（P0）
 

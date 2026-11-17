@@ -147,9 +147,22 @@ export interface TaskAnalysis {
   openQuestions: string[];
   acceptanceCriteria: string[];
   estimate?: string;
+  assumptions?: string[];
+  checked?: string[];
+  verification?: AnalysisVerification;
   model: string;
   createdAt: number;
   planHash: string;
+}
+
+export type AnalysisDrift = "none" | "minor" | "major";
+
+export interface AnalysisVerification {
+  drift: AnalysisDrift;
+  reasons: string[];
+  unverifiedIdentifiers: string[];
+  checked: string[];
+  assumptions?: string[];
 }
 
 export type ApprovalKind = "reply" | "develop" | "merge" | "push";

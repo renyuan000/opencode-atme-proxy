@@ -40,6 +40,7 @@ export declare class ChatContextStore {
     append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName">): void;
     bindProject(chatKey: string, projectId: string, worktree: string): void;
     recent(chatKey: string, limit: number, excludeMessageId?: string): ContextMessage[];
+    find(chatKey: string, messageIds: string[]): ContextMessage[];
     prune(): void;
     flush(): Promise<void>;
 }

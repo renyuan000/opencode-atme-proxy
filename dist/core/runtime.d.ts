@@ -129,7 +129,9 @@ export declare class ProxyRuntime {
     private shouldStoreContext;
     private isMediaMessage;
     private appendContextForScan;
-    private contextForTask;
+    private analysisContext;
+    private verifyAnalysis;
+    private analysisDirectory;
     private resolveProject;
     private askOpenCode;
     private safeReply;

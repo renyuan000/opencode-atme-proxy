@@ -127,6 +127,13 @@ export class ChatContextStore {
     return messages.slice(-limit);
   }
 
+  find(chatKey: string, messageIds: string[]): ContextMessage[] {
+    const chat = this.chats.get(chatKey);
+    if (!chat || messageIds.length === 0) return [];
+    const wanted = new Set(messageIds);
+    return chat.messages.filter((message) => wanted.has(message.messageId));
+  }
+
   prune(): void {
     const now = this.now();
     for (const [key, chat] of this.chats) {

@@ -21,6 +21,7 @@ import { ProjectStore } from "./project-store.js";
 import { ChatContextStore } from "./chat-context.js";
 import { MemoryStore } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
+import { deterministicVerification, mergeVerification, parseVerification, } from "./analysis-verify.js";
 import { OwnerStore } from "./owner-store.js";
 import { assertTransition, canTransition } from "./task-state.js";
 import { readJsonFile, formatLocalTime, sha256, stableUuid, toErrorMessage, truncate, truncateMiddle, writeJsonAtomic, } from "./util.js";
@@ -1490,8 +1491,17 @@ export class ProxyRuntime {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(new Error("analysis timed out")), this.config.concurrency.analysisTimeoutMs);
         let analysis;
+        let verification;
         try {
             analysis = await this.buildAnalysis(task, controller.signal);
+            verification = await this.verifyAnalysis(task, analysis, controller.signal);
+            analysis.verification = verification;
+            if (verification.drift === "major") {
+                analysis.needsInfo = true;
+                analysis.openQuestions = [
+                    ...new Set([...analysis.openQuestions, ...verification.reasons]),
+                ];
+            }
         }
         finally {
             clearTimeout(timer);
@@ -1503,6 +1513,15 @@ export class ProxyRuntime {
         task.state = analysis.needsInfo ? "needs_info" : "awaiting_approval";
         task.updatedAt = Date.now();
         await this.tasks.save(task);
+        await this.audit.append({
+            actor: { system: true },
+            action: "analysis_verified",
+            taskId: task.id,
+            details: {
+                drift: verification?.drift ?? "unknown",
+                unverified: verification?.unverifiedIdentifiers.length ?? 0,
+            },
+        });
         if (analysis.needsInfo) {
             await this.sendToApprover(`任务需要补充信息：${task.title}\n${analysis.openQuestions
                 .map((question) => `- ${question}`)
@@ -1536,9 +1555,12 @@ export class ProxyRuntime {
             }
             return this.buildAnalysisInWorktree(task, project.worktree, signal);
         }
+        const ctx = await this.analysisContext(task);
         const prompt = [
             "你是任务分析器，只做规划，不执行代码、不修改文件。",
-            "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, plan, commands, risks, open_questions, acceptance_criteria, estimate。",
+            "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, plan, commands, risks, open_questions, acceptance_criteria, estimate, assumptions, checked。",
+            "先从上下文与仓库核实表名、接口、字段、配置；找不到时写进 open_questions，不要凭印象假设。",
+            "区分事实与假设；假设必须写进 assumptions，已核对项写进 checked。",
             "repos 只能从以下白名单选择：",
             JSON.stringify(this.config.repos.map((item) => item.id)),
             `当前项目目录：${repo.path}`,
@@ -1548,17 +1570,12 @@ export class ProxyRuntime {
                 excerpt: task.excerpt,
                 requester: task.requester.displayName ?? task.requester.id,
                 project: task.project,
-                recentContext: this.contextForTask(task),
-                memory: this.config.memory.enabled && this.config.memory.includeInAnalysis
-                    ? this.memory
-                        .query({
-                        platform: task.platform,
-                        chatId: task.chatId,
-                        text: `${task.title} ${task.excerpt}`,
-                        limit: this.config.memory.injectLimit,
-                    })
-                        .map((record) => `${record.kind}: ${record.key} = ${record.value}`)
-                    : [],
+                messageIds: task.messageIds,
+                sourceMessages: ctx.sourceMessages,
+                recentContext: ctx.recentContext,
+                pinned: ctx.pinned,
+                memory: ctx.memory,
+                openTasks: ctx.openTasks,
             }),
         ].join("\n");
         const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
@@ -1592,9 +1609,12 @@ export class ProxyRuntime {
         return parsed;
     }
     async buildAnalysisInWorktree(task, worktree, signal) {
+        const ctx = await this.analysisContext(task);
         const prompt = [
             "你是任务分析器，只做规划，不执行代码、不修改文件。",
-            "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, plan, commands, risks, open_questions, acceptance_criteria, estimate。",
+            "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, plan, commands, risks, open_questions, acceptance_criteria, estimate, assumptions, checked。",
+            "先从上下文与仓库核实表名、接口、字段、配置；找不到时写进 open_questions，不要凭印象假设。",
+            "区分事实与假设；假设必须写进 assumptions，已核对项写进 checked。",
             "repos 只能从以下白名单选择：",
             JSON.stringify(this.config.repos.map((item) => item.id)),
             `当前项目目录：${worktree}`,
@@ -1604,17 +1624,12 @@ export class ProxyRuntime {
                 excerpt: task.excerpt,
                 requester: task.requester.displayName ?? task.requester.id,
                 project: task.project,
-                recentContext: this.contextForTask(task),
-                memory: this.config.memory.enabled && this.config.memory.includeInAnalysis
-                    ? this.memory
-                        .query({
-                        platform: task.platform,
-                        chatId: task.chatId,
-                        text: `${task.title} ${task.excerpt}`,
-                        limit: this.config.memory.injectLimit,
-                    })
-                        .map((record) => `${record.kind}: ${record.key} = ${record.value}`)
-                    : [],
+                messageIds: task.messageIds,
+                sourceMessages: ctx.sourceMessages,
+                recentContext: ctx.recentContext,
+                pinned: ctx.pinned,
+                memory: ctx.memory,
+                openTasks: ctx.openTasks,
             }),
         ].join("\n");
         const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
@@ -1667,7 +1682,11 @@ export class ProxyRuntime {
             baseBranch: repo?.defaultBranch ?? "main",
             targetBranch: `atme/${task.id}`,
             commands: analysis.commands,
-            risks: analysis.risks,
+            risks: [
+                ...analysis.risks,
+                ...(analysis.verification?.reasons ?? []).map((reason) => `[核实] ${reason}`),
+                ...(analysis.verification?.assumptions ?? []).map((item) => `[假设] ${item}`),
+            ],
             acceptanceCriteria: analysis.acceptanceCriteria,
             openQuestions: analysis.openQuestions,
         };
@@ -2608,11 +2627,117 @@ export class ProxyRuntime {
             ...(message.chat.name ? { chatName: message.chat.name } : {}),
         });
     }
-    contextForTask(task) {
-        if (!this.config.context.enabled || !this.config.context.includeInAnalysis)
-            return [];
-        const messages = this.chatContext.recent(`${task.platform}:${task.chatId}`, 10);
-        return messages.map((item) => `${item.senderName ?? item.senderId}: ${truncate(item.text, 200)}`);
+    async analysisContext(task) {
+        const chatKey = `${task.platform}:${task.chatId}`;
+        const source = this.config.context.enabled
+            ? this.chatContext.find(chatKey, task.messageIds ?? [])
+            : [];
+        const recent = this.config.context.enabled && this.config.context.includeInAnalysis
+            ? this.chatContext.recent(chatKey, 12)
+            : [];
+        const records = this.config.memory.enabled
+            ? this.memory.query({
+                platform: task.platform,
+                chatId: task.chatId,
+                text: `${task.title} ${task.excerpt}`,
+                limit: this.config.memory.injectLimit,
+            })
+            : [];
+        const format = (record) => `${record.kind}${record.pinned ? "/pin" : ""}: ${record.key} = ${record.value}`;
+        const sourceMessages = source.map((item) => `${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 400)}`);
+        const recentContext = recent.map((item) => `${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 300)}`);
+        const pinned = records.filter((record) => record.pinned).map(format);
+        const memory = records.filter((record) => !record.pinned).map(format);
+        const openTasks = (await this.tasks.list())
+            .filter((item) => item.platform === task.platform &&
+            item.chatId === task.chatId &&
+            item.id !== task.id &&
+            ["candidate", "analyzing", "needs_info", "awaiting_approval"].includes(item.state))
+            .slice(0, 5)
+            .map((item) => `${item.id} ${item.title} [${item.state}]`);
+        return {
+            sourceMessages,
+            recentContext,
+            pinned,
+            memory,
+            openTasks,
+            corpus: [
+                task.title,
+                task.excerpt,
+                ...(task.messageIds ?? []),
+                ...sourceMessages,
+                ...recentContext,
+                ...pinned,
+                ...memory,
+                ...openTasks,
+            ].join("\n"),
+        };
+    }
+    async verifyAnalysis(task, analysis, signal) {
+        const context = await this.analysisContext(task);
+        const base = deterministicVerification(analysis, context.corpus);
+        if (!this.config.subagents.enabled || !this.config.subagents.reviewer)
+            return base;
+        const directory = await this.analysisDirectory(task);
+        const title = `${this.config.opencode.sessionTitlePrefix}:verify:${task.id}`;
+        try {
+            const { sessionId, release } = await this.createChildSession({
+                platform: task.platform,
+                chatId: task.chatId,
+                directory,
+                title,
+                role: "review",
+                permission: READ_ONLY_PERMISSION,
+                agent: this.config.subagents.reviewer,
+                taskId: task.id,
+                ...(signal ? { signal } : {}),
+            });
+            try {
+                const raw = await this.options.bridge.prompt(sessionId, {
+                    directory,
+                    title,
+                    text: [
+                        "你是只读核实器。不要修改文件，不要执行写操作。",
+                        "核对任务分析是否忠于群上下文，是否跑偏、扩大范围或把假设写成事实。",
+                        "表名 / 接口 / 字段 / 配置要能在上下文或仓库找到；找不到就列出。",
+                        '输出严格 JSON：{drift: "none"|"minor"|"major", reasons: [], unverified_identifiers: [], checked: [], assumptions: []}。',
+                        "上下文：",
+                        JSON.stringify({
+                            title: task.title,
+                            excerpt: task.excerpt,
+                            messageIds: task.messageIds,
+                            sourceMessages: context.sourceMessages,
+                            recentContext: context.recentContext,
+                            pinned: context.pinned,
+                            memory: context.memory,
+                            openTasks: context.openTasks,
+                        }),
+                        "分析：",
+                        JSON.stringify(analysis),
+                    ].join("\n"),
+                    ...(signal ? { signal } : {}),
+                });
+                return mergeVerification(base, parseVerification(raw));
+            }
+            finally {
+                release();
+                await this.finishSession(sessionId, title, directory, "analysis_verify");
+            }
+        }
+        catch (error) {
+            this.logger.warn("analysis verification failed; keeping deterministic checks", {
+                taskId: task.id,
+                error: toErrorMessage(error),
+            });
+            return base;
+        }
+    }
+    async analysisDirectory(task) {
+        const repo = this.config.repos[0];
+        if (repo)
+            return repo.path;
+        const project = await this.resolveProject(task.chatId);
+        return project.worktree;
     }
     async resolveProject(chatId) {
         const bound = this.projectStore.get(chatId);
@@ -2854,6 +2979,8 @@ function parseAnalysis(raw, task, fallbackRepo) {
         risks: stringArray(parsed?.risks),
         openQuestions: stringArray(parsed?.open_questions),
         acceptanceCriteria: stringArray(parsed?.acceptance_criteria),
+        assumptions: stringArray(parsed?.assumptions),
+        checked: stringArray(parsed?.checked),
         ...(typeof parsed?.estimate === "string" ? { estimate: parsed.estimate } : {}),
         model: "main_agent",
         createdAt: Date.now(),

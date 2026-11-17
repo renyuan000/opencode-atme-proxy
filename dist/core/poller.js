@@ -74,14 +74,19 @@ export class PollingService {
                 ...(last ? { messageId: last.messageId, messageTime: last.createdAt } : {}),
             });
             await this.options.cursors.flush();
-            this.logger.info("poll completed", {
-                chatId,
-                name,
-                messages: result.messages.length,
-                lastMessageId: last?.messageId,
-                lastMessageTime: last?.createdAt,
-                windowMs: endTime - startTime,
-            });
+            if (result.messages.length > 0) {
+                this.logger.info("poll completed", {
+                    chatId,
+                    name,
+                    messages: result.messages.length,
+                    lastMessageId: last?.messageId,
+                    lastMessageTime: last?.createdAt,
+                    windowMs: endTime - startTime,
+                });
+            }
+            else {
+                this.logger.debug("poll idle", { chatId, name, windowMs: endTime - startTime });
+            }
         }
         catch (error) {
             const data = error
