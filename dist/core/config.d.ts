@@ -463,6 +463,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMentions: z.ZodDefault<z.ZodBoolean>;
         storeRelevantScan: z.ZodDefault<z.ZodBoolean>;
         storeMediaPlaceholders: z.ZodOptional<z.ZodBoolean>;
+        storeAllGroupMessages: z.ZodOptional<z.ZodBoolean>;
         storeOwnerDm: z.ZodDefault<z.ZodBoolean>;
         storeOwnerGroup: z.ZodOptional<z.ZodBoolean>;
         burstWindowSeconds: z.ZodDefault<z.ZodNumber>;
@@ -487,6 +488,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         burstMaxChars: number;
         burstGrouping: boolean;
         storeMediaPlaceholders?: boolean | undefined;
+        storeAllGroupMessages?: boolean | undefined;
         storeOwnerGroup?: boolean | undefined;
     }, {
         enabled?: boolean | undefined;
@@ -499,6 +501,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMentions?: boolean | undefined;
         storeRelevantScan?: boolean | undefined;
         storeMediaPlaceholders?: boolean | undefined;
+        storeAllGroupMessages?: boolean | undefined;
         storeOwnerDm?: boolean | undefined;
         storeOwnerGroup?: boolean | undefined;
         burstWindowSeconds?: number | undefined;
@@ -917,6 +920,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         burstMaxChars: number;
         burstGrouping: boolean;
         storeMediaPlaceholders?: boolean | undefined;
+        storeAllGroupMessages?: boolean | undefined;
         storeOwnerGroup?: boolean | undefined;
     };
     memory: {
@@ -1147,6 +1151,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMentions?: boolean | undefined;
         storeRelevantScan?: boolean | undefined;
         storeMediaPlaceholders?: boolean | undefined;
+        storeAllGroupMessages?: boolean | undefined;
         storeOwnerDm?: boolean | undefined;
         storeOwnerGroup?: boolean | undefined;
         burstWindowSeconds?: number | undefined;

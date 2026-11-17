@@ -143,6 +143,7 @@ export declare class ProxyRuntime {
     private summaryText;
     private updateGroupSummary;
     private doUpdateGroupSummary;
+    private evidenceRecall;
     private quotedContext;
     private analysisContext;
     private verifyAnalysis;

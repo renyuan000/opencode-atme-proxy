@@ -39,6 +39,21 @@ test("writes inbound evidence and truncates long text", async () => {
   }
 });
 
+test("searches evidence by term", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-evidence-"));
+  try {
+    const now = new Date(2026, 10, 17, 12, 0, 0).getTime();
+    const store = new EvidenceStore({ dir, retentionDays: 30, maxChars: 200, now: () => now });
+    store.append({ ts: now, platform: "feishu", chatId: "oc_1", messageId: "m1", direction: "inbound", senderName: "任元", text: "第 3 步：过滤 IP 是否入库" });
+    store.append({ ts: now, platform: "feishu", chatId: "oc_1", messageId: "m2", direction: "inbound", senderName: "杨丰印", text: "午饭吃什么" });
+    const found = store.search({ chatId: "oc_1", terms: ["过滤"], days: 7, limit: 5 });
+    assert.equal(found.length, 1);
+    assert.equal(found[0]?.messageId, "m1");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("prunes evidence older than retention", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-evidence-"));
   try {

@@ -101,6 +101,7 @@
     "storeMentions": true,
     "storeRelevantScan": true,
     "storeMediaPlaceholders": true,
+    "storeAllGroupMessages": true,
     "storeOwnerDm": true,
     "storeOwnerGroup": true,
     "burstGrouping": true,

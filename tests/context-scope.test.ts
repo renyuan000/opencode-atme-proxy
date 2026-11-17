@@ -76,7 +76,7 @@ function msg(id: string, text: string, mentions: string[] = []): IncomingMessage
   return { platform: "feishu", messageId: id, chat: { id: "chat", kind: "group" }, sender: { platform: "feishu", id: "u1" }, senderType: "user", text, mentions: mentions.map((m) => ({ platform: "feishu", id: m })), createdAt: Date.now(), rawType: "text" };
 }
 
-test("non-mention messages are not stored in chat context", async () => {
+test("non-mention messages are stored for context continuity", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-ctxscope-"));
   try {
     const runtime = new ProxyRuntime({ platform: new Adapter(), bridge: new Bridge(), loaded: config(dir) });
@@ -85,9 +85,26 @@ test("non-mention messages are not stored in chat context", async () => {
     await new Promise((r) => setTimeout(r, 50));
     await runtime.stop();
     const raw = await readFile(join(dir, "chat-context.json"), "utf8").catch(() => "{\"chats\":{}}");
-    const parsed = JSON.parse(raw) as { chats: Record<string, { messages: unknown[] }> };
+    const parsed = JSON.parse(raw) as { chats: Record<string, { messages: Array<{ origin?: string }> }> };
     const messages = Object.values(parsed.chats).flatMap((chat) => chat.messages);
-    assert.equal(messages.length, 0);
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0]?.origin, "group_all");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("pure acknowledgements are not stored", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-ctxscope-"));
+  try {
+    const runtime = new ProxyRuntime({ platform: new Adapter(), bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    await runtime.ingest(msg("m1", "收到"));
+    await new Promise((r) => setTimeout(r, 50));
+    await runtime.stop();
+    const raw = await readFile(join(dir, "chat-context.json"), "utf8").catch(() => "{\"chats\":{}}");
+    const parsed = JSON.parse(raw) as { chats: Record<string, { messages: unknown[] }> };
+    assert.equal(Object.values(parsed.chats).flatMap((chat) => chat.messages).length, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

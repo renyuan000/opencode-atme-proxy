@@ -32,6 +32,13 @@ export declare class EvidenceStore {
     private readonly dirs;
     constructor(options: EvidenceStoreOptions);
     append(record: EvidenceRecord): void;
+    search(input: {
+        chatId: string;
+        terms: string[];
+        days?: number;
+        limit?: number;
+    }): EvidenceRecord[];
     prune(): void;
+    private findChatDirs;
     private chatDir;
 }

@@ -494,14 +494,17 @@ export class ProxyRuntime {
         }
         const mentionMe2 = this.isMentionMe(message);
         const storeOwnerGroup = fromOwner && this.config.context.enabled && this.config.context.storeOwnerGroup !== false;
-        if (this.shouldStoreContext(message, mentionMe2, mentionBot) || storeOwnerGroup) {
+        const storeAllGroup = this.config.context.storeAllGroupMessages !== false && !isLowValueMessage(message.text);
+        if (this.shouldStoreContext(message, mentionMe2, mentionBot) || storeOwnerGroup || storeAllGroup) {
             const origin = mentionBot
                 ? "mention_bot"
                 : mentionMe2
                     ? "mention_me"
                     : fromOwner
                         ? "owner_group"
-                        : "media_placeholder";
+                        : this.isMediaMessage(message)
+                            ? "media_placeholder"
+                            : "group_all";
             this.chatContext.append(`${message.platform}:${message.chat.id}`, {
                 messageId: message.messageId,
                 senderId: message.sender.id,
@@ -3052,6 +3055,34 @@ export class ProxyRuntime {
             details: { chatId, messages: messages.length },
         });
     }
+    evidenceRecall(message) {
+        if (this.config.evidence?.enabled === false)
+            return [];
+        const text = message.text.trim();
+        const referential = text.length <= 20 ||
+            /(哪个|这个|那个|上面|之前|上次|刚才|继续|那条|第.步)/.test(text);
+        if (!referential && !message.replyToMessageId)
+            return [];
+        const quoted = this.quotedContext(message).join(" ");
+        const split = (value) => value
+            .split(/[\s,，。；;、:：!！?？]+/)
+            .map((item) => item.trim())
+            .filter((item) => item.length >= 2);
+        let terms = split(`${quoted} ${text}`).slice(0, 8);
+        if (terms.length === 0) {
+            const recent = this.chatContext
+                .recent(`${message.platform}:${message.chat.id}`, 3, message.messageId)
+                .map((item) => item.text)
+                .join(" ");
+            terms = split(recent).slice(0, 8);
+        }
+        if (terms.length === 0)
+            return [];
+        return this.evidence
+            .search({ chatId: message.chat.id, terms, days: 7, limit: 5 })
+            .filter((record) => record.messageId !== message.messageId)
+            .map((record) => `- ${new Date(record.ts).toLocaleString()} ${record.senderName ?? record.senderId ?? ""}: ${truncateMiddle(record.text, 200)}`);
+    }
     quotedContext(message) {
         if (!message.replyToMessageId && !message.threadId)
             return [];
@@ -3294,6 +3325,7 @@ export class ProxyRuntime {
             ? this.summaryText(message.platform, message.chat.id)
             : "";
         const quoteBlock = this.quotedContext(message);
+        const evidenceBlock = this.evidenceRecall(message);
         const prompt = [
             styleInstruction,
             "你的角色：资深软件架构师与研发负责人，熟悉当前主项目。",
@@ -3304,6 +3336,7 @@ export class ProxyRuntime {
                 : message.replyToMessageId
                     ? ["被回复的消息不在本地上下文；不要猜测具体指代，只问缺失的那一项。"]
                     : []),
+            ...(evidenceBlock.length > 0 ? ["群证据片段（按需回查）：", ...evidenceBlock] : []),
             ...(contextBlock ? [contextBlock] : []),
             "你在飞书群里以机器人身份回答。不要冒充用户。",
             "如果只是代答，先给结论；只有对方需要行动时才给下一步，否则不要补。",
@@ -3485,6 +3518,12 @@ function stringArray(value) {
     return Array.isArray(value)
         ? value.filter((item) => typeof item === "string")
         : [];
+}
+function isLowValueMessage(text) {
+    const compact = text.replace(/[\s\p{P}\p{S}]/gu, "");
+    if (!compact)
+        return true;
+    return /^(收到|好的|好|ok|可以|嗯|谢谢|感谢|辛苦了)$/i.test(compact);
 }
 function mergeBurst(base, followups) {
     if (followups.length === 0)

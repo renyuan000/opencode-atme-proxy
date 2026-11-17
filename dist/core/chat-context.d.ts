@@ -1,5 +1,5 @@
 import type { Logger } from "./logger.js";
-export type ContextOrigin = "mention_me" | "mention_bot" | "scan_relevant" | "owner_dm" | "owner_group" | "media_placeholder";
+export type ContextOrigin = "mention_me" | "mention_bot" | "scan_relevant" | "owner_dm" | "owner_group" | "group_all" | "media_placeholder";
 export interface ContextMessage {
     messageId: string;
     senderId: string;

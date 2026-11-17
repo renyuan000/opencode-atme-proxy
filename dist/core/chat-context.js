@@ -45,10 +45,15 @@ export class ChatContextStore {
                 messages: [],
                 updatedAt: this.now(),
             };
-        existing.messages.push({
+        const entry = {
             ...message,
             text: truncateMiddle(message.text, this.options.maxCharsPerMessage),
-        });
+        };
+        const index = existing.messages.findIndex((item) => item.messageId === message.messageId);
+        if (index >= 0)
+            existing.messages[index] = entry;
+        else
+            existing.messages.push(entry);
         if (existing.messages.length > this.options.maxMessagesPerChat) {
             existing.messages = existing.messages.slice(-this.options.maxMessagesPerChat);
         }

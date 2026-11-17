@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
 import { createLogger } from "./logger.js";
@@ -74,6 +74,52 @@ export class EvidenceStore {
     }
   }
 
+  search(input: {
+    chatId: string;
+    terms: string[];
+    days?: number;
+    limit?: number;
+  }): EvidenceRecord[] {
+    if (!this.enabled || input.terms.length === 0) return [];
+    const terms = input.terms.map((term) => term.toLowerCase()).filter(Boolean);
+    const cutoff = this.now() - (input.days ?? 7) * 86_400_000;
+    const limit = input.limit ?? 5;
+    const results: EvidenceRecord[] = [];
+    for (const dir of this.findChatDirs(input.chatId)) {
+      let files: string[];
+      try {
+        files = readdirSync(dir).filter((file) => file.endsWith(".jsonl")).sort().reverse();
+      } catch {
+        continue;
+      }
+      for (const file of files) {
+        const stamp = file.slice(0, 10);
+        const ts = Date.parse(`${stamp}T00:00:00`);
+        if (Number.isNaN(ts) || ts < cutoff) continue;
+        let raw: string;
+        try {
+          raw = readFileSync(join(dir, file), "utf8");
+        } catch {
+          continue;
+        }
+        for (const line of raw.split("\n")) {
+          if (!line.trim()) continue;
+          let record: EvidenceRecord;
+          try {
+            record = JSON.parse(line) as EvidenceRecord;
+          } catch {
+            continue;
+          }
+          const haystack = record.text.toLowerCase();
+          if (!terms.some((term) => haystack.includes(term))) continue;
+          results.push(record);
+          if (results.length >= limit) return results;
+        }
+      }
+    }
+    return results;
+  }
+
   prune(): void {
     if (!this.enabled) return;
     const cutoff = this.now() - this.options.retentionDays * 86_400_000;
@@ -106,6 +152,17 @@ export class EvidenceStore {
           });
         }
       }
+    }
+  }
+
+  private findChatDirs(chatId: string): string[] {
+    const suffix = `__${sanitize(chatId)}`;
+    try {
+      return readdirSync(this.options.dir)
+        .filter((name) => name.endsWith(suffix))
+        .map((name) => join(this.options.dir, name));
+    } catch {
+      return [];
     }
   }
 
