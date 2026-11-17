@@ -65,6 +65,48 @@ export async function startDaemon(options = {}) {
         },
     };
 }
+async function runInit() {
+    const configIndex = process.argv.indexOf("--config");
+    const explicit = configIndex >= 0 ? process.argv[configIndex + 1] : undefined;
+    const configPath = explicit ?? process.env.ATME_CONFIG ?? defaultConfigPath();
+    process.env.ATME_CONFIG = configPath;
+    const envPath = join(dirname(configPath), ".env");
+    const force = process.argv.includes("--force");
+    if (!existsSync(configPath) || force) {
+        process.stdout.write(`初始化配置：${configPath}\n`);
+        await runSetup({
+            ...(explicit ? { configPath } : {}),
+            nonInteractive: process.argv.includes("--yes"),
+        });
+    }
+    else {
+        process.stdout.write(`配置已存在：${configPath}（--force 可重跑 setup）\n`);
+    }
+    loadDotenv({ path: envPath, override: true, quiet: true });
+    loadDotenv({ override: true, quiet: true });
+    await installAgents();
+    try {
+        await listChats(true);
+    }
+    catch (error) {
+        process.stdout.write(`群同步跳过：${toErrorMessage(error)}\n`);
+    }
+    const checks = await runDoctor(configPath);
+    let failed = 0;
+    for (const check of checks) {
+        process.stdout.write(`${check.ok ? "✅" : "❌"} ${check.label}${check.detail ? ` — ${check.detail}` : ""}\n`);
+        if (!check.ok) {
+            failed++;
+            if (check.fix)
+                process.stdout.write(`   fix: ${check.fix}\n`);
+        }
+    }
+    process.stdout.write(failed === 0
+        ? "\n初始化完成，可以启动：atme-proxy start\n"
+        : `\n还有 ${failed} 项未通过，按上面的 fix 处理后重跑：atme-proxy init\n`);
+    if (failed > 0)
+        process.exitCode = 1;
+}
 async function installAgents() {
     const source = join(dirname(fileURLToPath(import.meta.url)), "..", ".opencode", "agents");
     const target = join(homedir(), ".config", "opencode", "agents");
@@ -152,6 +194,10 @@ async function main() {
     bootstrapEnv();
     const logger = createLogger({ scope: "cli" });
     const command = process.argv[2] ?? "help";
+    if (command === "init") {
+        await runInit();
+        return;
+    }
     if (command === "agents") {
         await installAgents();
         return;
@@ -236,6 +282,7 @@ async function main() {
         process.stdout.write([
             "usage:",
             "  atme-proxy setup            interactive configuration wizard",
+            "  atme-proxy init             setup + agents + chats --sync + doctor",
             "  atme-proxy chats [--sync]   list groups; --sync writes chat ids and names to config",
             "  atme-proxy doctor           check config, credentials, OpenCode and project",
             "  atme-proxy agents           install bundled agents to ~/.config/opencode/agents",

@@ -76,6 +76,15 @@ npm exec --yes --package=github:renyuan000/opencode-atme-proxy atme-proxy -- ver
 npm install -g github:renyuan000/opencode-atme-proxy
 ```
 
+安装后一键初始化（配置 + agent + 群同步 + 检查）：
+
+```bash
+atme-proxy init
+# 或临时试用：npm exec --yes --package=github:renyuan000/opencode-atme-proxy atme-proxy -- init
+```
+
+`init` 会复用已有配置；要重跑向导加 `--force`。
+
 或安装到本地项目：
 
 ```bash
@@ -593,6 +602,15 @@ Global install (recommended):
 ```bash
 npm install -g github:renyuan000/opencode-atme-proxy
 ```
+
+One-shot init after install (config + agents + chat sync + doctor):
+
+```bash
+atme-proxy init
+# or: npm exec --yes --package=github:renyuan000/opencode-atme-proxy atme-proxy -- init
+```
+
+`init` reuses an existing config; add `--force` to rerun the wizard.
 
 Or into a local project:
 
