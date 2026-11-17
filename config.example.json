@@ -151,7 +151,7 @@
     "scanConcurrency": 1,
     "perChat": 1,
     "maxQueue": 200,
-    "mentionTimeoutMs": 60000,
+    "mentionTimeoutMs": 120000,
     "scanTimeoutMs": 120000,
     "analysisTimeoutMs": 180000,
     "maxRetries": 1,

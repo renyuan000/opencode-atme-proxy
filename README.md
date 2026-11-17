@@ -163,16 +163,16 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 
 `config.json` 必填项：
 
-| 字段 | 说明 |
-|------|------|
-| `platforms.feishu.appId` | 飞书 App ID（`cli_` 开头） |
-| `platforms.feishu.me.openId` | 我的 open_id（`ou_` 开头） |
-| `platforms.feishu.approvers[0].openId` | 审批人 open_id，通常是我 |
-| `platforms.feishu.groups[].chatId` | 群 chat_id（`oc_` 开头），可多个 |
-| `filter.baseUrl/model` | OpenAI 兼容的低成本模型 |
-| `opencode.baseUrl` | `http://127.0.0.1:19876` |
-| `project.worktree` | 主项目代码目录；不填则自动解析 |
-| `repos[]` | 可选；开发执行的仓库白名单、测试/lint 命令 |
+| 字段                                   | 说明                                     |
+|----------------------------------------|------------------------------------------|
+| `platforms.feishu.appId`               | 飞书 App ID（`cli_` 开头）                 |
+| `platforms.feishu.me.openId`           | 我的 open_id（`ou_` 开头）                 |
+| `platforms.feishu.approvers[0].openId` | 审批人 open_id，通常是我                  |
+| `platforms.feishu.groups[].chatId`     | 群 chat_id（`oc_` 开头），可多个            |
+| `filter.baseUrl/model`                 | OpenAI 兼容的低成本模型                  |
+| `opencode.baseUrl`                     | `http://127.0.0.1:19876`                 |
+| `project.worktree`                     | 主项目代码目录；不填则自动解析            |
+| `repos[]`                              | 可选；开发执行的仓库白名单、测试/lint 命令 |
 
 **owner（“我”）怎么确定**
 
@@ -286,16 +286,16 @@ websocket ready
 
 ### 5. 常见问题
 
-| 现象 | 排查 |
-|------|------|
-| `Feishu app secret is missing` | `.env` 或 `FEISHU_APP_SECRET` 未设置 |
-| `Invalid config` | 字段缺失/类型错误；按报错路径修 |
-| `no active project resolved` | 配置 `project.worktree` 或 `project.allowlist` |
-| `another instance is running` | 已有进程；先停掉或删陈旧 `instance.lock` |
-| `queue is full` | 突发消息过多；提高 `concurrency.maxQueue` 或降低并发 |
-| 429 / 限流 | 降低 `rateLimit.sendPerSecond`，检查多实例 |
-| 卡片按钮无响应 | 检查 `card.action.trigger` 事件与回调时限 |
-| OpenCode 不可用 | 确认 `opencode serve` 与 `opencode.baseUrl` |
+| 现象                           | 排查                                                |
+|--------------------------------|-----------------------------------------------------|
+| `Feishu app secret is missing` | `.env` 或 `FEISHU_APP_SECRET` 未设置                |
+| `Invalid config`               | 字段缺失/类型错误；按报错路径修                      |
+| `no active project resolved`   | 配置 `project.worktree` 或 `project.allowlist`      |
+| `another instance is running`  | 已有进程；先停掉或删陈旧 `instance.lock`             |
+| `queue is full`                | 突发消息过多；提高 `concurrency.maxQueue` 或降低并发 |
+| 429 / 限流                     | 降低 `rateLimit.sendPerSecond`，检查多实例           |
+| 卡片按钮无响应                 | 检查 `card.action.trigger` 事件与回调时限           |
+| OpenCode 不可用                | 确认 `opencode serve` 与 `opencode.baseUrl`         |
 
 ### 会话架构（已实现）
 
@@ -319,11 +319,11 @@ websocket ready
 
 分三层，避免把没用的聊天都存下来：
 
-| 层 | 文件 | 存什么 | 默认 |
-|----|------|--------|------|
-| 聊天上下文 | `chat-context.json` | 只存 @我/@机器人 消息，以及**被判定相关**的批量消息；不存闲聊 | 每群 50 条 / 7 天 |
-| 关键信息记忆 | `memory.json` | 任务、决策、事实、偏好、截止时间、结论；主动 upsert、可 pin、可 TTL | 2000 条 / 90 天 |
-| 运行日志 | stderr / `logFile` | `messageId/chatId/类型/结果` 等元数据，**不存正文** | 关 |
+| 层           | 文件                | 存什么                                                      | 默认              |
+|--------------|---------------------|-------------------------------------------------------------|-------------------|
+| 聊天上下文   | `chat-context.json` | 只存 @我/@机器人 消息，以及**被判定相关**的批量消息；不存闲聊 | 每群 50 条 / 7 天 |
+| 关键信息记忆 | `memory.json`       | 任务、决策、事实、偏好、截止时间、结论；主动 upsert、可 pin、可 TTL | 2000 条 / 90 天   |
+| 运行日志     | stderr / `logFile`  | `messageId/chatId/类型/结果` 等元数据，**不存正文**          | 关                |
 
 - 周期拉取的非 @ 消息：只有 `relevant` 的才进 `chat-context.json`，其余不落盘。
 - 关键信息在 @ 消息处理、任务分析后主动提取；回答和任务分析会注入相关记忆。
@@ -647,16 +647,16 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 
 Required `config.json` fields:
 
-| Field | Meaning |
-|-------|---------|
-| `platforms.feishu.appId` | Feishu App ID (`cli_...`) |
-| `platforms.feishu.me.openId` | Your `open_id` (`ou_...`) |
-| `platforms.feishu.approvers[0].openId` | Approver `open_id`, usually you |
-| `platforms.feishu.groups[].chatId` | Group `chat_id` (`oc_...`); use `atme-proxy chats` to list |
-| `filter.baseUrl/model` | OpenAI-compatible low-cost model |
-| `opencode.baseUrl` | `http://127.0.0.1:19876` |
-| `project.worktree` | Main repo path; optional if auto-resolution works |
-| `repos[]` | Optional repo allowlist plus test/lint commands |
+| Field                                  | Meaning                                                    |
+|----------------------------------------|------------------------------------------------------------|
+| `platforms.feishu.appId`               | Feishu App ID (`cli_...`)                                  |
+| `platforms.feishu.me.openId`           | Your `open_id` (`ou_...`)                                  |
+| `platforms.feishu.approvers[0].openId` | Approver `open_id`, usually you                            |
+| `platforms.feishu.groups[].chatId`     | Group `chat_id` (`oc_...`); use `atme-proxy chats` to list |
+| `filter.baseUrl/model`                 | OpenAI-compatible low-cost model                           |
+| `opencode.baseUrl`                     | `http://127.0.0.1:19876`                                   |
+| `project.worktree`                     | Main repo path; optional if auto-resolution works          |
+| `repos[]`                              | Optional repo allowlist plus test/lint commands            |
 
 Feishu console:
 
@@ -803,11 +803,11 @@ See `docs/SESSION-ARCHITECTURE-REVIEW.md`. Summary:
 
 Three layers, so irrelevant chat is not persisted:
 
-| Layer | File | Stores | Default |
-|-------|------|--------|---------|
-| Chat context | `chat-context.json` | mentions and **relevant** scan messages only | 20 msgs/chat, 7 days |
-| Key memory | `memory.json` | task, decision, fact, preference, deadline, outcome; proactive upsert, pinnable, TTL | 2000 entries, 90 days |
-| Run log | stderr / `logFile` | metadata only, no message body | off |
+| Layer        | File                | Stores                                                                               | Default               |
+|--------------|---------------------|--------------------------------------------------------------------------------------|-----------------------|
+| Chat context | `chat-context.json` | mentions and **relevant** scan messages only                                         | 20 msgs/chat, 7 days  |
+| Key memory   | `memory.json`       | task, decision, fact, preference, deadline, outcome; proactive upsert, pinnable, TTL | 2000 entries, 90 days |
+| Run log      | stderr / `logFile`  | metadata only, no message body                                                       | off                   |
 
 Non-mention polled messages are persisted only when classified as relevant. Key facts are extracted after mentions and task analysis, then injected into replies and analysis.
 
