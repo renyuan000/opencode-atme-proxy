@@ -3,11 +3,13 @@ const COMMANDS = {
     重写: "regenerate",
     发送: "send",
     取消: "cancel",
+    列表: "list",
+    待办: "list",
     帮助: "help",
     help: "help",
 };
 export function parseOwnerCommand(text) {
-    const match = text.trim().match(/^[/／](改写|重写|发送|取消|帮助|help)\s*([\s\S]*)$/i);
+    const match = text.trim().match(/^[/／](改写|重写|发送|取消|列表|待办|帮助|help)\s*([\s\S]*)$/i);
     if (!match)
         return undefined;
     const token = match[1] ?? "";

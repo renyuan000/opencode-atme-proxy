@@ -779,15 +779,32 @@ export class ProxyRuntime {
     if (command.command === "help") {
       return [
         "可用命令：",
-        "/改写 <新内容>  替换当前草稿",
-        "/重写 <要求>    重新生成草稿",
-        "/发送           发送当前草稿到群里",
-        "/取消           取消当前提问，不发送",
+        "/列表                  查看待审批代答",
+        "/改写 <新内容>         替换最近一条草稿",
+        "/重写 <要求>           重新生成最近一条草稿",
+        "/发送                  发送最近一条草稿",
+        "/取消 [编号|taskId]    取消指定或最近一条",
       ].join("\n");
     }
-    const entry = this.latestReplyPending();
-    if (!entry) return "当前没有待处理的代答草稿。";
-    const [key, pending] = entry;
+    const list = this.replyPendingList();
+    if (command.command === "list") {
+      if (list.length === 0) return "当前没有待处理的代答草稿。";
+      const lines = ["待审批代答："];
+      list.forEach(([, card], index) => {
+        lines.push(`${index + 1}. ${card.taskId}  ${truncate(card.draft ?? "(无草稿)", 40)}`);
+      });
+      lines.push("用 /取消 <编号|taskId> 撤销指定草稿。");
+      return lines.join("\n");
+    }
+    let target: [string, PendingCard] | undefined;
+    if (command.command === "cancel" && command.arg) {
+      target = this.resolveReplyPending(list, command.arg);
+      if (!target) return "找不到指定的草稿，用 /列表 查看编号。";
+    } else {
+      target = list[0];
+      if (!target) return "当前没有待处理的代答草稿。";
+    }
+    const [key, pending] = target;
     const task = await this.tasks.get(pending.taskId);
     if (command.command === "cancel") {
       this.pending.delete(key);
@@ -803,7 +820,7 @@ export class ProxyRuntime {
         taskId: pending.taskId,
         details: { messageId: pending.sourceMessageId },
       });
-      return "已取消，草稿不会发送。";
+      return `已取消 ${pending.taskId}，草稿不会发送。`;
     }
     if (command.command === "send") {
       const action: PlatformAction = {
@@ -852,10 +869,28 @@ export class ProxyRuntime {
   }
 
   private latestReplyPending(): [string, PendingCard] | undefined {
+    return this.replyPendingList()[0];
+  }
+
+  private replyPendingList(): Array<[string, PendingCard]> {
     return this.pending
       .snapshot()
       .filter(([key, card]) => key.endsWith(":reply") && card.mode === "reply")
-      .sort((a, b) => b[1].createdAt - a[1].createdAt)[0];
+      .sort((a, b) => b[1].createdAt - a[1].createdAt);
+  }
+
+  private resolveReplyPending(
+    list: Array<[string, PendingCard]>,
+    arg: string,
+  ): [string, PendingCard] | undefined {
+    const value = arg.trim();
+    if (/^\d+$/.test(value)) return list[Number(value) - 1];
+    return list.find(
+      ([key, card]) =>
+        key === `${value}:reply` ||
+        card.taskId === value ||
+        card.taskId.endsWith(value),
+    );
   }
 
   private replyOriginal(

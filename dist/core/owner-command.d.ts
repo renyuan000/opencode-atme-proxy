@@ -1,4 +1,4 @@
-export type OwnerCommandName = "rewrite" | "regenerate" | "send" | "cancel" | "help";
+export type OwnerCommandName = "rewrite" | "regenerate" | "send" | "cancel" | "list" | "help";
 export interface OwnerCommand {
     command: OwnerCommandName;
     arg: string;

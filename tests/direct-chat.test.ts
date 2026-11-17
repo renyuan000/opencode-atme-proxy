@@ -199,6 +199,54 @@ test("owner can cancel a pending reply draft", async () => {
   }
 });
 
+test("owner can list and cancel a specific reply draft", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const now = Date.now();
+    const card = (taskId: string, draft: string, createdAt: number) => ({
+      platform: "feishu",
+      taskId,
+      analysisVersion: 1,
+      planHash: `h-${taskId}`,
+      actorId: "owner",
+      mode: "reply",
+      chatId: "chat",
+      sourceMessageId: `m-${taskId}`,
+      style: "concise",
+      draft,
+      createdAt,
+    });
+    await writeFile(
+      join(dir, "pending.json"),
+      JSON.stringify({
+        version: 1,
+        cards: {
+          "task_x:reply": card("task_x", "旧草稿 X", now - 1000),
+          "task_y:reply": card("task_y", "旧草稿 Y", now),
+        },
+      }),
+    );
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    await runtime.ingest(dm("m1", "owner", "/列表"));
+    await new Promise((r) => setTimeout(r, 100));
+    const listed = adapter.replies.at(-1) ?? "";
+    assert.match(listed, /task_x/);
+    assert.match(listed, /task_y/);
+    await runtime.ingest(dm("m2", "owner", "/取消 2"));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.match(adapter.replies.at(-1) ?? "", /task_x/);
+    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as {
+      cards: Record<string, unknown>;
+    };
+    assert.deepEqual(Object.keys(pending.cards), ["task_y:reply"]);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("direct chat can be disabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
   try {

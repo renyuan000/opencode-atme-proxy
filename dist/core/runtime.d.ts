@@ -79,6 +79,8 @@ export declare class ProxyRuntime {
     private chatLabel;
     private handleOwnerCommand;
     private latestReplyPending;
+    private replyPendingList;
+    private resolveReplyPending;
     private replyOriginal;
     private resendReplyCard;
     private handleDirectMessage;
