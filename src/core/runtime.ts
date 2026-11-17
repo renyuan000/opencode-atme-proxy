@@ -48,13 +48,17 @@ import { Semaphore, TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
-import { selectBurstExtensions } from "./burst.js";
+import { selectBurstExtensions, mergeBurst } from "./burst.js";
 import { ProjectStore } from "./project-store.js";
 import { ChatContextStore, type ContextOrigin } from "./chat-context.js";
 import { EvidenceStore } from "./evidence-store.js";
 import { GroupContextStore, type GroupSummary } from "./group-context.js";
 import { MemoryStore, type MemoryKind } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
+import { SessionManager, type WorkerInput } from "./session-manager.js";
+import { ContextService, type AnalysisContext } from "./context-service.js";
+import { parseAnalysis } from "./analysis.js";
+import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
 import {
   deterministicVerification,
@@ -70,6 +74,7 @@ import {
   stableUuid,
   toErrorMessage,
   redactPreview,
+  isLowValueMessage,
   truncate,
   truncateMiddle,
   writeJsonAtomic,
@@ -111,10 +116,9 @@ export class ProxyRuntime {
   private readonly outbound: DedupStore;
   private readonly cursors: CursorStore;
   private readonly sessions: SessionStore;
-  private readonly coordinatorLocks = new Map<string, Promise<string>>();
+  private readonly sessionManager: SessionManager;
   private readonly childSlots: Semaphore;
   private readonly taskChildCounts = new Map<string, number>();
-  private readonly workerLocks = new Map<string, Promise<void>>();
   private readonly chatNames = new Map<string, { name: string; at: number }>();
   private readonly recentMessages = new Map<string, IncomingMessage[]>();
   private readonly tasks: TaskStore;
@@ -138,6 +142,7 @@ export class ProxyRuntime {
   private readonly chatContext: ChatContextStore;
   private readonly evidence: EvidenceStore;
   private readonly groupContext: GroupContextStore;
+  private readonly contextService: ContextService;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
@@ -175,6 +180,16 @@ export class ProxyRuntime {
       join(this.stateDir, "sessions.json"),
       this.logger.child("sessions"),
     );
+    this.sessionManager = new SessionManager({
+      bridge: this.options.bridge,
+      sessions: this.sessions,
+      config: this.config,
+      logger: this.logger.child("sessions"),
+      readOnlyPermission: READ_ONLY_PERMISSION,
+      createChildSession: (input) => this.createChildSession(input),
+      finishSession: (sessionId, title, directory, purpose) =>
+        this.finishSession(sessionId, title, directory, purpose),
+    });
     this.tasks = new TaskStore(this.stateDir, this.logger.child("tasks"));
     this.approvals = new ApprovalStore(this.stateDir);
     this.audit = new AuditLog(AuditLog.defaultPath(this.stateDir));
@@ -223,6 +238,14 @@ export class ProxyRuntime {
       join(this.stateDir, "group-context.json"),
       this.logger.child("group-context"),
     );
+    this.contextService = new ContextService({
+      config: this.config,
+      chatContext: this.chatContext,
+      memory: this.memory,
+      tasks: this.tasks,
+      groupContext: this.groupContext,
+      evidence: this.evidence,
+    });
     this.dispatcher = new ConcurrentDispatcher({
       concurrency: this.config.concurrency.global,
       perKeyConcurrency: this.config.concurrency.perChat,
@@ -2050,29 +2073,12 @@ export class ProxyRuntime {
       return this.buildAnalysisInWorktree(task, project.worktree, signal);
     }
     const ctx = await this.analysisContext(task);
-    const prompt = [
-      "你是任务分析器，只做规划，不执行代码、不修改文件。",
-      "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, plan, commands, risks, open_questions, acceptance_criteria, estimate, assumptions, checked。",
-      "先从上下文与仓库核实表名、接口、字段、配置；找不到时写进 open_questions，不要凭印象假设。",
-      "区分事实与假设；假设必须写进 assumptions，已核对项写进 checked。",
-      "repos 只能从以下白名单选择：",
-      JSON.stringify(this.config.repos.map((item) => item.id)),
-      `当前项目目录：${repo.path}`,
-      "任务：",
-      JSON.stringify({
-        title: task.title,
-        excerpt: task.excerpt,
-        requester: task.requester.displayName ?? task.requester.id,
-        project: task.project,
-        messageIds: task.messageIds,
-        sourceMessages: ctx.sourceMessages,
-        recentContext: ctx.recentContext,
-        pinned: ctx.pinned,
-        memory: ctx.memory,
-        openTasks: ctx.openTasks,
-        summary: ctx.summary,
-      }),
-    ].join("\n");
+    const prompt = buildAnalysisPrompt({
+      task,
+      repositoryIds: this.config.repos.map((item) => item.id),
+      directory: repo.path,
+      context: ctx,
+    });
     const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
     const raw = await this.runWorker(
       {
@@ -2097,29 +2103,12 @@ export class ProxyRuntime {
     signal?: AbortSignal,
   ): Promise<TaskAnalysis> {
     const ctx = await this.analysisContext(task);
-    const prompt = [
-      "你是任务分析器，只做规划，不执行代码、不修改文件。",
-      "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, plan, commands, risks, open_questions, acceptance_criteria, estimate, assumptions, checked。",
-      "先从上下文与仓库核实表名、接口、字段、配置；找不到时写进 open_questions，不要凭印象假设。",
-      "区分事实与假设；假设必须写进 assumptions，已核对项写进 checked。",
-      "repos 只能从以下白名单选择：",
-      JSON.stringify(this.config.repos.map((item) => item.id)),
-      `当前项目目录：${worktree}`,
-      "任务：",
-      JSON.stringify({
-        title: task.title,
-        excerpt: task.excerpt,
-        requester: task.requester.displayName ?? task.requester.id,
-        project: task.project,
-        messageIds: task.messageIds,
-        sourceMessages: ctx.sourceMessages,
-        recentContext: ctx.recentContext,
-        pinned: ctx.pinned,
-        memory: ctx.memory,
-        openTasks: ctx.openTasks,
-        summary: ctx.summary,
-      }),
-    ].join("\n");
+    const prompt = buildAnalysisPrompt({
+      task,
+      repositoryIds: this.config.repos.map((item) => item.id),
+      directory: worktree,
+      context: ctx,
+    });
     const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
     const raw = await this.runWorker(
       {
@@ -2846,145 +2835,21 @@ export class ProxyRuntime {
     }
   }
 
-  private async coordinatorSession(
+  private coordinatorSession(
     platform: string,
     chatId: string,
     directory: string,
     title: string,
   ): Promise<string> {
-    const key = `coordinator:${platform}:${chatId}`;
-    const existing = this.sessions.get(key);
-    if (existing) {
-      const probe = this.options.bridge.getSession;
-      if (!probe) return existing.sessionId;
-      const alive = await probe.call(this.options.bridge, existing.sessionId, existing.directory);
-      if (!alive || alive.timeArchived) {
-        this.sessions.delete(key);
-      } else {
-        return existing.sessionId;
-      }
-    }
-    const inflight = this.coordinatorLocks.get(key);
-    if (inflight) return inflight;
-    const promise = (async () => {
-      const sessionId = await this.options.bridge.createSession({
-        directory,
-        title,
-        ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
-      });
-      this.sessions.set(key, sessionId, directory, { kind: "coordinator", createdAt: Date.now() });
-      await this.sessions.flush();
-      this.logger.info("coordinator session ready", { sessionId, chatId, directory });
-      return sessionId;
-    })();
-    this.coordinatorLocks.set(key, promise);
-    try {
-      return await promise;
-    } finally {
-      this.coordinatorLocks.delete(key);
-    }
+    return this.sessionManager.coordinatorSession(platform, chatId, directory, title);
   }
 
-  private async createWorkerSession(input: {
-    platform: string;
-    chatId: string;
-    directory: string;
-    title: string;
-    role: "reply" | "analysis" | "review";
-    agent?: string;
-    permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>;
-    model?: { providerID: string; modelID: string };
-  }): Promise<string> {
-    const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
-    const existing = this.sessions.get(key);
-    if (existing && existing.directory === input.directory) {
-      const probe = this.options.bridge.getSession;
-      if (!probe) return existing.sessionId;
-      const alive = await probe.call(this.options.bridge, existing.sessionId, existing.directory);
-      if (alive && !alive.timeArchived) return existing.sessionId;
-    }
-    if (existing) this.sessions.delete(key);
-    const coordinator = await this.coordinatorSession(
-      input.platform,
-      input.chatId,
-      input.directory,
-      `${this.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`,
-    );
-    const roleAgent =
-      input.role === "analysis"
-        ? this.config.subagents.analyst
-        : input.role === "review"
-          ? this.config.subagents.reviewer
-          : input.agent;
-    const sessionId = await this.options.bridge.createSession({
-      directory: input.directory,
-      title: input.title,
-      parentID: coordinator,
-      ...(roleAgent ? { agent: roleAgent } : {}),
-      ...(input.permission ? { permission: input.permission } : {}),
-      ...(input.model ? { model: input.model } : {}),
-    });
-    this.sessions.set(key, sessionId, input.directory, {
-      kind: "worker",
-      createdAt: Date.now(),
-    });
-    await this.sessions.flush();
-    return sessionId;
-  }
-
-  private async runWorker(
-    input: {
-      platform: string;
-      chatId: string;
-      directory: string;
-      title: string;
-      role: "reply" | "analysis" | "review";
-      agent?: string;
-      permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>;
-      model?: { providerID: string; modelID: string };
-    },
+  private runWorker(
+    input: WorkerInput,
     promptText: string,
     signal?: AbortSignal,
   ): Promise<string> {
-    if (!this.config.subagents.enabled) {
-      const { sessionId, release } = await this.createChildSession({
-        ...input,
-        ...(signal ? { signal } : {}),
-      });
-      try {
-        return await this.options.bridge.prompt(sessionId, {
-          directory: input.directory,
-          title: input.title,
-          text: promptText,
-          ...(signal ? { signal } : {}),
-        });
-      } finally {
-        release();
-        await this.finishSession(sessionId, input.title, input.directory, "worker_fallback");
-      }
-    }
-    const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
-    const run = async (): Promise<string> => {
-      const sessionId = await this.createWorkerSession(input);
-      return this.options.bridge.prompt(sessionId, {
-        directory: input.directory,
-        title: input.title,
-        text: promptText,
-        ...(signal ? { signal } : {}),
-      });
-    };
-    const previous = this.workerLocks.get(key) ?? Promise.resolve();
-    const current = previous.then(run, run);
-    const tail = current.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.workerLocks.set(key, tail);
-    try {
-      return await current;
-    } finally {
-      if (this.workerLocks.get(key) === tail) this.workerLocks.delete(key);
-    }
+    return this.sessionManager.runWorker(input, promptText, signal);
   }
 
   private async createChildSession(input: {
@@ -3139,21 +3004,7 @@ export class ProxyRuntime {
   }
 
   private memoryBlock(platform: string, chatId: string | undefined, text: string): string {
-    if (!this.config.memory.enabled) return "";
-    const records = this.memory.query({
-      platform,
-      ...(chatId ? { chatId } : {}),
-      text,
-      limit: this.config.memory.injectLimit,
-    });
-    if (records.length === 0) return "";
-    const lines = records.map(
-      (record) => `- [${record.kind}${record.pinned ? ",pin" : ""}] ${record.key}: ${record.value}`,
-    );
-    return truncate(
-      ["已知关键信息（优先参考，与当前消息冲突时以当前消息为准）：", ...lines].join("\n"),
-      this.config.memory.injectMaxChars,
-    );
+    return this.contextService.memoryBlock(platform, chatId, text);
   }
 
   private rememberFromMention(
@@ -3279,44 +3130,16 @@ export class ProxyRuntime {
     );
   }
 
-  private async createGroupSession(
+  private createGroupSession(
     platform: string,
     chatId: string,
     directory: string,
   ): Promise<string> {
-    const key = `group:${platform}:${chatId}`;
-    const existing = this.sessions.get(key);
-    if (existing) {
-      const probe = this.options.bridge.getSession;
-      if (probe) {
-        const alive = await probe.call(this.options.bridge, existing.sessionId, existing.directory);
-        if (alive && !alive.timeArchived) return existing.sessionId;
-      } else {
-        return existing.sessionId;
-      }
-      this.sessions.delete(key);
-    }
-    const sessionId = await this.options.bridge.createSession({
-      directory,
-      title: `${this.config.opencode.sessionTitlePrefix}:group:${chatId}`,
-      permission: READ_ONLY_PERMISSION,
-      ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
-    });
-    this.sessions.set(key, sessionId, directory, { kind: "group", createdAt: Date.now() });
-    await this.sessions.flush();
-    return sessionId;
+    return this.sessionManager.createGroupSession(platform, chatId, directory);
   }
 
   private summaryText(platform: string, chatId: string): string {
-    const summary = this.groupContext.get(`${platform}:${chatId}`);
-    if (!summary) return "";
-    const parts = [
-      summary.summary,
-      ...summary.decisions.map((item) => `决策：${item}`),
-      ...summary.assumptions.map((item) => `假设：${item}`),
-      ...summary.openQuestions.map((item) => `未解决：${item}`),
-    ].filter(Boolean);
-    return truncateMiddle(parts.join("\n"), this.config.groupSession?.summaryMaxChars ?? 1500);
+    return this.contextService.summaryText(platform, chatId);
   }
 
   private async updateGroupSummary(platform: string, chatId: string): Promise<void> {
@@ -3400,129 +3223,15 @@ export class ProxyRuntime {
   }
 
   private evidenceRecall(message: IncomingMessage): string[] {
-    if (this.config.evidence?.enabled === false) return [];
-    const text = message.text.trim();
-    const referential =
-      text.length <= 20 ||
-      /(哪个|这个|那个|上面|之前|上次|刚才|继续|那条|第.步)/.test(text);
-    if (!referential && !message.replyToMessageId) return [];
-    const quoted = this.quotedContext(message).join(" ");
-    const split = (value: string): string[] =>
-      value
-        .split(/[\s,，。；;、:：!！?？]+/)
-        .map((item) => item.trim())
-        .filter((item) => item.length >= 2);
-    let terms = split(`${quoted} ${text}`).slice(0, 8);
-    if (terms.length === 0) {
-      const recent = this.chatContext
-        .recent(`${message.platform}:${message.chat.id}`, 3, message.messageId)
-        .map((item) => item.text)
-        .join(" ");
-      terms = split(recent).slice(0, 8);
-    }
-    if (terms.length === 0) return [];
-    return this.evidence
-      .search({ chatId: message.chat.id, terms, days: 7, limit: 5 })
-      .filter((record) => record.messageId !== message.messageId)
-      .map(
-        (record) =>
-          `- ${new Date(record.ts).toLocaleString()} ${record.senderName ?? record.senderId ?? ""}: ${truncateMiddle(record.text, 200)}`,
-      );
+    return this.contextService.evidenceRecall(message);
   }
 
   private quotedContext(message: IncomingMessage): string[] {
-    if (!message.replyToMessageId && !message.threadId) return [];
-    const chatKey = `${message.platform}:${message.chat.id}`;
-    const lines: string[] = [];
-    if (message.replyToMessageId) {
-      const [quoted] = this.chatContext.find(chatKey, [message.replyToMessageId]);
-      if (quoted) {
-        lines.push(
-          `- ${quoted.senderName ?? quoted.senderId}: ${truncateMiddle(quoted.text, 500)}`,
-        );
-      }
-    }
-    if (message.threadId) {
-      const thread = this.chatContext
-        .recent(chatKey, 50)
-        .filter(
-          (item) => item.threadId === message.threadId && item.messageId !== message.messageId,
-        )
-        .slice(-5);
-      for (const item of thread) {
-        lines.push(
-          `- [同线程] ${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 300)}`,
-        );
-      }
-    }
-    return lines;
+    return this.contextService.quotedContext(message);
   }
 
-  private async analysisContext(task: TaskRecord): Promise<{
-    sourceMessages: string[];
-    recentContext: string[];
-    pinned: string[];
-    memory: string[];
-    openTasks: string[];
-    summary: string;
-    corpus: string;
-  }> {
-    const chatKey = `${task.platform}:${task.chatId}`;
-    const source = this.config.context.enabled
-      ? this.chatContext.find(chatKey, task.messageIds ?? [])
-      : [];
-    const recent =
-      this.config.context.enabled && this.config.context.includeInAnalysis
-        ? this.chatContext.recent(chatKey, 12)
-        : [];
-    const records = this.config.memory.enabled
-      ? this.memory.query({
-          platform: task.platform,
-          chatId: task.chatId,
-          text: `${task.title} ${task.excerpt}`,
-          limit: this.config.memory.injectLimit,
-        })
-      : [];
-    const format = (record: (typeof records)[number]): string =>
-      `${record.kind}${record.pinned ? "/pin" : ""}: ${record.key} = ${record.value}`;
-    const sourceMessages = source.map(
-      (item) => `${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 400)}`,
-    );
-    const recentContext = recent.map(
-      (item) => `${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 300)}`,
-    );
-    const pinned = records.filter((record) => record.pinned).map(format);
-    const memory = records.filter((record) => !record.pinned).map(format);
-    const openTasks = (await this.tasks.list())
-      .filter(
-        (item) =>
-          item.platform === task.platform &&
-          item.chatId === task.chatId &&
-          item.id !== task.id &&
-          ["candidate", "analyzing", "needs_info", "awaiting_approval"].includes(item.state),
-      )
-      .slice(0, 5)
-      .map((item) => `${item.id} ${item.title} [${item.state}]`);
-    const summary = this.summaryText(task.platform, task.chatId);
-    return {
-      sourceMessages,
-      recentContext,
-      pinned,
-      memory,
-      openTasks,
-      summary,
-      corpus: [
-        task.title,
-        task.excerpt,
-        ...(task.messageIds ?? []),
-        ...sourceMessages,
-        ...recentContext,
-        ...pinned,
-        ...memory,
-        ...openTasks,
-        summary,
-      ].join("\n"),
-    };
+  private analysisContext(task: TaskRecord): Promise<AnalysisContext> {
+    return this.contextService.analysisContext(task);
   }
 
   private async verifyAnalysis(
@@ -3852,58 +3561,6 @@ function createFilterClient(options: RuntimeOptions, logger: Logger): LlmClient 
   });
 }
 
-function parseAnalysis(
-  raw: string,
-  task: TaskRecord,
-  fallbackRepo: string,
-): TaskAnalysis {
-  let parsed: any;
-  try {
-    parsed = parseJsonLoose(raw);
-  } catch {
-    parsed = {};
-  }
-  const repos = Array.isArray(parsed?.repos)
-    ? parsed.repos.filter((repo: unknown): repo is string => typeof repo === "string")
-    : [];
-  const result: TaskAnalysis = {
-    taskId: task.id,
-    version: 1,
-    needsInfo: Boolean(parsed?.needs_info),
-    goal: typeof parsed?.goal === "string" ? parsed.goal : task.title,
-    scope: stringArray(parsed?.scope),
-    outOfScope: stringArray(parsed?.out_of_scope),
-    repos: repos.length > 0 ? repos : [fallbackRepo],
-    plan: Array.isArray(parsed?.plan)
-      ? parsed.plan
-          .filter((step: unknown) => step && typeof step === "object")
-          .map((step: any) => ({
-            step: typeof step.step === "string" ? step.step : "step",
-            ...(typeof step.detail === "string" ? { detail: step.detail } : {}),
-          }))
-      : [],
-    commands: stringArray(parsed?.commands),
-    risks: stringArray(parsed?.risks),
-    openQuestions: stringArray(parsed?.open_questions),
-    acceptanceCriteria: stringArray(parsed?.acceptance_criteria),
-    assumptions: stringArray(parsed?.assumptions),
-    checked: stringArray(parsed?.checked),
-    ...(typeof parsed?.estimate === "string" ? { estimate: parsed.estimate } : {}),
-    model: "main_agent",
-    createdAt: Date.now(),
-    planHash: "",
-  };
-  result.planHash = sha256(
-    JSON.stringify({
-      repos: result.repos,
-      commands: result.commands,
-      acceptance: result.acceptanceCriteria,
-      plan: result.plan,
-    }),
-  ).slice(0, 16);
-  return result;
-}
-
 function suggestedActionLabel(actionability: Classification["actionability"]): string {
   switch (actionability) {
     case "task":
@@ -3923,28 +3580,4 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
-function isLowValueMessage(text: string): boolean {
-  const compact = text.replace(/[\s\p{P}\p{S}]/gu, "");
-  if (!compact) return true;
-  return /^(收到|好的|好|ok|可以|嗯|谢谢|感谢|辛苦了)$/i.test(compact);
-}
 
-function mergeBurst(base: IncomingMessage, followups: IncomingMessage[]): IncomingMessage {
-  if (followups.length === 0) return base;
-  const attachments = [
-    ...(base.attachments ?? []),
-    ...followups.flatMap((item) => item.attachments ?? []),
-  ];
-  const messageIds = [
-    ...new Set([
-      ...(base.messageIds ?? [base.messageId]),
-      ...followups.map((item) => item.messageId),
-    ]),
-  ];
-  return {
-    ...base,
-    messageIds,
-    text: [base.text, ...followups.map((item) => item.text)].filter(Boolean).join("\n"),
-    ...(attachments.length > 0 ? { attachments } : {}),
-  };
-}

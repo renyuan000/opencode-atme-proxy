@@ -3,6 +3,29 @@ import type { LlmClient } from "./relevance.js";
 import { parseJsonLoose } from "./relevance.js";
 import { truncate } from "./util.js";
 
+export function mergeBurst(
+  base: IncomingMessage,
+  followups: IncomingMessage[],
+): IncomingMessage {
+  if (followups.length === 0) return base;
+  const attachments = [
+    ...(base.attachments ?? []),
+    ...followups.flatMap((item) => item.attachments ?? []),
+  ];
+  const messageIds = [
+    ...new Set([
+      ...(base.messageIds ?? [base.messageId]),
+      ...followups.map((item) => item.messageId),
+    ]),
+  ];
+  return {
+    ...base,
+    messageIds,
+    text: [base.text, ...followups.map((item) => item.text)].filter(Boolean).join("\n"),
+    ...(attachments.length > 0 ? { attachments } : {}),
+  };
+}
+
 export interface BurstGroupResult {
   selected: IncomingMessage[];
   rejected: IncomingMessage[];

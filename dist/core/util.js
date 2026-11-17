@@ -96,6 +96,12 @@ export function truncateMiddle(text, maxChars) {
 export function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
+export function isLowValueMessage(text) {
+    const compact = text.replace(/[\s\p{P}\p{S}]/gu, "");
+    if (!compact)
+        return true;
+    return /^(收到|好的|好|ok|可以|嗯|谢谢|感谢|辛苦了)$/i.test(compact);
+}
 export function redactPreview(text, maxChars = 80) {
     let out = text;
     out = out.replace(/((?:password|passwd|pwd|secret|token|api[_-]?key)\s*[:=]\s*)\S+/gi, "$1[REDACTED]");

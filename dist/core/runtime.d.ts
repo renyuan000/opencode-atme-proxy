@@ -21,10 +21,9 @@ export declare class ProxyRuntime {
     private readonly outbound;
     private readonly cursors;
     private readonly sessions;
-    private readonly coordinatorLocks;
+    private readonly sessionManager;
     private readonly childSlots;
     private readonly taskChildCounts;
-    private readonly workerLocks;
     private readonly chatNames;
     private readonly recentMessages;
     private readonly tasks;
@@ -48,6 +47,7 @@ export declare class ProxyRuntime {
     private readonly chatContext;
     private readonly evidence;
     private readonly groupContext;
+    private readonly contextService;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
@@ -130,7 +130,6 @@ export declare class ProxyRuntime {
     private reviewExecution;
     private runOpenCodeExecution;
     private coordinatorSession;
-    private createWorkerSession;
     private runWorker;
     private createChildSession;
     private archiveTaskChildren;

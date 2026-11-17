@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "./types.js";
 import type { LlmClient } from "./relevance.js";
+export declare function mergeBurst(base: IncomingMessage, followups: IncomingMessage[]): IncomingMessage;
 export interface BurstGroupResult {
     selected: IncomingMessage[];
     rejected: IncomingMessage[];

@@ -105,6 +105,12 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export function isLowValueMessage(text: string): boolean {
+  const compact = text.replace(/[\s\p{P}\p{S}]/gu, "");
+  if (!compact) return true;
+  return /^(收到|好的|好|ok|可以|嗯|谢谢|感谢|辛苦了)$/i.test(compact);
+}
+
 export function redactPreview(text: string, maxChars = 80): string {
   let out = text;
   out = out.replace(

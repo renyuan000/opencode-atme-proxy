@@ -1,0 +1,27 @@
+export function buildAnalysisPrompt(input) {
+    const { task, context } = input;
+    return [
+        "你是任务分析器，只做规划，不执行代码、不修改文件。",
+        "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, plan, commands, risks, open_questions, acceptance_criteria, estimate, assumptions, checked。",
+        "先从上下文与仓库核实表名、接口、字段、配置；找不到时写进 open_questions，不要凭印象假设。",
+        "区分事实与假设；假设必须写进 assumptions，已核对项写进 checked。",
+        "repos 只能从以下白名单选择：",
+        JSON.stringify(input.repositoryIds),
+        `当前项目目录：${input.directory}`,
+        "任务：",
+        JSON.stringify({
+            title: task.title,
+            excerpt: task.excerpt,
+            requester: task.requester.displayName ?? task.requester.id,
+            project: task.project,
+            messageIds: task.messageIds,
+            sourceMessages: context.sourceMessages,
+            recentContext: context.recentContext,
+            pinned: context.pinned,
+            memory: context.memory,
+            openTasks: context.openTasks,
+            summary: context.summary,
+        }),
+    ].join("\n");
+}
+//# sourceMappingURL=prompts.js.map
