@@ -536,6 +536,7 @@ export class ProxyRuntime {
       mentionMe: this.isMentionMe(message),
       mentionBot: this.isMentionBot(message),
       allowlisted: this.groupIds.has(message.chat.id),
+      textPreview: truncate(message.text, 80),
     });
     if (message.chat.kind === "direct") {
       if (await this.claimOwner(message)) {

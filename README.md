@@ -57,7 +57,17 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 
 ### 1. 安装
 
-直接从 GitHub 安装（推荐）：
+未发布到 npm registry；在线安装走 GitHub，不要用 `npm install -g opencode-atme-proxy`（会 404）。
+
+临时试用，不装到全局：
+
+```bash
+npm exec --yes --package=github:renyuan000/opencode-atme-proxy atme-proxy -- version
+```
+
+把 `version` 换成 `setup`、`agents`、`doctor` 即可。
+
+全局安装（推荐）：
 
 ```bash
 npm install -g github:renyuan000/opencode-atme-proxy
@@ -555,7 +565,17 @@ A platform-agnostic, approval-gated bot framework that:
 
 ### Install
 
-From GitHub (recommended):
+The package is not published to the npm registry; install online from GitHub. `npm install -g opencode-atme-proxy` returns 404.
+
+Try it without a global install:
+
+```bash
+npm exec --yes --package=github:renyuan000/opencode-atme-proxy atme-proxy -- version
+```
+
+Replace `version` with `setup`, `agents`, or `doctor`.
+
+Global install (recommended):
 
 ```bash
 npm install -g github:renyuan000/opencode-atme-proxy
