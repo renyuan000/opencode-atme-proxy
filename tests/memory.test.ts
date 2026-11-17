@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -147,6 +147,49 @@ test("writes per-chat records and history shards", async () => {
     const historyDir = join(dir, "memory", "chat1", "history");
     const files = await readFile(join(historyDir, `${new Date().toISOString().slice(0, 10)}.jsonl`), "utf8");
     assert.ok(files.includes("asset_account"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loads memory from shards when legacy file is missing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-memory-"));
+  try {
+    const chatDir = join(dir, "memory", "chat1");
+    await mkdir(chatDir, { recursive: true });
+    await writeFile(
+      join(chatDir, "records.json"),
+      JSON.stringify({
+        version: 1,
+        chatId: "chat1",
+        records: {
+          id1: {
+            id: "id1",
+            platform: "feishu",
+            chatId: "chat1",
+            kind: "fact",
+            key: "k",
+            value: "v",
+            sourceMessageIds: ["m1"],
+            tags: [],
+            confidence: 0.8,
+            pinned: false,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      }),
+    );
+    const s = new MemoryStore({
+      file: join(dir, "memory.json"),
+      shardDir: join(dir, "memory"),
+      maxEntries: 100,
+      ttlMs: 86_400_000,
+      pinnedKinds: ["task", "decision", "deadline"],
+      requireSource: false,
+    });
+    await s.load();
+    assert.equal(s.query({ platform: "feishu", chatId: "chat1", limit: 5 })[0]?.value, "v");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

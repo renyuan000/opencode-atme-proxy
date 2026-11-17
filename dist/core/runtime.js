@@ -26,7 +26,7 @@ import { parseOwnerCommand } from "./owner-command.js";
 import { deterministicVerification, mergeVerification, parseVerification, } from "./analysis-verify.js";
 import { OwnerStore } from "./owner-store.js";
 import { assertTransition, canTransition } from "./task-state.js";
-import { readJsonFile, formatLocalTime, sha256, stableUuid, toErrorMessage, truncate, truncateMiddle, writeJsonAtomic, } from "./util.js";
+import { readJsonFile, formatLocalTime, sha256, stableUuid, toErrorMessage, redactPreview, truncate, truncateMiddle, writeJsonAtomic, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
 const READ_ONLY_PERMISSION = [
     { permission: "edit", pattern: "*", action: "deny" },
@@ -444,7 +444,7 @@ export class ProxyRuntime {
             mentionMe: this.isMentionMe(message),
             mentionBot: this.isMentionBot(message),
             allowlisted: this.groupIds.has(message.chat.id),
-            textPreview: truncate(message.text, 80),
+            textPreview: redactPreview(message.text),
         });
         if (message.chat.kind === "direct") {
             if (await this.claimOwner(message)) {

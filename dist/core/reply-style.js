@@ -13,6 +13,8 @@ export function detectReplyDepth(input, options) {
     if (options.detailTriggers.some((trigger) => trigger && text.includes(trigger))) {
         return "detail";
     }
+    if (/^(不行|不可以|不能|不要|不对|不好|不是|拒绝)/.test(text))
+        return "answer";
     if (text.length <= 30 && ACK_END.test(text))
         return "ack";
     return "answer";

@@ -44,6 +44,9 @@ test("style instructions differ", () => {
 test("detects simple acknowledgements", () => {
   assert.equal(detectReplyDepth(message("可以，30 秒够用。"), options), "ack");
   assert.equal(detectReplyDepth(message("收到"), options), "ack");
+  assert.equal(detectReplyDepth(message("不行"), options), "answer");
+  assert.equal(detectReplyDepth(message("不好"), options), "answer");
+  assert.equal(detectReplyDepth(message("不可以"), options), "answer");
   assert.equal(detectReplyDepth(message("30 秒够用吗？"), options), "answer");
   assert.equal(detectReplyDepth(message("请详细说明"), options), "detail");
 });

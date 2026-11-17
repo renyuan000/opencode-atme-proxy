@@ -3,7 +3,7 @@ import type { FeishuConfig } from "../../core/config.js";
 import type { Logger } from "../../core/logger.js";
 import { createLogger } from "../../core/logger.js";
 import type { PlatformAction, PlatformActionResult } from "../../core/types.js";
-import { toErrorMessage, truncate } from "../../core/util.js";
+import { redactPreview, toErrorMessage } from "../../core/util.js";
 import type { FeishuAdapter } from "./adapter.js";
 import { parseCardAction } from "./adapter.js";
 import type { AdapterHandlers } from "../../core/ports.js";
@@ -66,7 +66,7 @@ export class FeishuEventSource {
             chatId: message.chat.id,
             mentions: message.mentions.length,
             type: message.rawType,
-            textPreview: truncate(message.text, 80),
+            textPreview: redactPreview(message.text),
           });
           void this.handlers.onMessage(message).catch((error) => {
             this.logger.error("message handler failed", {

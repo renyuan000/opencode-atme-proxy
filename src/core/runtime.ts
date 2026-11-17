@@ -68,6 +68,7 @@ import {
   sha256,
   stableUuid,
   toErrorMessage,
+  redactPreview,
   truncate,
   truncateMiddle,
   writeJsonAtomic,
@@ -536,7 +537,7 @@ export class ProxyRuntime {
       mentionMe: this.isMentionMe(message),
       mentionBot: this.isMentionBot(message),
       allowlisted: this.groupIds.has(message.chat.id),
-      textPreview: truncate(message.text, 80),
+      textPreview: redactPreview(message.text),
     });
     if (message.chat.kind === "direct") {
       if (await this.claimOwner(message)) {

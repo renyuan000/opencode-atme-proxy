@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "./logger.js";
 import { readJsonFile, writeJsonAtomic, sha256, toErrorMessage, truncate } from "./util.js";
@@ -31,6 +31,45 @@ export class MemoryStore {
                 if (!entry.pinned && entry.expiresAt !== undefined && entry.expiresAt <= now)
                     continue;
                 this.entries.set(id, entry);
+            }
+            if (this.shardDir) {
+                let chats = [];
+                try {
+                    const index = await readJsonFile(join(this.shardDir, "index.json"), { chats: {} });
+                    chats = Object.keys(index.chats ?? {});
+                }
+                catch {
+                    chats = [];
+                }
+                if (chats.length === 0) {
+                    try {
+                        chats = readdirSync(this.shardDir).filter((name) => {
+                            try {
+                                return statSync(join(this.shardDir, name)).isDirectory();
+                            }
+                            catch {
+                                return false;
+                            }
+                        });
+                    }
+                    catch {
+                        chats = [];
+                    }
+                }
+                for (const chat of chats) {
+                    try {
+                        const shard = await readJsonFile(join(this.shardDir, chat, "records.json"), { records: {} });
+                        for (const [id, entry] of Object.entries(shard.records ?? {})) {
+                            if (!entry || typeof entry.value !== "string")
+                                continue;
+                            if (!this.entries.has(id))
+                                this.entries.set(id, entry);
+                        }
+                    }
+                    catch {
+                        continue;
+                    }
+                }
             }
             this.prune();
         }

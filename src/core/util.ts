@@ -105,6 +105,17 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export function redactPreview(text: string, maxChars = 80): string {
+  let out = text;
+  out = out.replace(
+    /((?:password|passwd|pwd|secret|token|api[_-]?key)\s*[:=]\s*)\S+/gi,
+    "$1[REDACTED]",
+  );
+  out = out.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]");
+  out = out.replace(/\bsk-[A-Za-z0-9_-]{6,}\b/g, "[REDACTED]");
+  return truncate(out, maxChars);
+}
+
 export function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
