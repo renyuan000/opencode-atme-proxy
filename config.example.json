@@ -102,6 +102,7 @@
     "storeRelevantScan": true,
     "storeMediaPlaceholders": true,
     "storeOwnerDm": true,
+    "storeOwnerGroup": true,
     "burstGrouping": true,
     "burstWaitMs": 5000,
     "burstWindowSeconds": 5,

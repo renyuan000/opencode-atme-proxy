@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildStyleInstruction, detectReplyStyle, enforceReplyLength } from "../src/adapters/feishu/reply-style.js";
+import { buildStyleInstruction, detectReplyDepth, detectReplyStyle, enforceReplyLength } from "../src/adapters/feishu/reply-style.js";
 import type { IncomingMessage } from "../src/core/types.js";
 
 const options = {
@@ -39,4 +39,11 @@ test("length limits follow style", () => {
 test("style instructions differ", () => {
   assert.match(buildStyleInstruction("concise", options), /极简/);
   assert.match(buildStyleInstruction("detailed", options), /详细/);
+});
+
+test("detects simple acknowledgements", () => {
+  assert.equal(detectReplyDepth(message("可以，30 秒够用。"), options), "ack");
+  assert.equal(detectReplyDepth(message("收到"), options), "ack");
+  assert.equal(detectReplyDepth(message("30 秒够用吗？"), options), "answer");
+  assert.equal(detectReplyDepth(message("请详细说明"), options), "detail");
 });

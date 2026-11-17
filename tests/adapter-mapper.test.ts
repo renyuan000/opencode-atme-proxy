@@ -37,6 +37,22 @@ test("non-text message becomes placeholder", () => {
   assert.equal(mapped?.attachments?.[0]?.kind, "image");
 });
 
+test("maps reply and thread references", () => {
+  const mapped = mapFeishuMessage({
+    message_id: "om_5",
+    chat_id: "oc_1",
+    chat_type: "group",
+    message_type: "text",
+    content: JSON.stringify({ text: "哪个" }),
+    create_time: "1700000000000",
+    parent_id: "om_parent",
+    root_id: "om_root",
+    sender: { sender_id: { open_id: "ou_li" }, sender_type: "user" },
+  });
+  assert.equal(mapped?.replyToMessageId, "om_parent");
+  assert.equal(mapped?.threadId, "om_root");
+});
+
 test("p2p chat maps to direct", () => {
   const mapped = mapFeishuMessage({
     message_id: "om_3",

@@ -20,6 +20,9 @@ interface FeishuRawMessage {
   message_type?: string;
   content?: string;
   create_time?: string;
+  parent_id?: string;
+  root_id?: string;
+  thread_id?: string;
   mentions?: Array<{
     key?: string;
     id?: { open_id?: string; user_id?: string; union_id?: string };
@@ -59,6 +62,8 @@ export function mapFeishuMessage(raw: FeishuRawMessage): IncomingMessage | undef
     senderType,
     text,
     mentions,
+    ...(raw.parent_id ? { replyToMessageId: raw.parent_id } : {}),
+    ...(raw.root_id ?? raw.thread_id ? { threadId: raw.root_id ?? raw.thread_id } : {}),
     createdAt: Number(raw.create_time ?? Date.now()),
     rawType: raw.message_type ?? "unknown",
     ...(attachments.length > 0 ? { attachments } : {}),

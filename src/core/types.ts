@@ -37,6 +37,7 @@ export interface IncomingMessage {
   platform: Platform;
   messageId: string;
   messageIds?: string[];
+  replyToMessageId?: string;
   chat: ChatRef;
   sender: ActorRef;
   senderType: "user" | "bot" | "system";

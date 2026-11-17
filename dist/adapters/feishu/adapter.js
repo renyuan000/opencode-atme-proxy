@@ -29,6 +29,8 @@ export function mapFeishuMessage(raw) {
         senderType,
         text,
         mentions,
+        ...(raw.parent_id ? { replyToMessageId: raw.parent_id } : {}),
+        ...(raw.root_id ?? raw.thread_id ? { threadId: raw.root_id ?? raw.thread_id } : {}),
         createdAt: Number(raw.create_time ?? Date.now()),
         rawType: raw.message_type ?? "unknown",
         ...(attachments.length > 0 ? { attachments } : {}),

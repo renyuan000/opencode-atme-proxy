@@ -2,7 +2,13 @@ import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
 import { readJsonFile, writeJsonAtomic, toErrorMessage, truncateMiddle } from "./util.js";
 
-export type ContextOrigin = "mention_me" | "mention_bot" | "scan_relevant" | "owner_dm" | "media_placeholder";
+export type ContextOrigin =
+  | "mention_me"
+  | "mention_bot"
+  | "scan_relevant"
+  | "owner_dm"
+  | "owner_group"
+  | "media_placeholder";
 
 export interface ContextMessage {
   messageId: string;
@@ -10,6 +16,8 @@ export interface ContextMessage {
   senderName?: string;
   text: string;
   at: number;
+  replyToMessageId?: string;
+  threadId?: string;
   mentionMe: boolean;
   mentionBot: boolean;
   origin?: ContextOrigin;

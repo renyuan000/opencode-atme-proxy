@@ -9,6 +9,9 @@ interface FeishuRawMessage {
     message_type?: string;
     content?: string;
     create_time?: string;
+    parent_id?: string;
+    root_id?: string;
+    thread_id?: string;
     mentions?: Array<{
         key?: string;
         id?: {

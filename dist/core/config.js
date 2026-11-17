@@ -138,6 +138,7 @@ const ContextSchema = z
     storeRelevantScan: z.boolean().default(true),
     storeMediaPlaceholders: z.boolean().optional(),
     storeOwnerDm: z.boolean().default(true),
+    storeOwnerGroup: z.boolean().optional(),
     burstWindowSeconds: z.number().int().min(1).max(300).default(5),
     burstWaitMs: z.number().int().min(0).max(10_000).default(5000),
     burstMaxMessages: z.number().int().min(1).max(20).default(5),

@@ -120,7 +120,7 @@ class Fake implements PlatformAdapter {
   async listMessages() { return { messages: [] }; }
   async send(target: OutboundTarget, message: OutboundMessage) { this.sent.push({ target, message }); return { messageId: `s${this.sent.length}` }; }
   async reply(_t: { chatId: string; messageId: string }, message: OutboundMessage) { this.replies.push(message.kind === "text" ? message.text : "[card]"); return { messageId: `r${this.replies.length}` }; }
-  renderApproval(_v: ApprovalView): OutboundMessage { return { kind: "text", text: "approval" }; }
+  renderApproval(view: ApprovalView): OutboundMessage { return { kind: "text", text: `approval:${view.draft ?? ""}` }; }
   async verifyActor(actor: { platform: string; id: string }) { return actor.id === "me"; }
   async act(a: PlatformAction): Promise<PlatformActionResult> { return this.handlers!.onAction(a); }
 }
@@ -133,12 +133,13 @@ class Bridge implements OpenCodeBridge {
     };
   }
   async createSession() { return "s"; }
-  async prompt() { return "短回复"; }
+  prompts = 0;
+  async prompt() { this.prompts += 1; return "短回复"; }
   async deleteSession() {}
 }
 
-function mention(id: string): IncomingMessage {
-  return { platform: "feishu", messageId: id, chat: { id: "chat", kind: "group" }, sender: { platform: "feishu", id: "u1", displayName: "李四" }, senderType: "user", text: "支付灰度什么时候上？", mentions: [{ platform: "feishu", id: "me" }], createdAt: Date.now(), rawType: "text" };
+function mention(id: string, text = "支付灰度什么时候上？"): IncomingMessage {
+  return { platform: "feishu", messageId: id, chat: { id: "chat", kind: "group" }, sender: { platform: "feishu", id: "u1", displayName: "李四" }, senderType: "user", text, mentions: [{ platform: "feishu", id: "me" }], createdAt: Date.now(), rawType: "text" };
 }
 
 test("@me creates approval card, approval replies with label, wrong actor rejected", async () => {
@@ -164,6 +165,26 @@ test("@me creates approval card, approval replies with label, wrong actor reject
     assert.equal(adapter.replies.length, 1);
     assert.match(adapter.replies[0]!, /助手代答/);
     assert.match(adapter.replies[0]!, /短回复/);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("simple confirmation gets an ack draft without a model call", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-appr-"));
+  try {
+    const adapter = new Fake();
+    const bridge = new Bridge();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge, loaded: cfg(dir) });
+    await runtime.start();
+    await runtime.ingest(mention("m1", "可以，30 秒够用。"));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(adapter.sent.length, 1);
+    const sent = adapter.sent[0]?.message;
+    assert.equal(sent?.kind, "text");
+    if (sent?.kind === "text") assert.match(sent.text, /收到/);
+    assert.equal(bridge.prompts, 0);
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });
