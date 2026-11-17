@@ -83,7 +83,7 @@ function msg(id: string): IncomingMessage {
   return { platform: "feishu", messageId: id, chat: { id: "chat", kind: "group" }, sender: { platform: "feishu", id: "u1" }, senderType: "user", text: "支付灰度怎么配", mentions: [{ platform: "feishu", id: "bot" }], createdAt: Date.now(), rawType: "text" };
 }
 
-test("creates one reusable coordinator and reply children under it", async () => {
+test("creates one reusable coordinator and a persistent reply worker", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-tree-"));
   try {
     const bridge = new Bridge();
@@ -93,14 +93,14 @@ test("creates one reusable coordinator and reply children under it", async () =>
     await runtime.ingest(msg("m2"));
     await new Promise((r) => setTimeout(r, 150));
     const coordinators = bridge.created.filter((item) => item.title === "atme:chat:chat");
-    const children = bridge.created.filter((item) => item.parentID);
+    const workers = bridge.created.filter((item) => item.title.startsWith("atme:worker:reply:"));
     assert.equal(coordinators.length, 1);
-    assert.ok(children.length >= 2);
-    for (const child of children) assert.equal(child.parentID, "ses_1");
+    assert.equal(workers.length, 1);
+    assert.equal(workers[0]?.parentID, "ses_1");
     const store = JSON.parse(await readFile(join(dir, "sessions.json"), "utf8"));
     const kinds = Object.values(store.sessions as Record<string, { kind: string }>).map((s) => s.kind);
     assert.ok(kinds.includes("coordinator"));
-    assert.ok(kinds.includes("child"));
+    assert.ok(kinds.includes("worker"));
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

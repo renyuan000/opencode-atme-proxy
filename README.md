@@ -322,9 +322,10 @@ websocket ready
 > v1.3 目标（主 session / 群会话 / 角色 worker）见 `docs/MEMORY-DESIGN.md` 与 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 12 节。
 
 - 每个群/项目一个 coordinator session（`atme:chat:<chatId>`），只作锚点，不跑 prompt，避免 `SessionBusyError`。
-- 实际工作在 child session：`reply`、`analysis`、`execution`、`review`，通过 `parentID` 挂在 coordinator 下。
-- 子会话默认隐藏（OpenCode `session list` 只列 root），所以你只看到每群一个 root。
-- 子会话完成 7 天归档、30 天删除；每任务最多 3 个 child，全局 8，`depth=1`。
+- 每群一个持久群摘要会话（`atme:group:<chatId>`），只维护摘要与长期上下文。
+- `reply`、`analysis`、`review` 复用每群持久 worker（`atme:worker:<role>:<chatId>`），同一 worker 串行执行 job。
+- `execution` 仍是每任务临时 child，在独立 worktree 中执行。
+- worker 与群摘要会话不参与 7/30 清理；execution child 完成 7 天归档、30 天删除。
 - 关闭 `subagents.enabled` 可退回“每条消息独立 session”的旧行为。
 - 内置三个 agent 定义：`.opencode/agents/atme-analyst.md`、`atme-executor.md`、`atme-reviewer.md`。
 

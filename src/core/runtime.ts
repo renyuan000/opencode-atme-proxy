@@ -114,6 +114,7 @@ export class ProxyRuntime {
   private readonly coordinatorLocks = new Map<string, Promise<string>>();
   private readonly childSlots: Semaphore;
   private readonly taskChildCounts = new Map<string, number>();
+  private readonly workerLocks = new Map<string, Promise<void>>();
   private readonly chatNames = new Map<string, { name: string; at: number }>();
   private readonly recentMessages = new Map<string, IncomingMessage[]>();
   private readonly tasks: TaskStore;
@@ -2073,38 +2074,21 @@ export class ProxyRuntime {
       }),
     ].join("\n");
     const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
-    const { sessionId, release } = await this.createChildSession({
-      platform: task.platform,
-      chatId: task.chatId,
-      directory: repo.path,
-      title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
-      role: "analysis",
-      permission: READ_ONLY_PERMISSION,
-      ...(analysisAgent ? { agent: analysisAgent } : {}),
-      ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-      taskId: task.id,
-      ...(signal ? { signal } : {}),
-    });
-    let raw: string;
-    try {
-      raw = await this.options.bridge.prompt(sessionId, {
+    const raw = await this.runWorker(
+      {
+        platform: task.platform,
+        chatId: task.chatId,
         directory: repo.path,
-        title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
-        text: prompt,
+        title: `${this.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
+        role: "analysis",
+        permission: READ_ONLY_PERMISSION,
+        ...(analysisAgent ? { agent: analysisAgent } : {}),
         ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-        ...(signal ? { signal } : {}),
-      });
-    } finally {
-      release();
-      await this.finishSession(
-        sessionId,
-        `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
-        repo.path,
-        "task_analysis",
-      );
-    }
-    const parsed = parseAnalysis(raw, task, repo.id);
-    return parsed;
+      },
+      prompt,
+      signal,
+    );
+    return parseAnalysis(raw, task, repo.id);
   }
 
   private async buildAnalysisInWorktree(
@@ -2137,36 +2121,20 @@ export class ProxyRuntime {
       }),
     ].join("\n");
     const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
-    const { sessionId, release } = await this.createChildSession({
-      platform: task.platform,
-      chatId: task.chatId,
-      directory: worktree,
-      title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
-      role: "analysis",
-      permission: READ_ONLY_PERMISSION,
-      ...(analysisAgent ? { agent: analysisAgent } : {}),
-      ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-      taskId: task.id,
-      ...(signal ? { signal } : {}),
-    });
-    let raw: string;
-    try {
-      raw = await this.options.bridge.prompt(sessionId, {
+    const raw = await this.runWorker(
+      {
+        platform: task.platform,
+        chatId: task.chatId,
         directory: worktree,
-        title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
-        text: prompt,
+        title: `${this.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
+        role: "analysis",
+        permission: READ_ONLY_PERMISSION,
+        ...(analysisAgent ? { agent: analysisAgent } : {}),
         ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-        ...(signal ? { signal } : {}),
-      });
-    } finally {
-      release();
-      await this.finishSession(
-        sessionId,
-        `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
-        worktree,
-        "task_analysis",
-      );
-    }
+      },
+      prompt,
+      signal,
+    );
     return parseAnalysis(raw, task, "auto");
   }
 
@@ -2917,6 +2885,108 @@ export class ProxyRuntime {
     }
   }
 
+  private async createWorkerSession(input: {
+    platform: string;
+    chatId: string;
+    directory: string;
+    title: string;
+    role: "reply" | "analysis" | "review";
+    agent?: string;
+    permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>;
+    model?: { providerID: string; modelID: string };
+  }): Promise<string> {
+    const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
+    const existing = this.sessions.get(key);
+    if (existing && existing.directory === input.directory) {
+      const probe = this.options.bridge.getSession;
+      if (!probe) return existing.sessionId;
+      const alive = await probe.call(this.options.bridge, existing.sessionId, existing.directory);
+      if (alive && !alive.timeArchived) return existing.sessionId;
+    }
+    if (existing) this.sessions.delete(key);
+    const coordinator = await this.coordinatorSession(
+      input.platform,
+      input.chatId,
+      input.directory,
+      `${this.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`,
+    );
+    const roleAgent =
+      input.role === "analysis"
+        ? this.config.subagents.analyst
+        : input.role === "review"
+          ? this.config.subagents.reviewer
+          : input.agent;
+    const sessionId = await this.options.bridge.createSession({
+      directory: input.directory,
+      title: input.title,
+      parentID: coordinator,
+      ...(roleAgent ? { agent: roleAgent } : {}),
+      ...(input.permission ? { permission: input.permission } : {}),
+      ...(input.model ? { model: input.model } : {}),
+    });
+    this.sessions.set(key, sessionId, input.directory, {
+      kind: "worker",
+      createdAt: Date.now(),
+    });
+    await this.sessions.flush();
+    return sessionId;
+  }
+
+  private async runWorker(
+    input: {
+      platform: string;
+      chatId: string;
+      directory: string;
+      title: string;
+      role: "reply" | "analysis" | "review";
+      agent?: string;
+      permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>;
+      model?: { providerID: string; modelID: string };
+    },
+    promptText: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    if (!this.config.subagents.enabled) {
+      const { sessionId, release } = await this.createChildSession({
+        ...input,
+        ...(signal ? { signal } : {}),
+      });
+      try {
+        return await this.options.bridge.prompt(sessionId, {
+          directory: input.directory,
+          title: input.title,
+          text: promptText,
+          ...(signal ? { signal } : {}),
+        });
+      } finally {
+        release();
+        await this.finishSession(sessionId, input.title, input.directory, "worker_fallback");
+      }
+    }
+    const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
+    const run = async (): Promise<string> => {
+      const sessionId = await this.createWorkerSession(input);
+      return this.options.bridge.prompt(sessionId, {
+        directory: input.directory,
+        title: input.title,
+        text: promptText,
+        ...(signal ? { signal } : {}),
+      });
+    };
+    const previous = this.workerLocks.get(key) ?? Promise.resolve();
+    const current = previous.then(run, run);
+    const tail = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.workerLocks.set(key, tail);
+    try {
+      return await current;
+    } finally {
+      if (this.workerLocks.get(key) === tail) this.workerLocks.delete(key);
+    }
+  }
+
   private async createChildSession(input: {
     platform: string;
     chatId: string;
@@ -3463,49 +3533,40 @@ export class ProxyRuntime {
     const base = deterministicVerification(analysis, context.corpus);
     if (!this.config.subagents.enabled || !this.config.subagents.reviewer) return base;
     const directory = await this.analysisDirectory(task);
-    const title = `${this.config.opencode.sessionTitlePrefix}:verify:${task.id}`;
+    const title = `${this.config.opencode.sessionTitlePrefix}:worker:review:${task.chatId}`;
     try {
-      const { sessionId, release } = await this.createChildSession({
-        platform: task.platform,
-        chatId: task.chatId,
-        directory,
-        title,
-        role: "review",
-        permission: READ_ONLY_PERMISSION,
-        agent: this.config.subagents.reviewer,
-        taskId: task.id,
-        ...(signal ? { signal } : {}),
-      });
-      try {
-        const raw = await this.options.bridge.prompt(sessionId, {
+      const raw = await this.runWorker(
+        {
+          platform: task.platform,
+          chatId: task.chatId,
           directory,
           title,
-          text: [
-            "你是只读核实器。不要修改文件，不要执行写操作。",
-            "核对任务分析是否忠于群上下文，是否跑偏、扩大范围或把假设写成事实。",
-            "表名 / 接口 / 字段 / 配置要能在上下文或仓库找到；找不到就列出。",
-            '输出严格 JSON：{drift: "none"|"minor"|"major", reasons: [], unverified_identifiers: [], checked: [], assumptions: []}。',
-            "上下文：",
-            JSON.stringify({
-              title: task.title,
-              excerpt: task.excerpt,
-              messageIds: task.messageIds,
-              sourceMessages: context.sourceMessages,
-              recentContext: context.recentContext,
-              pinned: context.pinned,
-              memory: context.memory,
-              openTasks: context.openTasks,
-            }),
-            "分析：",
-            JSON.stringify(analysis),
-          ].join("\n"),
-          ...(signal ? { signal } : {}),
-        });
-        return mergeVerification(base, parseVerification(raw));
-      } finally {
-        release();
-        await this.finishSession(sessionId, title, directory, "analysis_verify");
-      }
+          role: "review",
+          permission: READ_ONLY_PERMISSION,
+          agent: this.config.subagents.reviewer,
+        },
+        [
+          "你是只读核实器。不要修改文件，不要执行写操作。",
+          "核对任务分析是否忠于群上下文，是否跑偏、扩大范围或把假设写成事实。",
+          "表名 / 接口 / 字段 / 配置要能在上下文或仓库找到；找不到就列出。",
+          '输出严格 JSON：{drift: "none"|"minor"|"major", reasons: [], unverified_identifiers: [], checked: [], assumptions: []}。',
+          "上下文：",
+          JSON.stringify({
+            title: task.title,
+            excerpt: task.excerpt,
+            messageIds: task.messageIds,
+            sourceMessages: context.sourceMessages,
+            recentContext: context.recentContext,
+            pinned: context.pinned,
+            memory: context.memory,
+            openTasks: context.openTasks,
+          }),
+          "分析：",
+          JSON.stringify(analysis),
+        ].join("\n"),
+        signal,
+      );
+      return mergeVerification(base, parseVerification(raw));
     } catch (error) {
       this.logger.warn("analysis verification failed; keeping deterministic checks", {
         taskId: task.id,
@@ -3685,33 +3746,20 @@ export class ProxyRuntime {
         : ["未定位到项目目录，只能给出一般性建议；不要假装了解项目细节。"]),
       `问题：${message.text}`,
     ].join("\n");
-    const { sessionId, release } = await this.createChildSession({
-      platform: message.platform,
-      chatId: message.chat.id,
-      directory,
-      title: `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`,
-      role: "reply",
-      permission: READ_ONLY_PERMISSION,
-      ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
+    const raw = await this.runWorker(
+      {
+        platform: message.platform,
+        chatId: message.chat.id,
+        directory,
+        title: `${this.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
+        role: "reply",
+        permission: READ_ONLY_PERMISSION,
+        ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
+      },
+      prompt,
       signal,
-    });
-    try {
-      const raw = await this.options.bridge.prompt(sessionId, {
-        directory,
-        title: `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`,
-        text: prompt,
-        signal,
-      });
-      return enforceReplyLength(raw, style, this.replyOptions);
-    } finally {
-      release();
-      await this.finishSession(
-        sessionId,
-        `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`,
-        directory,
-        "chat_reply",
-      );
-    }
+    );
+    return enforceReplyLength(raw, style, this.replyOptions);
   }
 
   private async safeReply(message: IncomingMessage, text: string): Promise<boolean> {

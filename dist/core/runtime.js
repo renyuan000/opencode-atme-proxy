@@ -53,6 +53,7 @@ export class ProxyRuntime {
     coordinatorLocks = new Map();
     childSlots;
     taskChildCounts = new Map();
+    workerLocks = new Map();
     chatNames = new Map();
     recentMessages = new Map();
     tasks;
@@ -1886,34 +1887,17 @@ export class ProxyRuntime {
             }),
         ].join("\n");
         const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
-        const { sessionId, release } = await this.createChildSession({
+        const raw = await this.runWorker({
             platform: task.platform,
             chatId: task.chatId,
             directory: repo.path,
-            title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
+            title: `${this.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
             role: "analysis",
             permission: READ_ONLY_PERMISSION,
             ...(analysisAgent ? { agent: analysisAgent } : {}),
             ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-            taskId: task.id,
-            ...(signal ? { signal } : {}),
-        });
-        let raw;
-        try {
-            raw = await this.options.bridge.prompt(sessionId, {
-                directory: repo.path,
-                title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
-                text: prompt,
-                ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-                ...(signal ? { signal } : {}),
-            });
-        }
-        finally {
-            release();
-            await this.finishSession(sessionId, `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`, repo.path, "task_analysis");
-        }
-        const parsed = parseAnalysis(raw, task, repo.id);
-        return parsed;
+        }, prompt, signal);
+        return parseAnalysis(raw, task, repo.id);
     }
     async buildAnalysisInWorktree(task, worktree, signal) {
         const ctx = await this.analysisContext(task);
@@ -1941,32 +1925,16 @@ export class ProxyRuntime {
             }),
         ].join("\n");
         const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
-        const { sessionId, release } = await this.createChildSession({
+        const raw = await this.runWorker({
             platform: task.platform,
             chatId: task.chatId,
             directory: worktree,
-            title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
+            title: `${this.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
             role: "analysis",
             permission: READ_ONLY_PERMISSION,
             ...(analysisAgent ? { agent: analysisAgent } : {}),
             ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-            taskId: task.id,
-            ...(signal ? { signal } : {}),
-        });
-        let raw;
-        try {
-            raw = await this.options.bridge.prompt(sessionId, {
-                directory: worktree,
-                title: `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`,
-                text: prompt,
-                ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-                ...(signal ? { signal } : {}),
-            });
-        }
-        finally {
-            release();
-            await this.finishSession(sessionId, `${this.config.opencode.sessionTitlePrefix}:analysis:${task.id}`, worktree, "task_analysis");
-        }
+        }, prompt, signal);
         return parseAnalysis(raw, task, "auto");
     }
     async createApprovalCard(task, source) {
@@ -2675,6 +2643,81 @@ export class ProxyRuntime {
             this.coordinatorLocks.delete(key);
         }
     }
+    async createWorkerSession(input) {
+        const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
+        const existing = this.sessions.get(key);
+        if (existing && existing.directory === input.directory) {
+            const probe = this.options.bridge.getSession;
+            if (!probe)
+                return existing.sessionId;
+            const alive = await probe.call(this.options.bridge, existing.sessionId, existing.directory);
+            if (alive && !alive.timeArchived)
+                return existing.sessionId;
+        }
+        if (existing)
+            this.sessions.delete(key);
+        const coordinator = await this.coordinatorSession(input.platform, input.chatId, input.directory, `${this.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`);
+        const roleAgent = input.role === "analysis"
+            ? this.config.subagents.analyst
+            : input.role === "review"
+                ? this.config.subagents.reviewer
+                : input.agent;
+        const sessionId = await this.options.bridge.createSession({
+            directory: input.directory,
+            title: input.title,
+            parentID: coordinator,
+            ...(roleAgent ? { agent: roleAgent } : {}),
+            ...(input.permission ? { permission: input.permission } : {}),
+            ...(input.model ? { model: input.model } : {}),
+        });
+        this.sessions.set(key, sessionId, input.directory, {
+            kind: "worker",
+            createdAt: Date.now(),
+        });
+        await this.sessions.flush();
+        return sessionId;
+    }
+    async runWorker(input, promptText, signal) {
+        if (!this.config.subagents.enabled) {
+            const { sessionId, release } = await this.createChildSession({
+                ...input,
+                ...(signal ? { signal } : {}),
+            });
+            try {
+                return await this.options.bridge.prompt(sessionId, {
+                    directory: input.directory,
+                    title: input.title,
+                    text: promptText,
+                    ...(signal ? { signal } : {}),
+                });
+            }
+            finally {
+                release();
+                await this.finishSession(sessionId, input.title, input.directory, "worker_fallback");
+            }
+        }
+        const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
+        const run = async () => {
+            const sessionId = await this.createWorkerSession(input);
+            return this.options.bridge.prompt(sessionId, {
+                directory: input.directory,
+                title: input.title,
+                text: promptText,
+                ...(signal ? { signal } : {}),
+            });
+        };
+        const previous = this.workerLocks.get(key) ?? Promise.resolve();
+        const current = previous.then(run, run);
+        const tail = current.then(() => undefined, () => undefined);
+        this.workerLocks.set(key, tail);
+        try {
+            return await current;
+        }
+        finally {
+            if (this.workerLocks.get(key) === tail)
+                this.workerLocks.delete(key);
+        }
+    }
     async createChildSession(input) {
         if (!this.config.subagents.enabled) {
             const sessionId = await this.options.bridge.createSession({
@@ -3160,9 +3203,9 @@ export class ProxyRuntime {
         if (!this.config.subagents.enabled || !this.config.subagents.reviewer)
             return base;
         const directory = await this.analysisDirectory(task);
-        const title = `${this.config.opencode.sessionTitlePrefix}:verify:${task.id}`;
+        const title = `${this.config.opencode.sessionTitlePrefix}:worker:review:${task.chatId}`;
         try {
-            const { sessionId, release } = await this.createChildSession({
+            const raw = await this.runWorker({
                 platform: task.platform,
                 chatId: task.chatId,
                 directory,
@@ -3170,40 +3213,26 @@ export class ProxyRuntime {
                 role: "review",
                 permission: READ_ONLY_PERMISSION,
                 agent: this.config.subagents.reviewer,
-                taskId: task.id,
-                ...(signal ? { signal } : {}),
-            });
-            try {
-                const raw = await this.options.bridge.prompt(sessionId, {
-                    directory,
-                    title,
-                    text: [
-                        "你是只读核实器。不要修改文件，不要执行写操作。",
-                        "核对任务分析是否忠于群上下文，是否跑偏、扩大范围或把假设写成事实。",
-                        "表名 / 接口 / 字段 / 配置要能在上下文或仓库找到；找不到就列出。",
-                        '输出严格 JSON：{drift: "none"|"minor"|"major", reasons: [], unverified_identifiers: [], checked: [], assumptions: []}。',
-                        "上下文：",
-                        JSON.stringify({
-                            title: task.title,
-                            excerpt: task.excerpt,
-                            messageIds: task.messageIds,
-                            sourceMessages: context.sourceMessages,
-                            recentContext: context.recentContext,
-                            pinned: context.pinned,
-                            memory: context.memory,
-                            openTasks: context.openTasks,
-                        }),
-                        "分析：",
-                        JSON.stringify(analysis),
-                    ].join("\n"),
-                    ...(signal ? { signal } : {}),
-                });
-                return mergeVerification(base, parseVerification(raw));
-            }
-            finally {
-                release();
-                await this.finishSession(sessionId, title, directory, "analysis_verify");
-            }
+            }, [
+                "你是只读核实器。不要修改文件，不要执行写操作。",
+                "核对任务分析是否忠于群上下文，是否跑偏、扩大范围或把假设写成事实。",
+                "表名 / 接口 / 字段 / 配置要能在上下文或仓库找到；找不到就列出。",
+                '输出严格 JSON：{drift: "none"|"minor"|"major", reasons: [], unverified_identifiers: [], checked: [], assumptions: []}。',
+                "上下文：",
+                JSON.stringify({
+                    title: task.title,
+                    excerpt: task.excerpt,
+                    messageIds: task.messageIds,
+                    sourceMessages: context.sourceMessages,
+                    recentContext: context.recentContext,
+                    pinned: context.pinned,
+                    memory: context.memory,
+                    openTasks: context.openTasks,
+                }),
+                "分析：",
+                JSON.stringify(analysis),
+            ].join("\n"), signal);
+            return mergeVerification(base, parseVerification(raw));
         }
         catch (error) {
             this.logger.warn("analysis verification failed; keeping deterministic checks", {
@@ -3352,29 +3381,16 @@ export class ProxyRuntime {
                 : ["未定位到项目目录，只能给出一般性建议；不要假装了解项目细节。"]),
             `问题：${message.text}`,
         ].join("\n");
-        const { sessionId, release } = await this.createChildSession({
+        const raw = await this.runWorker({
             platform: message.platform,
             chatId: message.chat.id,
             directory,
-            title: `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`,
+            title: `${this.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
             role: "reply",
             permission: READ_ONLY_PERMISSION,
             ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
-            signal,
-        });
-        try {
-            const raw = await this.options.bridge.prompt(sessionId, {
-                directory,
-                title: `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`,
-                text: prompt,
-                signal,
-            });
-            return enforceReplyLength(raw, style, this.replyOptions);
-        }
-        finally {
-            release();
-            await this.finishSession(sessionId, `${this.config.opencode.sessionTitlePrefix}:msg:${message.messageId}`, directory, "chat_reply");
-        }
+        }, prompt, signal);
+        return enforceReplyLength(raw, style, this.replyOptions);
     }
     async safeReply(message, text) {
         const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;

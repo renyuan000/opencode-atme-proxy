@@ -115,7 +115,7 @@ opencode session list
 
 - 每个群只有一个 root：`atme:chat:<chatId>`。
 - 子会话（reply/analysis/execution/review）不显示，因为它们 `parentID` 指向 root。
-- 查看 `~/.local/state/opencode-atme-proxy/sessions.json` 可看到 `kind: coordinator` 和 `kind: child`。
+- 查看 `~/.local/state/opencode-atme-proxy/sessions.json` 可看到 `kind: coordinator`、`kind: group`、`kind: worker` 和 `kind: child`。
 
 如果看到每个消息一个 root，说明 `subagents.enabled=false` 或 child 创建失败，查日志 `createChildSession`。
 
