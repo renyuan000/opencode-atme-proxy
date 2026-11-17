@@ -473,6 +473,8 @@ C. 同群未关闭任务（7 天内，最多 5 个）
 - 扫描器是确定性代码 + 游标，只有拿不准的消息才升级给 LLM 过滤。
 - 现有配置 `maxChildrenPerTask` / `maxChildrenGlobal` 语义上对应 `maxJobsPerTask` / `maxWorkersGlobal`，v1.3 不新增键；`depth=1`；超出排队，不拒绝。
 
+当前实现：群摘要会话独立持久（`group:<platform>:<chatId>`），每 `summaryEveryMessages` 条更新一次，单写者串行；摘要注入 reply 与 analysis。角色 worker 仍是每任务临时 child。
+
 ### 12.1 上下文所有权（防串味）
 
 | 上下文       | 归属        | 生命周期 | 内容                               |

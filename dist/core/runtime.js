@@ -20,6 +20,7 @@ import { selectBurstExtensions } from "./burst.js";
 import { ProjectStore } from "./project-store.js";
 import { ChatContextStore } from "./chat-context.js";
 import { EvidenceStore } from "./evidence-store.js";
+import { GroupContextStore } from "./group-context.js";
 import { MemoryStore } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
 import { parseOwnerCommand } from "./owner-command.js";
@@ -74,6 +75,8 @@ export class ProxyRuntime {
     projectStore;
     chatContext;
     evidence;
+    groupContext;
+    groupLocks = new Map();
     memory;
     owners;
     resolvedOwner;
@@ -139,6 +142,7 @@ export class ProxyRuntime {
             maxChars: this.config.evidence?.maxChars ?? 4000,
             logger: this.logger.child("evidence"),
         });
+        this.groupContext = new GroupContextStore(join(this.stateDir, "group-context.json"), this.logger.child("group-context"));
         this.dispatcher = new ConcurrentDispatcher({
             concurrency: this.config.concurrency.global,
             perKeyConcurrency: this.config.concurrency.perChat,
@@ -374,6 +378,7 @@ export class ProxyRuntime {
         await this.chatContext.load();
         await this.memory.load();
         await this.memory.migrateShards();
+        await this.groupContext.load();
         this.evidence.prune();
         await this.owners.load();
         this.reconcileOwner();
@@ -427,6 +432,7 @@ export class ProxyRuntime {
             this.projectStore.flush(),
             this.chatContext.flush(),
             this.memory.flush(),
+            this.groupContext.flush(),
             this.owners.flush(),
         ]);
         this.logger.info("runtime stopped");
@@ -525,6 +531,9 @@ export class ProxyRuntime {
                 text: message.text,
                 ...(message.attachments ? { attachments: message.attachments } : {}),
             });
+        }
+        if (this.config.groupSession?.enabled !== false) {
+            void this.updateGroupSummary(message.platform, message.chat.id);
         }
         const job = this.dispatcher.enqueue({
             id: message.messageId,
@@ -1793,6 +1802,7 @@ export class ProxyRuntime {
                 pinned: ctx.pinned,
                 memory: ctx.memory,
                 openTasks: ctx.openTasks,
+                summary: ctx.summary,
             }),
         ].join("\n");
         const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
@@ -1847,6 +1857,7 @@ export class ProxyRuntime {
                 pinned: ctx.pinned,
                 memory: ctx.memory,
                 openTasks: ctx.openTasks,
+                summary: ctx.summary,
             }),
         ].join("\n");
         const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
@@ -2846,6 +2857,124 @@ export class ProxyRuntime {
             ...(message.chat.name ? { chatName: message.chat.name } : {}),
         });
     }
+    async createGroupSession(platform, chatId, directory) {
+        const key = `group:${platform}:${chatId}`;
+        const existing = this.sessions.get(key);
+        if (existing) {
+            const probe = this.options.bridge.getSession;
+            if (probe) {
+                const alive = await probe.call(this.options.bridge, existing.sessionId, existing.directory);
+                if (alive && !alive.timeArchived)
+                    return existing.sessionId;
+            }
+            else {
+                return existing.sessionId;
+            }
+            this.sessions.delete(key);
+        }
+        const sessionId = await this.options.bridge.createSession({
+            directory,
+            title: `${this.config.opencode.sessionTitlePrefix}:group:${chatId}`,
+            ...(this.config.opencode.agent ? { agent: this.config.opencode.agent } : {}),
+        });
+        this.sessions.set(key, sessionId, directory, { kind: "group", createdAt: Date.now() });
+        await this.sessions.flush();
+        return sessionId;
+    }
+    summaryText(platform, chatId) {
+        const summary = this.groupContext.get(`${platform}:${chatId}`);
+        if (!summary)
+            return "";
+        const parts = [
+            summary.summary,
+            ...summary.decisions.map((item) => `决策：${item}`),
+            ...summary.assumptions.map((item) => `假设：${item}`),
+            ...summary.openQuestions.map((item) => `未解决：${item}`),
+        ].filter(Boolean);
+        return truncateMiddle(parts.join("\n"), this.config.groupSession?.summaryMaxChars ?? 1500);
+    }
+    async updateGroupSummary(platform, chatId) {
+        if (this.config.groupSession?.enabled === false)
+            return;
+        const key = `${platform}:${chatId}`;
+        const previous = this.groupLocks.get(key) ?? Promise.resolve();
+        const next = previous
+            .then(() => this.doUpdateGroupSummary(platform, chatId))
+            .catch((error) => {
+            this.logger.warn("group summary update failed", {
+                chatId,
+                error: toErrorMessage(error),
+            });
+        });
+        this.groupLocks.set(key, next);
+        try {
+            await next;
+        }
+        finally {
+            if (this.groupLocks.get(key) === next)
+                this.groupLocks.delete(key);
+        }
+    }
+    async doUpdateGroupSummary(platform, chatId) {
+        const every = this.config.groupSession?.summaryEveryMessages ?? 8;
+        const maxChars = this.config.groupSession?.summaryMaxChars ?? 1500;
+        const timeoutMs = this.config.groupSession?.timeoutMs ?? 30_000;
+        const key = `${platform}:${chatId}`;
+        const current = this.groupContext.get(key);
+        const since = current?.lastMessageAt ?? 0;
+        const messages = this.chatContext.recent(key, 50).filter((item) => item.at > since);
+        if (messages.length < every)
+            return;
+        const directory = (await this.resolveProject(chatId)).worktree;
+        const sessionId = await this.createGroupSession(platform, chatId, directory);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(new Error("summary timed out")), timeoutMs);
+        let raw;
+        try {
+            raw = await this.options.bridge.prompt(sessionId, {
+                directory,
+                title: `${this.config.opencode.sessionTitlePrefix}:group:${chatId}`,
+                text: [
+                    "你是群聊记录员。只维护摘要，不回答问题、不执行操作。",
+                    "保留：已确认决策、被否决方案及原因、当前假设、未解决问题、关键表名/接口/字段。",
+                    `合并现有摘要和新消息；去掉寒暄和重复；不超过 ${maxChars} 字。`,
+                    '输出严格 JSON：{summary, decisions, assumptions, open_questions}。',
+                    "现有摘要：",
+                    current?.summary ?? "（无）",
+                    "新增消息：",
+                    ...messages.map((item) => `- ${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 500)}`),
+                ].join("\n"),
+                signal: controller.signal,
+            });
+        }
+        finally {
+            clearTimeout(timer);
+        }
+        let parsed;
+        try {
+            parsed = parseJsonLoose(raw);
+        }
+        catch {
+            parsed = {};
+        }
+        const summaryText = typeof parsed?.summary === "string" ? parsed.summary : raw;
+        const record = {
+            chatId: key,
+            summary: truncateMiddle(summaryText.trim(), maxChars),
+            decisions: stringArray(parsed?.decisions),
+            assumptions: stringArray(parsed?.assumptions),
+            openQuestions: stringArray(parsed?.open_questions),
+            lastMessageAt: Math.max(...messages.map((item) => item.at)),
+            updatedAt: Date.now(),
+        };
+        this.groupContext.set(key, record);
+        await this.groupContext.flush();
+        await this.audit.append({
+            actor: { system: true },
+            action: "group_summary_updated",
+            details: { chatId, messages: messages.length },
+        });
+    }
     quotedContext(message) {
         if (!message.replyToMessageId && !message.threadId)
             return [];
@@ -2896,12 +3025,14 @@ export class ProxyRuntime {
             ["candidate", "analyzing", "needs_info", "awaiting_approval"].includes(item.state))
             .slice(0, 5)
             .map((item) => `${item.id} ${item.title} [${item.state}]`);
+        const summary = this.summaryText(task.platform, task.chatId);
         return {
             sourceMessages,
             recentContext,
             pinned,
             memory,
             openTasks,
+            summary,
             corpus: [
                 task.title,
                 task.excerpt,
@@ -2911,6 +3042,7 @@ export class ProxyRuntime {
                 ...pinned,
                 ...memory,
                 ...openTasks,
+                summary,
             ].join("\n"),
         };
     }
@@ -3078,11 +3210,18 @@ export class ProxyRuntime {
             ].join("\n")
             : "";
         const memoryBlock = this.memoryBlock(message.platform, message.chat.id, `${message.text} ${this.config.filter.profile.projects.join(" ")}`);
+        if (message.chat.kind === "group") {
+            await this.updateGroupSummary(message.platform, message.chat.id);
+        }
+        const summaryBlock = message.chat.kind === "group"
+            ? this.summaryText(message.platform, message.chat.id)
+            : "";
         const quoteBlock = this.quotedContext(message);
         const prompt = [
             styleInstruction,
             "你的角色：资深软件架构师与研发负责人，熟悉当前主项目。",
             ...(memoryBlock ? [memoryBlock] : []),
+            ...(summaryBlock ? ["群摘要（长期，优先参考）：", summaryBlock] : []),
             ...(quoteBlock.length > 0
                 ? ["被回复的消息（优先参考）：", ...quoteBlock]
                 : message.replyToMessageId

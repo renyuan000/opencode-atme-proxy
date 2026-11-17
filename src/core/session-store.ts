@@ -2,7 +2,7 @@ import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
 import { readJsonFile, writeJsonAtomic, toErrorMessage } from "./util.js";
 
-export type SessionKind = "coordinator" | "child";
+export type SessionKind = "coordinator" | "group" | "child";
 
 export interface SessionRecord {
   sessionId: string;

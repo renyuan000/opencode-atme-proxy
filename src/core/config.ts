@@ -183,6 +183,15 @@ const EvidenceSchema = z
   })
   .default({});
 
+const GroupSessionSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    summaryEveryMessages: z.number().int().min(1).max(100).default(8),
+    summaryMaxChars: z.number().int().min(200).max(8000).default(1500),
+    timeoutMs: z.number().int().min(1000).max(120000).default(30_000),
+  })
+  .default({});
+
 const ProjectSchema = z
   .object({
     mode: z.enum(["auto", "explicit"]).default("auto"),
@@ -309,6 +318,7 @@ export const AppConfigSchema = z.object({
   directChat: DirectChatSchema,
   context: ContextSchema,
   evidence: EvidenceSchema.optional(),
+  groupSession: GroupSessionSchema.optional(),
   memory: MemorySchema,
   project: ProjectSchema,
   botReply: BotReplySchema,

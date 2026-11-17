@@ -114,6 +114,12 @@
     "retentionDays": 720,
     "maxChars": 4000
   },
+  "groupSession": {
+    "enabled": true,
+    "summaryEveryMessages": 8,
+    "summaryMaxChars": 1500,
+    "timeoutMs": 30000
+  },
   "memory": {
     "enabled": true,
     "extract": true,

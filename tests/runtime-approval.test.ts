@@ -137,7 +137,16 @@ class Bridge implements OpenCodeBridge {
   texts: string[] = [];
   async prompt(_sessionId?: string, input?: { text?: string }) {
     this.prompts += 1;
-    this.texts.push(input?.text ?? "");
+    const text = input?.text ?? "";
+    this.texts.push(text);
+    if (text.includes("群聊记录员")) {
+      return JSON.stringify({
+        summary: "第 3 步要确定过滤 IP 是否入库",
+        decisions: ["入库但标记排除"],
+        assumptions: [],
+        open_questions: [],
+      });
+    }
     return "短回复";
   }
   async deleteSession() {}
@@ -232,6 +241,48 @@ test("quoted reply includes the referenced message", async () => {
     await new Promise((r) => setTimeout(r, 150));
     assert.ok(bridge.texts.some((text) => text.includes("被回复的消息")));
     assert.ok(bridge.texts.some((text) => text.includes("第 3 步")));
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("group summary is stored and injected into replies", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-appr-"));
+  try {
+    const loaded = cfg(dir);
+    (loaded.config as any).groupSession = {
+      enabled: true,
+      summaryEveryMessages: 1,
+      summaryMaxChars: 500,
+      timeoutMs: 5000,
+    };
+    const adapter = new Fake();
+    const bridge = new Bridge();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge, loaded });
+    await runtime.start();
+    await runtime.ingest({
+      platform: "feishu",
+      messageId: "m-owner",
+      chat: { id: "chat", kind: "group" },
+      sender: { platform: "feishu", id: "me", displayName: "任元" },
+      senderType: "user",
+      text: "第 3 步：过滤掉的 IP 是不入库还是入库标记排除？",
+      mentions: [],
+      createdAt: Date.now(),
+      rawType: "text",
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    const { readFile } = await import("node:fs/promises");
+    const context = JSON.parse(await readFile(join(dir, "group-context.json"), "utf8"));
+    assert.match(context.chats["feishu:chat"].summary, /第 3 步/);
+    await runtime.ingest(mention("m1", "接下来呢？"));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(
+      bridge.texts.some(
+        (text) => text.includes("群摘要（长期") && text.includes("第 3 步"),
+      ),
+    );
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -46,6 +46,8 @@ export declare class ProxyRuntime {
     private readonly projectStore;
     private readonly chatContext;
     private readonly evidence;
+    private readonly groupContext;
+    private readonly groupLocks;
     private readonly memory;
     private readonly owners;
     private resolvedOwner?;
@@ -136,6 +138,10 @@ export declare class ProxyRuntime {
     private shouldStoreContext;
     private isMediaMessage;
     private appendContextForScan;
+    private createGroupSession;
+    private summaryText;
+    private updateGroupSummary;
+    private doUpdateGroupSummary;
     private quotedContext;
     private analysisContext;
     private verifyAnalysis;

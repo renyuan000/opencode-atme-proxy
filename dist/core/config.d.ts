@@ -520,6 +520,22 @@ export declare const AppConfigSchema: z.ZodObject<{
         retentionDays?: number | undefined;
         maxChars?: number | undefined;
     }>>>;
+    groupSession: z.ZodOptional<z.ZodDefault<z.ZodObject<{
+        enabled: z.ZodDefault<z.ZodBoolean>;
+        summaryEveryMessages: z.ZodDefault<z.ZodNumber>;
+        summaryMaxChars: z.ZodDefault<z.ZodNumber>;
+        timeoutMs: z.ZodDefault<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        enabled: boolean;
+        timeoutMs: number;
+        summaryEveryMessages: number;
+        summaryMaxChars: number;
+    }, {
+        enabled?: boolean | undefined;
+        timeoutMs?: number | undefined;
+        summaryEveryMessages?: number | undefined;
+        summaryMaxChars?: number | undefined;
+    }>>>;
     memory: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
         extract: z.ZodDefault<z.ZodBoolean>;
@@ -995,6 +1011,12 @@ export declare const AppConfigSchema: z.ZodObject<{
         retentionDays: number;
         maxChars: number;
     } | undefined;
+    groupSession?: {
+        enabled: boolean;
+        timeoutMs: number;
+        summaryEveryMessages: number;
+        summaryMaxChars: number;
+    } | undefined;
 }, {
     platforms: {
         feishu: {
@@ -1137,6 +1159,12 @@ export declare const AppConfigSchema: z.ZodObject<{
         enabled?: boolean | undefined;
         retentionDays?: number | undefined;
         maxChars?: number | undefined;
+    } | undefined;
+    groupSession?: {
+        enabled?: boolean | undefined;
+        timeoutMs?: number | undefined;
+        summaryEveryMessages?: number | undefined;
+        summaryMaxChars?: number | undefined;
     } | undefined;
     memory?: {
         enabled?: boolean | undefined;

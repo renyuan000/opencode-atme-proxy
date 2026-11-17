@@ -1,5 +1,5 @@
 import type { Logger } from "./logger.js";
-export type SessionKind = "coordinator" | "child";
+export type SessionKind = "coordinator" | "group" | "child";
 export interface SessionRecord {
     sessionId: string;
     directory: string;
