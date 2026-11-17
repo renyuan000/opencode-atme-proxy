@@ -46,7 +46,13 @@ function extractText(raw, mentions) {
     if (!raw.content)
         return type ? `[${type}]` : "";
     if (type === "image")
-        return "[图片]";
+        return "[图片，未解析]";
+    if (type === "file")
+        return "[文件，未解析]";
+    if (type === "audio")
+        return "[音频，未解析]";
+    if (type === "media" || type === "video")
+        return "[视频，未解析]";
     if (type !== "text" && type !== "post")
         return `[${type}]`;
     try {
@@ -111,6 +117,14 @@ function extractAttachments(raw) {
             const key = typeof parsed.image_key === "string" ? parsed.image_key : undefined;
             return [{ kind: "image", ...(key ? { name: key } : {}) }];
         }
+        if (type === "file") {
+            const name = typeof parsed.file_name === "string" ? parsed.file_name : undefined;
+            return [{ kind: "file", ...(name ? { name } : {}) }];
+        }
+        if (type === "audio")
+            return [{ kind: "audio" }];
+        if (type === "media" || type === "video")
+            return [{ kind: "video" }];
         if (type === "post" && Array.isArray(parsed.content)) {
             const result = [];
             for (const block of parsed.content) {

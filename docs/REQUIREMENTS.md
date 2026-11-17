@@ -413,6 +413,7 @@ awaiting_approval → rejected / expired
 7. 可通过 `context.enabled=false` 完全关闭。
 8. 历史关联：不完整事件单元才回溯，硬上限 50 条 / 7 天；结合 pinned 记忆与未关闭任务，判断是延续、并入任务、相关记忆还是新事项；置信度低于 0.8 不自动合并，只提示。
 9. 已批准 / 执行中 / 已完成的任务不自动并入，只提示；合并必须写审计并可回溯 `sourceMessageIds`。
+10. 媒体消息（图片 / 文件 / 视频 / 音频）存占位符；非 @ 也保存，可通过 `context.storeMediaPlaceholders=false` 关闭。超长文本保留头尾并标注 `…[截断]…`。
 
 **验收标准**：
 

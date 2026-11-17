@@ -1,5 +1,5 @@
 import { createLogger } from "./logger.js";
-import { readJsonFile, writeJsonAtomic, toErrorMessage, truncate } from "./util.js";
+import { readJsonFile, writeJsonAtomic, toErrorMessage, truncateMiddle } from "./util.js";
 export class ChatContextStore {
     options;
     chats = new Map();
@@ -47,7 +47,7 @@ export class ChatContextStore {
             };
         existing.messages.push({
             ...message,
-            text: truncate(message.text, this.options.maxCharsPerMessage),
+            text: truncateMiddle(message.text, this.options.maxCharsPerMessage),
         });
         if (existing.messages.length > this.options.maxMessagesPerChat) {
             existing.messages = existing.messages.slice(-this.options.maxMessagesPerChat);

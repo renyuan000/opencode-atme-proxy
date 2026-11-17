@@ -36,6 +36,34 @@ test("appends, caps, and returns recent context", async () => {
   }
 });
 
+test("keeps head and tail when truncating", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-ctx-"));
+  try {
+    const store = new ChatContextStore({
+      file: join(dir, "chat-context.json"),
+      maxMessagesPerChat: 10,
+      maxCharsPerMessage: 12,
+      maxChats: 10,
+      ttlMs: 86_400_000,
+    });
+    await store.load();
+    store.append("c", {
+      messageId: "m1",
+      senderId: "u",
+      text: "开头AAA中间BBB结尾CCC",
+      at: 1,
+      mentionMe: false,
+      mentionBot: false,
+    });
+    const [message] = store.recent("c", 1);
+    assert.ok(message?.text.includes("…[截断]…"));
+    assert.ok(message?.text.startsWith("开头"));
+    assert.ok(message?.text.endsWith("C"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("excludes current message", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-ctx-"));
   try {

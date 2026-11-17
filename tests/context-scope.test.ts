@@ -93,6 +93,29 @@ test("non-mention messages are not stored in chat context", async () => {
   }
 });
 
+test("non-mention media is stored as placeholder", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-ctxscope-"));
+  try {
+    const runtime = new ProxyRuntime({ platform: new Adapter(), bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    await runtime.ingest({
+      ...msg("m1", "[图片，未解析]"),
+      rawType: "image",
+      attachments: [{ kind: "image" }],
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    await runtime.stop();
+    const raw = await readFile(join(dir, "chat-context.json"), "utf8");
+    const parsed = JSON.parse(raw) as { chats: Record<string, { messages: Array<{ text: string; origin?: string }> }> };
+    const messages = Object.values(parsed.chats).flatMap((chat) => chat.messages);
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0]?.origin, "media_placeholder");
+    assert.match(messages[0]?.text ?? "", /未解析/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("mention messages are stored", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-ctxscope-"));
   try {

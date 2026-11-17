@@ -127,6 +127,7 @@ export declare class ProxyRuntime {
     private rememberFromMention;
     private rememberTaskOutcome;
     private shouldStoreContext;
+    private isMediaMessage;
     private appendContextForScan;
     private contextForTask;
     private resolveProject;

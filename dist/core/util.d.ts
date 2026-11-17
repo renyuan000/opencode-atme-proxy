@@ -9,6 +9,7 @@ export declare function stableUuid(...parts: string[]): string;
 export declare function sleep(ms: number): Promise<void>;
 export declare function expandHome(path: string): string;
 export declare function truncate(text: string, maxChars: number): string;
+export declare function truncateMiddle(text: string, maxChars: number): string;
 export declare function clamp(value: number, min: number, max: number): number;
 export declare function toErrorMessage(error: unknown): string;
 export declare function uniqueBy<T>(items: T[], key: (item: T) => string): T[];

@@ -1,8 +1,8 @@
 import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
-import { readJsonFile, writeJsonAtomic, toErrorMessage, truncate } from "./util.js";
+import { readJsonFile, writeJsonAtomic, toErrorMessage, truncateMiddle } from "./util.js";
 
-export type ContextOrigin = "mention_me" | "mention_bot" | "scan_relevant" | "owner_dm";
+export type ContextOrigin = "mention_me" | "mention_bot" | "scan_relevant" | "owner_dm" | "media_placeholder";
 
 export interface ContextMessage {
   messageId: string;
@@ -87,7 +87,7 @@ export class ChatContextStore {
       } satisfies ChatContext);
     existing.messages.push({
       ...message,
-      text: truncate(message.text, this.options.maxCharsPerMessage),
+      text: truncateMiddle(message.text, this.options.maxCharsPerMessage),
     });
     if (existing.messages.length > this.options.maxMessagesPerChat) {
       existing.messages = existing.messages.slice(-this.options.maxMessagesPerChat);

@@ -74,7 +74,10 @@ function normalizeSenderType(value: string | undefined): "user" | "bot" | "syste
 function extractText(raw: FeishuRawMessage, mentions: ActorRef[]): string {
   const type = raw.message_type ?? "";
   if (!raw.content) return type ? `[${type}]` : "";
-  if (type === "image") return "[图片]";
+  if (type === "image") return "[图片，未解析]";
+  if (type === "file") return "[文件，未解析]";
+  if (type === "audio") return "[音频，未解析]";
+  if (type === "media" || type === "video") return "[视频，未解析]";
   if (type !== "text" && type !== "post") return `[${type}]`;
   try {
     const parsed = JSON.parse(raw.content) as Record<string, unknown>;
@@ -140,6 +143,12 @@ function extractAttachments(raw: FeishuRawMessage): Array<{
       const key = typeof parsed.image_key === "string" ? parsed.image_key : undefined;
       return [{ kind: "image", ...(key ? { name: key } : {}) }];
     }
+    if (type === "file") {
+      const name = typeof parsed.file_name === "string" ? parsed.file_name : undefined;
+      return [{ kind: "file", ...(name ? { name } : {}) }];
+    }
+    if (type === "audio") return [{ kind: "audio" }];
+    if (type === "media" || type === "video") return [{ kind: "video" }];
     if (type === "post" && Array.isArray(parsed.content)) {
       const result: Array<{ kind: "image" | "file" | "audio" | "video"; name?: string }> = [];
       for (const block of parsed.content) {

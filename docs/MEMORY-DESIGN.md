@@ -249,10 +249,16 @@ A 解决“同一句话被拆成几条发”，B 解决“隔很久补充同一�
     "burstWaitMs": 5000,
     "burstWindowSeconds": 5,
     "burstMaxMessages": 5,
-    "burstMaxChars": 4000
+    "burstMaxChars": 4000,
+    "storeMediaPlaceholders": true
   }
 }
 ```
+
+媒体与超长消息：
+
+- 图片 / 文件 / 视频 / 音频统一存占位符（`[图片，未解析]`、`[文件 name，未解析]` 等）；非 @ 也保存，`context.storeMediaPlaceholders` 可关闭。
+- 超过 `maxCharsPerMessage` 时保留头 70% + 尾 30%，中间标 `…[截断]…`，按码点截断，避免丢结论和附件标记。
 
 局限：时间只是启发式。超过 60 秒且无引用的补充，交给第 7 节历史关联；有 reply / quote 引用时不受时间限制。
 

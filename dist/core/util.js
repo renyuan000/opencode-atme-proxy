@@ -79,6 +79,20 @@ export function truncate(text, maxChars) {
         return text;
     return `${text.slice(0, maxChars)}…`;
 }
+export function truncateMiddle(text, maxChars) {
+    const chars = Array.from(text);
+    if (chars.length <= maxChars)
+        return text;
+    const marker = "…[截断]…";
+    const markerLength = Array.from(marker).length;
+    if (maxChars <= markerLength)
+        return Array.from(marker).slice(0, maxChars).join("");
+    const remaining = maxChars - markerLength;
+    const head = Math.ceil(remaining * 0.7);
+    const tail = remaining - head;
+    const tailText = tail > 0 ? chars.slice(chars.length - tail).join("") : "";
+    return `${chars.slice(0, head).join("")}${marker}${tailText}`;
+}
 export function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
