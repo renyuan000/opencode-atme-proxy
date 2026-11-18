@@ -584,6 +584,16 @@ P2：
 - 上下文摘要（当前只保留最近 N 条原文）。
 - Web 审批降级（无卡片平台）。
 
+### 赞助
+
+项目免费开源。如果它帮你节省了时间，欢迎自愿赞助，不影响任何功能或授权。
+
+- 中国大陆：支付宝收款码
+
+![支付宝收款码](https://raw.githubusercontent.com/renyuan000/opencode-atme-proxy/main/assets/alipay.png)
+
+> 收款码会公开展示；赞助是赠与，不是购买，不附带额外授权或支持承诺。
+
 ### 文档
 
 - 需求：`docs/REQUIREMENTS.md`
@@ -962,6 +972,16 @@ P2:
 - Semantic task merging and priority.
 - Context summarization.
 - Web approval fallback.
+
+### Sponsorship
+
+The project is free and open source. If it saves you time, voluntary support is welcome and does not affect features or licensing.
+
+- Mainland China: Alipay QR code
+
+![Alipay QR code](https://raw.githubusercontent.com/renyuan000/opencode-atme-proxy/main/assets/alipay.png)
+
+> The QR code is public; sponsorship is a gift, not a purchase, and carries no extra license or support commitment.
 
 ### Docs
 
