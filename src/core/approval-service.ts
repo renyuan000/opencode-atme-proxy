@@ -5,10 +5,13 @@ import type { Logger } from "./logger.js";
 import type { PendingStore } from "./pending-store.js";
 import type { PendingCard } from "./pending-store.js";
 import type { PlatformAdapter } from "./ports.js";
+import type { SentReplyStore } from "./sent-reply-store.js";
 import type { TaskStore } from "./task-store.js";
 import type {
+  PendingReplySummary,
   PlatformAction,
   PlatformActionResult,
+  ReplyManagementView,
   TaskRecord,
 } from "./types.js";
 import { assertTransition, canTransition } from "./task-state.js";
@@ -24,6 +27,7 @@ export interface ApprovalServiceOptions {
   ownerOpenId(): string | undefined;
   sendToApprover(text: string): Promise<boolean>;
   approveReply(action: PlatformAction, pending: PendingCard): Promise<void>;
+  sentReplies: SentReplyStore;
   startExecution(task: TaskRecord, planHash: string): void;
 }
 
@@ -67,6 +71,67 @@ export class ApprovalService {
   }
 
   async onAction(action: PlatformAction): Promise<PlatformActionResult> {
+    if (action.action === "reply_manage") {
+      if (!(await this.isAuthorizedActor(action.actor))) {
+        return { ok: false, toast: "无权操作" };
+      }
+      return this.replyManagementResult("回复管理");
+    }
+    if (action.action === "cancel_pending") {
+      if (!(await this.isAuthorizedActor(action.actor))) {
+        return { ok: false, toast: "无权操作" };
+      }
+      const pending = this.options.pending.get(`${action.taskId}:reply`);
+      if (!pending) return { ok: false, toast: "草稿不存在或已处理" };
+      if (action.planHash && action.planHash !== pending.planHash) {
+        return { ok: false, toast: "草稿已变更，请刷新列表" };
+      }
+      this.options.pending.delete(`${action.taskId}:reply`);
+      await this.options.pending.flush();
+      const task = await this.options.tasks.get(action.taskId);
+      if (task && canTransition(task.state, "canceled")) {
+        task.state = "canceled";
+        task.updatedAt = Date.now();
+        await this.options.tasks.save(task);
+      }
+      await this.options.audit.append({
+        actor: action.actor,
+        action: "question_cancelled",
+        taskId: action.taskId,
+        details: { messageId: pending.sourceMessageId },
+      });
+      return this.replyManagementResult("已取消草稿");
+    }
+    if (action.action === "recall_reply") {
+      if (!(await this.isAuthorizedActor(action.actor))) {
+        return { ok: false, toast: "无权操作" };
+      }
+      if (!action.replyId) return { ok: false, toast: "缺少回复标识" };
+      const record = this.options.sentReplies.get(action.replyId);
+      if (!record) return { ok: false, toast: "找不到这条回复" };
+      if (record.status === "recalled") {
+        return this.replyManagementResult("该回复已撤回");
+      }
+      if (!this.options.platform.recallMessage) {
+        return { ok: false, toast: "当前平台不支持撤回" };
+      }
+      try {
+        await this.options.platform.recallMessage(record.chatId, record.sentMessageId);
+      } catch (error) {
+        return {
+          ok: false,
+          toast: `撤回失败：${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+      await this.options.sentReplies.markRecalled(record.id);
+      await this.options.audit.append({
+        actor: action.actor,
+        action: "reply_recalled",
+        details: { messageId: record.sentMessageId, chatId: record.chatId },
+      });
+      return this.replyManagementResult("已撤回回复");
+    }
+
     const pending =
       this.options.pending.get(`${action.taskId}:develop`) ??
       this.options.pending.get(`${action.taskId}:reply`);
@@ -153,6 +218,49 @@ export class ApprovalService {
     };
     const rendered = this.options.platform.renderApproval(view);
     return rendered.kind === "card" ? rendered.card : undefined;
+  }
+
+  private async replyManagementResult(toast: string): Promise<PlatformActionResult> {
+    const view = await this.replyManagementView();
+    const message = this.options.platform.renderReplyManagement?.(view);
+    return {
+      ok: true,
+      toast,
+      ...(message?.kind === "card" ? { card: message.card } : {}),
+    };
+  }
+
+  private async replyManagementView(): Promise<ReplyManagementView> {
+    const pending: PendingReplySummary[] = [];
+    const cards = this.options.pending
+      .snapshot()
+      .filter(([key, card]) => key.endsWith(":reply") && card.mode === "reply")
+      .sort((a, b) => b[1].createdAt - a[1].createdAt);
+    for (const [, card] of cards) {
+      const task = await this.options.tasks.get(card.taskId);
+      pending.push({
+        taskId: card.taskId,
+        planHash: card.planHash,
+        chatLabel: task?.chatName ?? card.chatId ?? "未知群",
+        senderLabel:
+          task?.requester.displayName ?? task?.requester.id ?? card.actorId,
+        draft: card.draft ?? "（无草稿）",
+        excerpt: task?.excerpt ?? "",
+        createdAt: card.createdAt,
+      });
+    }
+    return {
+      pending,
+      sent: this.options.sentReplies.list(5).map((item) => ({
+        id: item.id,
+        chatLabel: item.chatName ?? item.chatId,
+        senderLabel: item.senderLabel,
+        text: item.text,
+        sourceText: item.sourceText,
+        sentAt: item.sentAt,
+        status: item.status,
+      })),
+    };
   }
 
   private async approveTask(action: PlatformAction): Promise<void> {

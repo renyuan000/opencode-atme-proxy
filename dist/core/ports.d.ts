@@ -1,4 +1,4 @@
-import type { ActorRef, ApprovalView, CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget, PlatformAction, PlatformActionResult } from "./types.js";
+import type { ActorRef, ApprovalView, CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget, PlatformAction, PlatformActionResult, ReplyManagementView } from "./types.js";
 export interface ChatMembershipEvent {
     platform: string;
     chatId: string;
@@ -43,5 +43,7 @@ export interface PlatformAdapter {
         messageId: string;
     }>;
     renderApproval(view: ApprovalView): OutboundMessage;
+    renderReplyManagement?(view: ReplyManagementView): OutboundMessage;
+    recallMessage?(chatId: string, messageId: string): Promise<void>;
     verifyActor(actor: ActorRef): Promise<boolean>;
 }

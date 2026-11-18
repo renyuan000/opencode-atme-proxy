@@ -183,6 +183,7 @@ export interface PlatformAction {
     action: string;
     chatId?: string;
     messageId?: string;
+    replyId?: string;
     actor: ActorRef;
     raw?: unknown;
 }
@@ -190,6 +191,28 @@ export interface PlatformActionResult {
     ok: boolean;
     toast?: string;
     card?: unknown;
+}
+export interface PendingReplySummary {
+    taskId: string;
+    planHash: string;
+    chatLabel: string;
+    senderLabel: string;
+    draft: string;
+    excerpt: string;
+    createdAt: number;
+}
+export interface SentReplySummary {
+    id: string;
+    chatLabel: string;
+    senderLabel: string;
+    text: string;
+    sourceText: string;
+    sentAt: number;
+    status: "sent" | "recalled";
+}
+export interface ReplyManagementView {
+    pending: PendingReplySummary[];
+    sent: SentReplySummary[];
 }
 export interface ApprovalView {
     taskId: string;

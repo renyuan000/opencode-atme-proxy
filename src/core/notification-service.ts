@@ -6,6 +6,7 @@ import type { OpenCodeBridge } from "./opencode.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { TokenBucket } from "./rate-limit.js";
 import type { IncomingMessage } from "./types.js";
+import type { SentReplyStore } from "./sent-reply-store.js";
 import { sha256, stableUuid, toErrorMessage } from "./util.js";
 
 export interface NotificationServiceOptions {
@@ -16,6 +17,7 @@ export interface NotificationServiceOptions {
   sendLimiter: TokenBucket;
   evidence: EvidenceStore;
   outbound: DedupStore;
+  sentReplies: SentReplyStore;
   chatNames: Map<string, { name: string; at: number }>;
   ownerOpenId(): string | undefined;
 }
@@ -59,12 +61,30 @@ export class NotificationService {
     }
     try {
       await this.options.sendLimiter.take();
-      await this.options.platform.reply(
+      const result = await this.options.platform.reply(
         { chatId: message.chat.id, messageId: message.messageId },
         { kind: "text", text, uuid: stableUuid(key) },
       );
       this.options.outbound.add(key);
       await this.options.outbound.flush();
+      try {
+        await this.options.sentReplies.add({
+          platform: message.platform,
+          chatId: message.chat.id,
+          ...(message.chat.name ? { chatName: message.chat.name } : {}),
+          senderLabel: message.sender.displayName ?? message.sender.id,
+          sourceMessageId: message.messageId,
+          sentMessageId: result.messageId,
+          text,
+          sourceText: message.text,
+          sentAt: Date.now(),
+        });
+      } catch (error) {
+        this.options.logger.warn("failed to record sent reply", {
+          messageId: message.messageId,
+          error: toErrorMessage(error),
+        });
+      }
       this.options.evidence.append({
         ts: Date.now(),
         platform: message.platform,

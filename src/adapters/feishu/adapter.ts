@@ -6,6 +6,7 @@ import type {
   OutboundTarget,
   PlatformAction,
   PlatformActionResult,
+  ReplyManagementView,
 } from "../../core/types.js";
 import type { PlatformAdapter } from "../../core/ports.js";
 import type { FeishuConfig } from "../../core/config.js";
@@ -304,6 +305,20 @@ export class FeishuAdapter implements PlatformAdapter {
     return renderApprovalCard(view);
   }
 
+  renderReplyManagement(view: ReplyManagementView): OutboundMessage {
+    return renderReplyManagementCard(view);
+  }
+
+  async recallMessage(_chatId: string, messageId: string): Promise<void> {
+    const response = await this.client.request({
+      method: "DELETE",
+      url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+    });
+    if (response?.code !== 0) {
+      throw new Error(`Feishu recall failed: ${response?.msg ?? "unknown"}`);
+    }
+  }
+
   async verifyActor(actor: ActorRef): Promise<boolean> {
     if (actor.platform !== "feishu") return false;
     return this.options.config.approvers.some((approver) => approver.openId === actor.id);
@@ -446,6 +461,12 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
                 type: "default",
                 value: { a: "self", t: view.taskId, h: view.planHash },
               }),
+              {
+                tag: "button",
+                text: { tag: "plain_text", content: "回复管理" },
+                type: "default",
+                value: { a: "reply_manage", t: "__manage__" },
+              },
             ],
           },
         ],
@@ -506,6 +527,112 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
   };
 }
 
+export function renderReplyManagementCard(view: ReplyManagementView): OutboundMessage {
+  const elements: Array<Record<string, unknown>> = [];
+  const section = (title: string, body: string) => {
+    elements.push({
+      tag: "div",
+      text: { tag: "lark_md", content: `**${title}**\n${body}` },
+    });
+  };
+  if (view.pending.length === 0 && view.sent.length === 0) {
+    section("回复管理", "当前没有待审批草稿，也没有已发送回复。");
+  }
+  if (view.pending.length > 0) {
+    section("待审批草稿", `共 ${view.pending.length} 条，取消后不会发送。`);
+    for (const item of view.pending.slice(0, 5)) {
+      const time = new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false });
+      elements.push({
+        tag: "div",
+        text: {
+          tag: "plain_text",
+          content: [
+            `群：${item.chatLabel}`,
+            `发送人：${item.senderLabel}`,
+            `时间：${time}`,
+            `草稿：${item.draft.slice(0, 160)}`,
+            `原消息：${item.excerpt.slice(0, 120)}`,
+            `任务：${item.taskId}`,
+          ].join("\n"),
+        },
+      });
+      elements.push({
+        tag: "action",
+        actions: [
+          {
+            tag: "button",
+            text: { tag: "plain_text", content: "取消此草稿" },
+            type: "danger",
+            value: { a: "cancel_pending", t: item.taskId, h: item.planHash },
+          },
+        ],
+      });
+    }
+    if (view.pending.length > 5) {
+      elements.push({
+        tag: "div",
+        text: {
+          tag: "plain_text",
+          content: `待审批仅显示最近 5 条，共 ${view.pending.length} 条。`,
+        },
+      });
+    }
+  }
+  if (view.sent.length > 0) {
+    section("最近已发送", `共 ${view.sent.length} 条，可直接撤回误发回复。`);
+    for (const item of view.sent.slice(0, 5)) {
+      const time = new Date(item.sentAt).toLocaleString("zh-CN", { hour12: false });
+      elements.push({
+        tag: "div",
+        text: {
+          tag: "plain_text",
+          content: [
+            `群：${item.chatLabel}`,
+            `发送人：${item.senderLabel}`,
+            `时间：${time}`,
+            `回复：${item.text.slice(0, 160)}`,
+            `原消息：${item.sourceText.slice(0, 120)}`,
+            `状态：${item.status === "recalled" ? "已撤回" : "已发送"}`,
+          ].join("\n"),
+        },
+      });
+      if (item.status === "sent") {
+        elements.push({
+          tag: "action",
+          actions: [
+            {
+              tag: "button",
+              text: { tag: "plain_text", content: "撤回此回复" },
+              type: "danger",
+              value: { a: "recall_reply", t: "__manage__", r: item.id },
+            },
+          ],
+        });
+      }
+    }
+    if (view.sent.length > 5) {
+      elements.push({
+        tag: "div",
+        text: {
+          tag: "plain_text",
+          content: `已发送仅显示最近 5 条，共 ${view.sent.length} 条。`,
+        },
+      });
+    }
+  }
+  return {
+    kind: "card",
+    card: {
+      config: { wide_screen_mode: true },
+      header: {
+        template: "orange",
+        title: { tag: "plain_text", content: "回复管理" },
+      },
+      elements,
+    },
+  };
+}
+
 export function parseCardAction(raw: any): PlatformAction | undefined {
   const messageId = raw?.context?.open_message_id ?? raw?.open_message_id;
   const chatId = raw?.context?.open_chat_id ?? raw?.open_chat_id;
@@ -520,6 +647,7 @@ export function parseCardAction(raw: any): PlatformAction | undefined {
     actionId: typeof raw?.event_id === "string" ? raw.event_id : `${taskId}:${action}`,
     taskId,
     ...(typeof value.h === "string" ? { planHash: value.h } : {}),
+    ...(typeof value.r === "string" ? { replyId: value.r } : {}),
     action,
     ...(chatId ? { chatId } : {}),
     ...(messageId ? { messageId } : {}),

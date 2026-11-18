@@ -42,6 +42,7 @@ class Adapter implements PlatformAdapter {
   readonly platform = "feishu";
   replies: string[] = [];
   sent: string[] = [];
+  recalled: string[] = [];
   async start(): Promise<void> {}
   async stop(): Promise<void> {}
   capabilities(): CapabilitySet {
@@ -58,6 +59,12 @@ class Adapter implements PlatformAdapter {
     return { messageId: "r" };
   }
   renderApproval(view: ApprovalView): OutboundMessage { return { kind: "text", text: `approval:${view.draft ?? ""}` }; }
+  renderReplyManagement(view: any): OutboundMessage {
+    return { kind: "card", card: { view } };
+  }
+  async recallMessage(_chatId: string, messageId: string): Promise<void> {
+    this.recalled.push(messageId);
+  }
   async verifyActor() { return true; }
 }
 
@@ -256,6 +263,47 @@ test("direct chat can be disabled", async () => {
     await runtime.ingest(dm("m1"));
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(adapter.replies.length, 0);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("owner can view and recall a sent reply from the card", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    await runtime.ingest(dm("m1", "owner", "hello"));
+    await new Promise((r) => setTimeout(r, 100));
+    const stored = JSON.parse(await readFile(join(dir, "sent-replies.json"), "utf8")) as {
+      replies: Array<{ id: string; status: string }>;
+    };
+    assert.equal(stored.replies.length, 1);
+    const action = {
+      platform: "feishu",
+      actionId: "a1",
+      taskId: "__manage__",
+      action: "reply_manage",
+      actor: { platform: "feishu", id: "owner" },
+    };
+    const listed = await (runtime as any).onAction(action);
+    assert.equal(listed.ok, true);
+    assert.equal((listed.card as any).view.sent[0].text, "私聊回复");
+    assert.equal((listed.card as any).view.pending.length, 0);
+    const recall = await (runtime as any).onAction({
+      ...action,
+      actionId: "a2",
+      action: "recall_reply",
+      replyId: stored.replies[0]?.id,
+    });
+    assert.equal(recall.ok, true);
+    assert.deepEqual(adapter.recalled, ["r"]);
+    const after = JSON.parse(await readFile(join(dir, "sent-replies.json"), "utf8")) as {
+      replies: Array<{ status: string }>;
+    };
+    assert.equal(after.replies[0]?.status, "recalled");
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

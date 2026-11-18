@@ -28,6 +28,8 @@ export declare class HybridFeishuAdapter implements PlatformAdapter {
         messageId: string;
     }>;
     renderApproval(view: ApprovalView): OutboundMessage;
+    renderReplyManagement(view: Parameters<NonNullable<PlatformAdapter["renderReplyManagement"]>>[0]): OutboundMessage;
+    recallMessage(chatId: string, messageId: string): Promise<void>;
     verifyActor(actor: {
         platform: string;
         id: string;

@@ -6,6 +6,7 @@ import type { OpenCodeBridge } from "./opencode.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { TokenBucket } from "./rate-limit.js";
 import type { IncomingMessage } from "./types.js";
+import type { SentReplyStore } from "./sent-reply-store.js";
 export interface NotificationServiceOptions {
     config: AppConfig;
     logger: Logger;
@@ -14,6 +15,7 @@ export interface NotificationServiceOptions {
     sendLimiter: TokenBucket;
     evidence: EvidenceStore;
     outbound: DedupStore;
+    sentReplies: SentReplyStore;
     chatNames: Map<string, {
         name: string;
         at: number;

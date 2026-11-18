@@ -60,6 +60,7 @@ import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
+import { SentReplyStore } from "./sent-reply-store.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerAccessService } from "./owner-access-service.js";
@@ -144,6 +145,7 @@ export class ProxyRuntime {
   private readonly scanService: ScanService;
   private readonly notificationService: NotificationService;
   private readonly recoveryService: RecoveryService;
+  private readonly sentReplies: SentReplyStore;
   private readonly ownerAccess: OwnerAccessService;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
@@ -193,6 +195,12 @@ export class ProxyRuntime {
       join(this.stateDir, "pending.json"),
       this.logger.child("pending"),
     );
+    this.sentReplies = new SentReplyStore(
+      join(this.stateDir, "sent-replies.json"),
+      7 * 24 * 3600_000,
+      50,
+      this.logger.child("sent-replies"),
+    );
     this.approvalService = new ApprovalService({
       config: this.config,
       pending: this.pending,
@@ -204,6 +212,7 @@ export class ProxyRuntime {
       ownerOpenId: () => this.ownerOpenId(),
       sendToApprover: (text) => this.sendToApprover(text),
       approveReply: (action, pending) => this.approveReply(action, pending),
+      sentReplies: this.sentReplies,
       startExecution: (task, planHash) => {
         this.track(this.executionService.executeTask(task, planHash)).catch((error) => {
           this.logger.error("execution failed", {
@@ -435,6 +444,7 @@ export class ProxyRuntime {
       sendLimiter: this.sendLimiter,
       evidence: this.evidence,
       outbound: this.outbound,
+      sentReplies: this.sentReplies,
       chatNames: this.chatNames,
       ownerOpenId: () => this.ownerOpenId(),
     });
@@ -586,6 +596,7 @@ export class ProxyRuntime {
     if (this.started) return;
     await this.dedup.load();
     await this.outbound.load();
+    await this.sentReplies.load();
     await this.cursors.load();
     await this.sessions.load();
     await this.tasks.load();
@@ -640,6 +651,7 @@ export class ProxyRuntime {
     await Promise.all([
       this.dedup.close(),
       this.outbound.close(),
+      this.sentReplies.flush(),
       this.cursors.flush(),
       this.sessions.flush(),
       this.tasks.close(),

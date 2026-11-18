@@ -37,9 +37,28 @@ export class NotificationService {
         }
         try {
             await this.options.sendLimiter.take();
-            await this.options.platform.reply({ chatId: message.chat.id, messageId: message.messageId }, { kind: "text", text, uuid: stableUuid(key) });
+            const result = await this.options.platform.reply({ chatId: message.chat.id, messageId: message.messageId }, { kind: "text", text, uuid: stableUuid(key) });
             this.options.outbound.add(key);
             await this.options.outbound.flush();
+            try {
+                await this.options.sentReplies.add({
+                    platform: message.platform,
+                    chatId: message.chat.id,
+                    ...(message.chat.name ? { chatName: message.chat.name } : {}),
+                    senderLabel: message.sender.displayName ?? message.sender.id,
+                    sourceMessageId: message.messageId,
+                    sentMessageId: result.messageId,
+                    text,
+                    sourceText: message.text,
+                    sentAt: Date.now(),
+                });
+            }
+            catch (error) {
+                this.options.logger.warn("failed to record sent reply", {
+                    messageId: message.messageId,
+                    error: toErrorMessage(error),
+                });
+            }
             this.options.evidence.append({
                 ts: Date.now(),
                 platform: message.platform,

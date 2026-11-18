@@ -32,6 +32,12 @@ export class HybridFeishuAdapter {
     renderApproval(view) {
         return this.adapter.renderApproval(view);
     }
+    renderReplyManagement(view) {
+        return this.adapter.renderReplyManagement(view);
+    }
+    recallMessage(chatId, messageId) {
+        return this.adapter.recallMessage(chatId, messageId);
+    }
     verifyActor(actor) {
         return this.adapter.verifyActor(actor);
     }

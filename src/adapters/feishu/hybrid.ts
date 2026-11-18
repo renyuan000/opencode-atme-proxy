@@ -56,6 +56,16 @@ export class HybridFeishuAdapter implements PlatformAdapter {
     return this.adapter.renderApproval(view);
   }
 
+  renderReplyManagement(
+    view: Parameters<NonNullable<PlatformAdapter["renderReplyManagement"]>>[0],
+  ): OutboundMessage {
+    return this.adapter.renderReplyManagement(view);
+  }
+
+  recallMessage(chatId: string, messageId: string): Promise<void> {
+    return this.adapter.recallMessage(chatId, messageId);
+  }
+
   verifyActor(actor: { platform: string; id: string; displayName?: string }): Promise<boolean> {
     return this.adapter.verifyActor(actor);
   }

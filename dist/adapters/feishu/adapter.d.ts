@@ -1,4 +1,4 @@
-import type { ActorRef, IncomingMessage, OutboundMessage, OutboundTarget, PlatformAction, PlatformActionResult } from "../../core/types.js";
+import type { ActorRef, IncomingMessage, OutboundMessage, OutboundTarget, PlatformAction, PlatformActionResult, ReplyManagementView } from "../../core/types.js";
 import type { PlatformAdapter } from "../../core/ports.js";
 import type { FeishuConfig } from "../../core/config.js";
 import type { Logger } from "../../core/logger.js";
@@ -81,10 +81,13 @@ export declare class FeishuAdapter implements PlatformAdapter {
         messageId: string;
     }>;
     renderApproval(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage;
+    renderReplyManagement(view: ReplyManagementView): OutboundMessage;
+    recallMessage(_chatId: string, messageId: string): Promise<void>;
     verifyActor(actor: ActorRef): Promise<boolean>;
     private requireMessageId;
     private resolveBotOpenId;
 }
 export declare function renderApprovalCard(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage;
+export declare function renderReplyManagementCard(view: ReplyManagementView): OutboundMessage;
 export declare function parseCardAction(raw: any): PlatformAction | undefined;
 export type { PlatformActionResult };

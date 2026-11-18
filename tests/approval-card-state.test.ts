@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderApprovalCard } from "../src/adapters/feishu/adapter.js";
+import { renderApprovalCard, renderReplyManagementCard } from "../src/adapters/feishu/adapter.js";
 import type { ApprovalView } from "../src/core/types.js";
 
 function view(overrides: Partial<ApprovalView> = {}): ApprovalView {
@@ -31,20 +31,45 @@ test("unresolved card has enabled buttons", () => {
   const out = renderApprovalCard(view());
   assert.equal(out.kind, "card");
   const actions = buttons((out as { card: unknown }).card);
-  assert.equal(actions.length, 3);
+  assert.equal(actions.length, 4);
   for (const button of actions) {
     assert.notEqual(button.disabled, true);
   }
+});
+
+test("reply management card shows recallable reply data", () => {
+  const out = renderReplyManagementCard({
+    pending: [],
+    sent: [
+      {
+        id: "sent_1",
+        chatLabel: "产品群",
+        senderLabel: "李四",
+        text: "今天先放 5%",
+        sourceText: "灰度什么时候上",
+        sentAt: Date.now(),
+        status: "sent",
+      },
+    ],
+  });
+  assert.equal(out.kind, "card");
+  const text = JSON.stringify((out as { card: unknown }).card);
+  assert.match(text, /产品群/);
+  assert.match(text, /李四/);
+  assert.match(text, /今天先放 5%/);
+  assert.match(text, /撤回此回复/);
+  assert.match(text, /recall_reply/);
 });
 
 test("resolved card disables buttons and shows the result", () => {
   const out = renderApprovalCard(view({ resolution: "approved" }));
   const card = (out as { card: any }).card;
   const actions = buttons(card);
-  for (const button of actions) {
+  for (const button of actions.slice(0, 3)) {
     assert.equal(button.disabled, true);
     assert.deepEqual(button.value, {});
   }
+  assert.equal(actions[3]?.value?.a, "reply_manage");
   const text = card.elements
     .filter((element: any) => element.tag === "div")
     .map((element: any) => element.text.content)

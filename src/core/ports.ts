@@ -7,6 +7,7 @@ import type {
   OutboundTarget,
   PlatformAction,
   PlatformActionResult,
+  ReplyManagementView,
 } from "./types.js";
 
 export interface ChatMembershipEvent {
@@ -50,5 +51,7 @@ export interface PlatformAdapter {
     message: OutboundMessage,
   ): Promise<{ messageId: string }>;
   renderApproval(view: ApprovalView): OutboundMessage;
+  renderReplyManagement?(view: ReplyManagementView): OutboundMessage;
+  recallMessage?(chatId: string, messageId: string): Promise<void>;
   verifyActor(actor: ActorRef): Promise<boolean>;
 }

@@ -5,6 +5,7 @@ import type { Logger } from "./logger.js";
 import type { PendingStore } from "./pending-store.js";
 import type { PendingCard } from "./pending-store.js";
 import type { PlatformAdapter } from "./ports.js";
+import type { SentReplyStore } from "./sent-reply-store.js";
 import type { TaskStore } from "./task-store.js";
 import type { PlatformAction, PlatformActionResult, TaskRecord } from "./types.js";
 export interface ApprovalServiceOptions {
@@ -18,6 +19,7 @@ export interface ApprovalServiceOptions {
     ownerOpenId(): string | undefined;
     sendToApprover(text: string): Promise<boolean>;
     approveReply(action: PlatformAction, pending: PendingCard): Promise<void>;
+    sentReplies: SentReplyStore;
     startExecution(task: TaskRecord, planHash: string): void;
 }
 export declare class ApprovalService {
@@ -30,6 +32,8 @@ export declare class ApprovalService {
     }): Promise<boolean>;
     onAction(action: PlatformAction): Promise<PlatformActionResult>;
     private resolvedCardFor;
+    private replyManagementResult;
+    private replyManagementView;
     private approveTask;
     private rejectTask;
 }

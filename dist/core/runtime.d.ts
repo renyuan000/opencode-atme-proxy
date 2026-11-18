@@ -57,6 +57,7 @@ export declare class ProxyRuntime {
     private readonly scanService;
     private readonly notificationService;
     private readonly recoveryService;
+    private readonly sentReplies;
     private readonly ownerAccess;
     private readonly groupLocks;
     private readonly memory;
