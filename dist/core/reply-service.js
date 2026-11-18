@@ -199,6 +199,11 @@ export class ReplyService {
         const quoteBlock = this.options.contextService.quotedContext(message);
         const quotedChain = await this.loadQuotedChain(message);
         quoteBlock.push(...quotedChain);
+        const historyBlock = message.chat.kind === "group" &&
+            (message.replyToMessageId ||
+                /(旧|历史|之前|刚才|上下文|综合|这个事情|那条|上一条|前面的)/.test(message.text))
+            ? await this.loadRecentHistory(message)
+            : [];
         const evidenceBlock = this.options.contextService.evidenceRecall(message);
         const images = await this.loadImages(message);
         const ocrText = images.length > 0 ? await this.loadImageText(message) : undefined;
@@ -213,6 +218,7 @@ export class ReplyService {
                 : message.replyToMessageId
                     ? ["被回复的消息不在本地上下文；不要猜测具体指代，只问缺失的那一项。"]
                     : []),
+            ...(historyBlock.length > 0 ? ["最近群历史（按时间顺序，仅作参考）：", ...historyBlock] : []),
             ...(evidenceBlock.length > 0 ? ["群证据片段（按需回查）：", ...evidenceBlock] : []),
             ...(images.length > 0
                 ? [
@@ -299,6 +305,32 @@ export class ReplyService {
             }
         }
         return texts.length > 0 ? texts.join("\n\n---\n\n").slice(0, 6000) : undefined;
+    }
+    async loadRecentHistory(message) {
+        const platform = this.options.platform;
+        if (!platform.capabilities().groupHistory)
+            return [];
+        try {
+            const endTime = message.createdAt;
+            const result = await platform.listMessages({
+                chatId: message.chat.id,
+                startTime: endTime - 7 * 24 * 3600_000,
+                endTime,
+                maxPages: 5,
+                maxMessages: 100,
+            });
+            return result.messages
+                .filter((item) => item.senderType === "user" && item.messageId !== message.messageId)
+                .slice(-40)
+                .map((item) => `- ${new Date(item.createdAt).toLocaleString()} ${item.sender.displayName ?? item.sender.id}: ${truncateMiddle(item.text, 220)}`);
+        }
+        catch (error) {
+            this.options.logger.warn("failed to load group history", {
+                chatId: message.chat.id,
+                error: toErrorMessage(error),
+            });
+            return [];
+        }
     }
     async loadQuotedChain(message) {
         const platform = this.options.platform;
