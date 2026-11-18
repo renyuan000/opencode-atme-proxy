@@ -88,6 +88,7 @@ export declare class ProxyRuntime {
     private isMentionMe;
     private isMentionBot;
     private syncGroups;
+    private persistGroups;
     private onChatMembership;
     private fetchChatName;
     private chatLabel;

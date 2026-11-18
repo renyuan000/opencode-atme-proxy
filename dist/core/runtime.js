@@ -40,7 +40,7 @@ import { SentReplyStore } from "./sent-reply-store.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerAccessService } from "./owner-access-service.js";
-import { readJsonFile, sha256, toErrorMessage, redactPreview, truncate, truncateMiddle, } from "./util.js";
+import { readJsonFile, sha256, toErrorMessage, redactPreview, truncate, truncateMiddle, writeJsonAtomic, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
 const READ_ONLY_PERMISSION = [
     { permission: "edit", pattern: "*", action: "deny" },
@@ -731,7 +731,9 @@ export class ProxyRuntime {
     }
     isMentionMe(message) {
         const me = this.ownerOpenId();
-        return Boolean(me) && message.mentions.some((mention) => mention.id === me);
+        const ownerName = this.config.platforms.feishu.me.name;
+        return ((Boolean(me) && message.mentions.some((mention) => mention.id === me)) ||
+            Boolean(ownerName && message.text.includes(`@${ownerName}`)));
     }
     isMentionBot(message) {
         const platform = this.options.platform;
@@ -753,6 +755,7 @@ export class ProxyRuntime {
                     this.notificationService.rememberChatName(group.chatId, group.name);
             }
             if (added.length > 0) {
+                await this.persistGroups(added);
                 this.logger.info("startup group sync added groups", {
                     added: added.map((group) => group.chatId),
                 });
@@ -760,6 +763,41 @@ export class ProxyRuntime {
         }
         catch (error) {
             this.logger.warn("startup group sync failed; using configured allowlist", {
+                error: toErrorMessage(error),
+            });
+        }
+    }
+    async persistGroups(groups) {
+        const path = this.options.loaded.path;
+        if (!path)
+            return;
+        try {
+            const raw = await readJsonFile(path, {});
+            const feishu = (raw.platforms ??= {}).feishu ??= {};
+            const existing = Array.isArray(feishu.groups) ? feishu.groups : [];
+            const byId = new Map(existing
+                .filter((item) => item && typeof item.chatId === "string")
+                .map((item) => [item.chatId, item]));
+            for (const group of groups) {
+                if (!byId.has(group.chatId)) {
+                    byId.set(group.chatId, {
+                        chatId: group.chatId,
+                        ...(group.name ? { name: group.name } : {}),
+                        enabled: true,
+                    });
+                }
+            }
+            feishu.groups = [...byId.values()];
+            this.config.platforms.feishu.groups = feishu.groups;
+            await writeJsonAtomic(path, raw);
+            this.logger.info("startup group sync persisted groups", {
+                path,
+                added: groups.map((group) => group.chatId),
+            });
+        }
+        catch (error) {
+            this.logger.warn("startup group sync could not persist config", {
+                path,
                 error: toErrorMessage(error),
             });
         }
@@ -775,6 +813,7 @@ export class ProxyRuntime {
         const name = (await this.fetchChatName(event.chatId)) ?? event.chatId;
         this.notificationService.rememberChatName(event.chatId, name);
         this.groupIds.add(event.chatId);
+        await this.persistGroups([{ chatId: event.chatId, name }]);
         this.logger.info("bot added to chat", {
             chatId: event.chatId,
             chatName: name,
