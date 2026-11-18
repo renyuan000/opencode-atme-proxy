@@ -284,10 +284,25 @@ export class FeishuAdapter {
         if (!resource || typeof resource.get !== "function") {
             throw new Error("Feishu SDK does not expose messageResource.get");
         }
-        const response = await resource.get({
-            params: { type: "image" },
-            path: { message_id: messageId, file_key: key },
-        });
+        let response;
+        try {
+            response = await resource.get({
+                params: { type: "image" },
+                path: { message_id: messageId, file_key: key },
+            });
+        }
+        catch (error) {
+            const httpError = error;
+            this.logger.warn("Feishu resource download failed", {
+                messageId,
+                fileKey: key,
+                status: httpError.response?.status,
+                code: httpError.response?.data?.code,
+                msg: httpError.response?.data?.msg,
+                error: toErrorMessage(error),
+            });
+            throw error;
+        }
         const stream = response?.getReadableStream?.();
         if (!stream)
             throw new Error("Feishu resource response has no stream");

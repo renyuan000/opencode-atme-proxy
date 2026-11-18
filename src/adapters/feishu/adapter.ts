@@ -342,10 +342,26 @@ export class FeishuAdapter implements PlatformAdapter {
     if (!resource || typeof resource.get !== "function") {
       throw new Error("Feishu SDK does not expose messageResource.get");
     }
-    const response = await resource.get({
-      params: { type: "image" },
-      path: { message_id: messageId, file_key: key },
-    });
+    let response: any;
+    try {
+      response = await resource.get({
+        params: { type: "image" },
+        path: { message_id: messageId, file_key: key },
+      });
+    } catch (error) {
+      const httpError = error as {
+        response?: { status?: number; data?: { code?: number; msg?: string } };
+      };
+      this.logger.warn("Feishu resource download failed", {
+        messageId,
+        fileKey: key,
+        status: httpError.response?.status,
+        code: httpError.response?.data?.code,
+        msg: httpError.response?.data?.msg,
+        error: toErrorMessage(error),
+      });
+      throw error;
+    }
     const stream = response?.getReadableStream?.();
     if (!stream) throw new Error("Feishu resource response has no stream");
     const chunks: Buffer[] = [];
