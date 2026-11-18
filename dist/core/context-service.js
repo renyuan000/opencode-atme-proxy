@@ -41,6 +41,15 @@ export class ContextService {
             if (quoted) {
                 lines.push(`- ${quoted.senderName ?? quoted.senderId}: ${truncateMiddle(quoted.text, 500)}`);
             }
+            else {
+                const evidence = this.options.evidence.findByMessageId({
+                    chatId: message.chat.id,
+                    messageId: message.replyToMessageId,
+                });
+                if (evidence) {
+                    lines.push(`- ${evidence.senderName ?? evidence.senderId ?? "未知"}: ${truncateMiddle(evidence.text, 500)}`);
+                }
+            }
         }
         if (message.threadId) {
             const thread = this.options.chatContext

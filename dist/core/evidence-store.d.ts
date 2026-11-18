@@ -38,6 +38,11 @@ export declare class EvidenceStore {
         days?: number;
         limit?: number;
     }): EvidenceRecord[];
+    findByMessageId(input: {
+        chatId: string;
+        messageId: string;
+        days?: number;
+    }): EvidenceRecord | undefined;
     prune(): void;
     private findChatDirs;
     private chatDir;

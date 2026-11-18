@@ -95,6 +95,46 @@ export class EvidenceStore {
         }
         return results;
     }
+    findByMessageId(input) {
+        if (!this.enabled)
+            return undefined;
+        const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
+        for (const dir of this.findChatDirs(input.chatId)) {
+            let files;
+            try {
+                files = readdirSync(dir).filter((file) => file.endsWith(".jsonl")).sort().reverse();
+            }
+            catch {
+                continue;
+            }
+            for (const file of files) {
+                const stamp = file.slice(0, 10);
+                const ts = Date.parse(`${stamp}T00:00:00`);
+                if (Number.isNaN(ts) || ts < cutoff)
+                    continue;
+                let raw;
+                try {
+                    raw = readFileSync(join(dir, file), "utf8");
+                }
+                catch {
+                    continue;
+                }
+                for (const line of raw.split("\n")) {
+                    if (!line.trim())
+                        continue;
+                    try {
+                        const record = JSON.parse(line);
+                        if (record.messageId === input.messageId)
+                            return record;
+                    }
+                    catch {
+                        continue;
+                    }
+                }
+            }
+        }
+        return undefined;
+    }
     prune() {
         if (!this.enabled)
             return;

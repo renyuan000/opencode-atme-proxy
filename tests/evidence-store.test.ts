@@ -80,3 +80,23 @@ test("prunes evidence older than retention", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("finds a quoted message by id", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-evidence-"));
+  try {
+    const now = new Date(2026, 10, 17, 12, 0, 0).getTime();
+    const store = new EvidenceStore({ dir, retentionDays: 30, maxChars: 200, now: () => now });
+    store.append({
+      ts: now,
+      platform: "feishu",
+      chatId: "oc_1",
+      messageId: "m-parent",
+      direction: "inbound",
+      senderName: "任元",
+      text: "父消息：操作日志按类型分组",
+    });
+    assert.equal(store.findByMessageId({ chatId: "oc_1", messageId: "m-parent" })?.text, "父消息：操作日志按类型分组");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
