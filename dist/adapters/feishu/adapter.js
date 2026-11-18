@@ -608,36 +608,68 @@ export function renderApprovalCard(view) {
 }
 export function renderReplyManagementCard(view) {
     const elements = [];
-    const section = (title, body) => {
+    const groupTitle = (label) => {
         elements.push({
             tag: "div",
-            text: { tag: "lark_md", content: `**${title}**\n${body}` },
+            text: { tag: "lark_md", content: `<font color='blue'>**${label}**</font>` },
         });
     };
+    const textBlock = (lines) => ({
+        tag: "column",
+        width: "weighted",
+        weight: 3,
+        vertical_align: "top",
+        padding: "8px",
+        elements: [{ tag: "div", text: { tag: "plain_text", content: lines.join("\n") } }],
+    });
+    const actionBlock = (actions) => ({
+        tag: "column",
+        width: "auto",
+        vertical_align: "top",
+        padding: "8px",
+        elements: [{ tag: "action", actions }],
+    });
+    const itemBox = (lines, actions) => ({
+        tag: "column_set",
+        flex_mode: "none",
+        horizontal_spacing: "8px",
+        background_style: "grey",
+        columns: [textBlock(lines), actionBlock(actions)],
+    });
+    const pendingByGroup = new Map();
+    for (const item of view.pending) {
+        const group = pendingByGroup.get(item.chatLabel) ?? [];
+        group.push(item);
+        pendingByGroup.set(item.chatLabel, group);
+    }
+    const sentByGroup = new Map();
+    for (const item of view.sent) {
+        const group = sentByGroup.get(item.chatLabel) ?? [];
+        group.push(item);
+        sentByGroup.set(item.chatLabel, group);
+    }
     if (view.pending.length === 0 && view.sent.length === 0) {
-        section("回复管理", "当前没有待审批草稿，也没有可撤回回复。");
+        elements.push({
+            tag: "div",
+            text: { tag: "plain_text", content: "当前没有待审批草稿，也没有可撤回回复。" },
+        });
     }
     if (view.pending.length > 0) {
-        section("待审批草稿", `共 ${view.pending.length} 条，取消后不会发送。`);
-        for (const item of view.pending.slice(0, 5)) {
-            const time = new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false });
-            elements.push({
-                tag: "div",
-                text: {
-                    tag: "plain_text",
-                    content: [
-                        `群：${item.chatLabel}`,
-                        `发送人：${item.senderLabel}`,
-                        `时间：${time}`,
-                        `草稿：${item.draft.slice(0, 160)}`,
-                        `原消息：${item.excerpt.slice(0, 120)}`,
-                        `任务：${item.taskId}`,
-                    ].join("\n"),
-                },
-            });
-            elements.push({
-                tag: "action",
-                actions: [
+        elements.push({ tag: "hr" });
+        elements.push({
+            tag: "div",
+            text: { tag: "lark_md", content: "**待审批草稿**" },
+        });
+        for (const [group, items] of pendingByGroup) {
+            groupTitle(group);
+            for (const item of items.slice(0, 5)) {
+                const time = new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false });
+                elements.push(itemBox([
+                    `发送人：${item.senderLabel}`,
+                    `时间：${time}`,
+                    `草稿：${item.draft.slice(0, 160)}`,
+                    `原消息：${item.excerpt.slice(0, 120)}`,
+                ], [
                     {
                         tag: "button",
                         text: { tag: "plain_text", content: "取消此草稿" },
@@ -650,56 +682,34 @@ export function renderReplyManagementCard(view) {
                         type: "default",
                         value: { a: "restore_approval", t: item.taskId, h: item.planHash },
                     },
-                ],
-            });
-        }
-        if (view.pending.length > 5) {
-            elements.push({
-                tag: "div",
-                text: {
-                    tag: "plain_text",
-                    content: `待审批仅显示最近 5 条，共 ${view.pending.length} 条。`,
-                },
-            });
+                ]));
+            }
         }
     }
     if (view.sent.length > 0) {
-        section("最近已发送", "最近 8 条可撤回回复；受企业撤回时限限制（默认 24 小时）。");
-        for (const item of view.sent.slice(0, 8)) {
-            const time = new Date(item.sentAt).toLocaleString("zh-CN", { hour12: false });
-            elements.push({
-                tag: "div",
-                text: {
-                    tag: "plain_text",
-                    content: [
-                        `群：${item.chatLabel}`,
-                        `发送人：${item.senderLabel}`,
-                        `时间：${time}`,
-                        `回复：${item.text.slice(0, 160)}`,
-                        `原消息：${item.sourceText.slice(0, 120)}`,
-                    ].join("\n"),
-                },
-            });
-            elements.push({
-                tag: "action",
-                actions: [
+        elements.push({ tag: "hr" });
+        elements.push({
+            tag: "div",
+            text: { tag: "lark_md", content: "**最近已发送（仅可撤回）**" },
+        });
+        for (const [group, items] of sentByGroup) {
+            groupTitle(group);
+            for (const item of items.slice(0, 8)) {
+                const time = new Date(item.sentAt).toLocaleString("zh-CN", { hour12: false });
+                elements.push(itemBox([
+                    `发送人：${item.senderLabel}`,
+                    `时间：${time}`,
+                    `回复：${item.text.slice(0, 160)}`,
+                    `原消息：${item.sourceText.slice(0, 120)}`,
+                ], [
                     {
                         tag: "button",
                         text: { tag: "plain_text", content: "撤回此回复" },
                         type: "danger",
                         value: { a: "recall_reply", t: "__manage__", r: item.id },
                     },
-                ],
-            });
-        }
-        if (view.sent.length > 8) {
-            elements.push({
-                tag: "div",
-                text: {
-                    tag: "plain_text",
-                    content: `已发送仅显示最近 8 条，共 ${view.sent.length} 条。`,
-                },
-            });
+                ]));
+            }
         }
     }
     return {
