@@ -72,6 +72,13 @@ export class HybridFeishuAdapter implements PlatformAdapter {
     return this.adapter.recallMessage(chatId, messageId);
   }
 
+  fetchResource(
+    messageId: string,
+    key: string,
+  ): Promise<{ data: Buffer; mime: string; filename?: string }> {
+    return this.adapter.fetchResource(messageId, key);
+  }
+
   verifyActor(actor: { platform: string; id: string; displayName?: string }): Promise<boolean> {
     return this.adapter.verifyActor(actor);
   }

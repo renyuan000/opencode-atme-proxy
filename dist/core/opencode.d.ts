@@ -25,7 +25,13 @@ export interface SessionInfo {
 }
 export interface SessionPromptInput extends SessionCreateInput {
     text: string;
+    attachments?: PromptAttachment[];
     signal?: AbortSignal;
+}
+export interface PromptAttachment {
+    mime: string;
+    url: string;
+    filename?: string;
 }
 export interface OpenCodeBridge {
     createSession(input: SessionCreateInput): Promise<string>;

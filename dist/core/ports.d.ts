@@ -43,6 +43,11 @@ export interface PlatformAdapter {
         messageId: string;
     }>;
     renderApproval(view: ApprovalView): OutboundMessage;
+    fetchResource?(messageId: string, key: string): Promise<{
+        data: Buffer;
+        mime: string;
+        filename?: string;
+    }>;
     renderReplyManagement?(view: ReplyManagementView): OutboundMessage;
     renderCancelConfirm?(input: {
         taskId: string;

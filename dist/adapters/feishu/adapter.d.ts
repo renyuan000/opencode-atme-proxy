@@ -88,6 +88,10 @@ export declare class FeishuAdapter implements PlatformAdapter {
         draft?: string;
     }): OutboundMessage;
     recallMessage(_chatId: string, messageId: string): Promise<void>;
+    fetchResource(messageId: string, key: string): Promise<{
+        data: Buffer;
+        mime: string;
+    }>;
     verifyActor(actor: ActorRef): Promise<boolean>;
     private requireMessageId;
     private resolveBotOpenId;

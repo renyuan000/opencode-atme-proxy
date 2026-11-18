@@ -116,7 +116,7 @@ export class SessionManager {
         await this.options.sessions.flush();
         return sessionId;
     }
-    async runWorker(input, promptText, signal) {
+    async runWorker(input, promptText, signal, attachments) {
         if (!this.options.config.subagents.enabled) {
             const { sessionId, release } = await this.createChildSession({
                 ...input,
@@ -127,6 +127,7 @@ export class SessionManager {
                     directory: input.directory,
                     title: input.title,
                     text: promptText,
+                    ...(attachments ? { attachments } : {}),
                     ...(signal ? { signal } : {}),
                 });
             }
@@ -142,6 +143,7 @@ export class SessionManager {
                 directory: input.directory,
                 title: input.title,
                 text: promptText,
+                ...(attachments ? { attachments } : {}),
                 ...(signal ? { signal } : {}),
             });
         };

@@ -24,7 +24,14 @@ export interface SessionInfo {
 
 export interface SessionPromptInput extends SessionCreateInput {
   text: string;
+  attachments?: PromptAttachment[];
   signal?: AbortSignal;
+}
+
+export interface PromptAttachment {
+  mime: string;
+  url: string;
+  filename?: string;
 }
 
 export interface OpenCodeBridge {
@@ -120,7 +127,15 @@ export class HttpOpenCodeBridge implements OpenCodeBridge {
       ...(input.model
         ? { model: { providerID: input.model.providerID, modelID: input.model.modelID } }
         : {}),
-      parts: [{ type: "text", text: input.text }],
+      parts: [
+        { type: "text", text: input.text },
+        ...(input.attachments ?? []).map((attachment) => ({
+          type: "file" as const,
+          mime: attachment.mime,
+          url: attachment.url,
+          ...(attachment.filename ? { filename: attachment.filename } : {}),
+        })),
+      ],
     }, input.signal ? { signal: input.signal } : undefined);
     if (result.error || !result.data) {
       throw new Error(`prompt failed: ${formatError(result.error)}`);
@@ -216,7 +231,15 @@ export class InjectedOpenCodeBridge implements OpenCodeBridge {
       ...(input.model
         ? { model: { providerID: input.model.providerID, modelID: input.model.modelID } }
         : {}),
-      parts: [{ type: "text", text: input.text }],
+      parts: [
+        { type: "text", text: input.text },
+        ...(input.attachments ?? []).map((attachment) => ({
+          type: "file" as const,
+          mime: attachment.mime,
+          url: attachment.url,
+          ...(attachment.filename ? { filename: attachment.filename } : {}),
+        })),
+      ],
     }, input.signal ? { signal: input.signal } : undefined);
     if (result.error || !result.data) {
       throw new Error(`prompt failed: ${formatError(result.error)}`);

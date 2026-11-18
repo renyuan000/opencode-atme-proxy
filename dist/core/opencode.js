@@ -71,7 +71,15 @@ export class HttpOpenCodeBridge {
             ...(input.model
                 ? { model: { providerID: input.model.providerID, modelID: input.model.modelID } }
                 : {}),
-            parts: [{ type: "text", text: input.text }],
+            parts: [
+                { type: "text", text: input.text },
+                ...(input.attachments ?? []).map((attachment) => ({
+                    type: "file",
+                    mime: attachment.mime,
+                    url: attachment.url,
+                    ...(attachment.filename ? { filename: attachment.filename } : {}),
+                })),
+            ],
         }, input.signal ? { signal: input.signal } : undefined);
         if (result.error || !result.data) {
             throw new Error(`prompt failed: ${formatError(result.error)}`);
@@ -162,7 +170,15 @@ export class InjectedOpenCodeBridge {
             ...(input.model
                 ? { model: { providerID: input.model.providerID, modelID: input.model.modelID } }
                 : {}),
-            parts: [{ type: "text", text: input.text }],
+            parts: [
+                { type: "text", text: input.text },
+                ...(input.attachments ?? []).map((attachment) => ({
+                    type: "file",
+                    mime: attachment.mime,
+                    url: attachment.url,
+                    ...(attachment.filename ? { filename: attachment.filename } : {}),
+                })),
+            ],
         }, input.signal ? { signal: input.signal } : undefined);
         if (result.error || !result.data) {
             throw new Error(`prompt failed: ${formatError(result.error)}`);

@@ -139,6 +139,7 @@ function extractPostText(content: unknown[]): string {
 
 function extractAttachments(raw: FeishuRawMessage): Array<{
   kind: "image" | "file" | "audio" | "video";
+  key?: string;
   name?: string;
 }> {
   const type = raw.message_type ?? "";
@@ -147,16 +148,21 @@ function extractAttachments(raw: FeishuRawMessage): Array<{
     const parsed = JSON.parse(raw.content) as Record<string, unknown>;
     if (type === "image") {
       const key = typeof parsed.image_key === "string" ? parsed.image_key : undefined;
-      return [{ kind: "image", ...(key ? { name: key } : {}) }];
+      return [{ kind: "image", ...(key ? { key } : {}) }];
     }
     if (type === "file") {
+      const key = typeof parsed.file_key === "string" ? parsed.file_key : undefined;
       const name = typeof parsed.file_name === "string" ? parsed.file_name : undefined;
-      return [{ kind: "file", ...(name ? { name } : {}) }];
+      return [{ kind: "file", ...(key ? { key } : {}), ...(name ? { name } : {}) }];
     }
     if (type === "audio") return [{ kind: "audio" }];
     if (type === "media" || type === "video") return [{ kind: "video" }];
     if (type === "post" && Array.isArray(parsed.content)) {
-      const result: Array<{ kind: "image" | "file" | "audio" | "video"; name?: string }> = [];
+      const result: Array<{
+        kind: "image" | "file" | "audio" | "video";
+        key?: string;
+        name?: string;
+      }> = [];
       for (const block of parsed.content) {
         if (!Array.isArray(block)) continue;
         for (const item of block) {
@@ -164,10 +170,11 @@ function extractAttachments(raw: FeishuRawMessage): Array<{
           const record = item as Record<string, unknown>;
           if (record.tag === "img") {
             const key = typeof record.image_key === "string" ? record.image_key : undefined;
-            result.push({ kind: "image", ...(key ? { name: key } : {}) });
+            result.push({ kind: "image", ...(key ? { key } : {}) });
           } else if (record.tag === "file") {
+            const key = typeof record.file_key === "string" ? record.file_key : undefined;
             const name = typeof record.file_name === "string" ? record.file_name : undefined;
-            result.push({ kind: "file", ...(name ? { name } : {}) });
+            result.push({ kind: "file", ...(key ? { key } : {}), ...(name ? { name } : {}) });
           }
         }
       }
@@ -325,6 +332,38 @@ export class FeishuAdapter implements PlatformAdapter {
     if (response?.code !== 0) {
       throw new Error(`Feishu recall failed: ${response?.msg ?? "unknown"}`);
     }
+  }
+
+  async fetchResource(
+    messageId: string,
+    key: string,
+  ): Promise<{ data: Buffer; mime: string }> {
+    const resource = (this.client as any).im?.v1?.messageResource;
+    if (!resource || typeof resource.get !== "function") {
+      throw new Error("Feishu SDK does not expose messageResource.get");
+    }
+    const response = await resource.get({
+      params: { type: "image" },
+      path: { message_id: messageId, file_key: key },
+    });
+    const stream = response?.getReadableStream?.();
+    if (!stream) throw new Error("Feishu resource response has no stream");
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of stream) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buffer.length;
+      if (total > 8 * 1024 * 1024) {
+        throw new Error("image exceeds 8MB limit");
+      }
+      chunks.push(buffer);
+    }
+    const headerType = response?.headers?.["content-type"] ?? response?.headers?.["Content-Type"];
+    const mime =
+      typeof headerType === "string" && headerType.startsWith("image/")
+        ? headerType.split(";")[0]!
+        : "image/png";
+    return { data: Buffer.concat(chunks), mime };
   }
 
   async verifyActor(actor: ActorRef): Promise<boolean> {

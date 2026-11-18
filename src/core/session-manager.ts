@@ -1,6 +1,6 @@
 import type { AppConfig } from "./config.js";
 import type { Logger } from "./logger.js";
-import type { OpenCodeBridge } from "./opencode.js";
+import type { OpenCodeBridge, PromptAttachment } from "./opencode.js";
 import type { SessionStore } from "./session-store.js";
 import { Semaphore } from "./rate-limit.js";
 import { toErrorMessage } from "./util.js";
@@ -187,6 +187,7 @@ export class SessionManager {
     input: WorkerInput,
     promptText: string,
     signal?: AbortSignal,
+    attachments?: PromptAttachment[],
   ): Promise<string> {
     if (!this.options.config.subagents.enabled) {
       const { sessionId, release } = await this.createChildSession({
@@ -198,6 +199,7 @@ export class SessionManager {
           directory: input.directory,
           title: input.title,
           text: promptText,
+          ...(attachments ? { attachments } : {}),
           ...(signal ? { signal } : {}),
         });
       } finally {
@@ -217,6 +219,7 @@ export class SessionManager {
         directory: input.directory,
         title: input.title,
         text: promptText,
+        ...(attachments ? { attachments } : {}),
         ...(signal ? { signal } : {}),
       });
     };

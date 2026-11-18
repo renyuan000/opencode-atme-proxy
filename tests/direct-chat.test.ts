@@ -65,15 +65,22 @@ class Adapter implements PlatformAdapter {
   async recallMessage(_chatId: string, messageId: string): Promise<void> {
     this.recalled.push(messageId);
   }
+  async fetchResource() {
+    return { data: Buffer.from([137, 80, 78, 71]), mime: "image/png" };
+  }
   async verifyActor() { return true; }
 }
 
 class Bridge implements OpenCodeBridge {
+  attachments: unknown[] = [];
   getClient(): any {
     return { project: { list: async () => ({ data: [] }) }, experimental: { session: { list: async () => ({ data: [] }) } } };
   }
   async createSession() { return "s"; }
-  async prompt() { return "私聊回复"; }
+  async prompt(_sessionId: string, input: any) {
+    this.attachments = input.attachments ?? [];
+    return "私聊回复";
+  }
   async deleteSession() {}
 }
 
@@ -327,6 +334,29 @@ test("direct messages are ignored when owner is not bound", async () => {
     await runtime.ingest(dm("m1", "stranger", "hello"));
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(adapter.replies.length, 0);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("owner image is passed to the model as a file attachment", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const adapter = new Adapter();
+    const bridge = new Bridge();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge, loaded: config(dir) });
+    await runtime.start();
+    await runtime.ingest({
+      ...dm("m1", "owner", "[图片，未解析]"),
+      rawType: "image",
+      attachments: [{ kind: "image", key: "img_1" }],
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(bridge.attachments.length, 1);
+    const attachment = bridge.attachments[0] as { mime: string; url: string };
+    assert.equal(attachment.mime, "image/png");
+    assert.match(attachment.url, /^data:image\/png;base64,/);
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

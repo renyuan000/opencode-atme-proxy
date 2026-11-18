@@ -12,6 +12,7 @@ export interface ChatRef {
 }
 export interface AttachmentRef {
     kind: "image" | "file" | "audio" | "video";
+    key?: string;
     name?: string;
     size?: number;
 }

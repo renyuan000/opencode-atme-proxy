@@ -41,6 +41,9 @@ export class HybridFeishuAdapter {
     recallMessage(chatId, messageId) {
         return this.adapter.recallMessage(chatId, messageId);
     }
+    fetchResource(messageId, key) {
+        return this.adapter.fetchResource(messageId, key);
+    }
     verifyActor(actor) {
         return this.adapter.verifyActor(actor);
     }

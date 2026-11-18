@@ -1,6 +1,6 @@
 import type { AppConfig } from "./config.js";
 import type { Logger } from "./logger.js";
-import type { OpenCodeBridge } from "./opencode.js";
+import type { OpenCodeBridge, PromptAttachment } from "./opencode.js";
 import type { SessionStore } from "./session-store.js";
 export interface SessionPermission {
     permission: string;
@@ -54,7 +54,7 @@ export declare class SessionManager {
     coordinatorSession(platform: string, chatId: string, directory: string, title: string): Promise<string>;
     createGroupSession(platform: string, chatId: string, directory: string): Promise<string>;
     createWorkerSession(input: WorkerInput): Promise<string>;
-    runWorker(input: WorkerInput, promptText: string, signal?: AbortSignal): Promise<string>;
+    runWorker(input: WorkerInput, promptText: string, signal?: AbortSignal, attachments?: PromptAttachment[]): Promise<string>;
     createChildSession(input: ChildInput): Promise<{
         sessionId: string;
         release: () => void;
