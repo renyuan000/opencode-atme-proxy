@@ -56,6 +56,7 @@ export declare class ProxyRuntime {
     private readonly botMentionFlow;
     private readonly scanService;
     private readonly notificationService;
+    private readonly recoveryService;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
@@ -110,8 +111,6 @@ export declare class ProxyRuntime {
     private createApprovalCard;
     private sendApproval;
     recoverOnStartup(): Promise<void>;
-    private pullStartupWindow;
-    private resumeOpenTasks;
     private sweepExpiredApprovals;
     private onAction;
     private approveReply;

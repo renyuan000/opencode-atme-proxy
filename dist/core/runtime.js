@@ -35,6 +35,7 @@ import { MeMentionFlow } from "./me-mention-flow.js";
 import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
+import { RecoveryService } from "./recovery-service.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { readJsonFile, sha256, toErrorMessage, redactPreview, truncate, truncateMiddle, } from "./util.js";
@@ -95,6 +96,7 @@ export class ProxyRuntime {
     botMentionFlow;
     scanService;
     notificationService;
+    recoveryService;
     groupLocks = new Map();
     memory;
     owners;
@@ -357,6 +359,21 @@ export class ProxyRuntime {
             outbound: this.outbound,
             chatNames: this.chatNames,
             ownerOpenId: () => this.ownerOpenId(),
+        });
+        this.recoveryService = new RecoveryService({
+            config: this.config,
+            logger: this.logger.child("recovery"),
+            platform: this.options.platform,
+            pending: this.pending,
+            tasks: this.tasks,
+            dedup: this.dedup,
+            groupIds: this.groupIds,
+            isMention: (message) => this.isMention(message),
+            ingest: (message) => this.ingest(message),
+            ingestBatch: (messages) => this.ingestBatch(messages),
+            analyzeTask: (task) => this.analyzeTask(task),
+            track: (promise) => this.track(promise),
+            sendToOwner: (text) => this.sendToOwner(text),
         });
         this.poller = new PollingService({
             enabled: this.config.polling.enabled,
@@ -1055,129 +1072,9 @@ export class ProxyRuntime {
         await this.pending.flush();
     }
     async recoverOnStartup() {
-        const recovery = this.config.recovery;
-        if (!recovery.enabled)
-            return;
         if (!this.started)
             return;
-        if (recovery.resumeTasks) {
-            await this.resumeOpenTasks();
-        }
-        if (recovery.onStartup) {
-            await this.pullStartupWindow();
-        }
-    }
-    async pullStartupWindow() {
-        const recovery = this.config.recovery;
-        if (!this.options.platform.capabilities().groupHistory) {
-            this.logger.warn("recovery skipped: platform has no groupHistory capability");
-            return;
-        }
-        const endTime = Date.now();
-        const startTime = endTime - recovery.lookbackSeconds * 1000;
-        this.logger.info("startup recovery pull", {
-            startTime: new Date(startTime).toISOString(),
-            endTime: new Date(endTime).toISOString(),
-            groups: this.groupIds.size,
-        });
-        for (const chatId of this.groupIds) {
-            try {
-                const result = await this.options.platform.listMessages({
-                    chatId,
-                    startTime,
-                    endTime,
-                    maxPages: 20,
-                    maxMessages: recovery.maxMessages,
-                });
-                if (result.messages.length === 0)
-                    continue;
-                const messageIds = result.messages.map((message) => `${message.platform}:${message.messageId}`);
-                const unprocessed = result.messages.filter((message) => !this.dedup.has(`${message.platform}:${message.messageId}`));
-                this.logger.info("startup recovery fetched", {
-                    chatId,
-                    fetched: result.messages.length,
-                    unprocessed: unprocessed.length,
-                    unique: new Set(messageIds).size,
-                });
-                if (unprocessed.length === 0)
-                    continue;
-                const mentions = recovery.includeMentions
-                    ? unprocessed.filter((message) => this.isMention(message))
-                    : [];
-                for (const message of mentions) {
-                    await this.ingest(message);
-                }
-                if (recovery.includeRelevantPlain) {
-                    const plain = unprocessed
-                        .filter((message) => !this.isMention(message))
-                        .slice(-recovery.maxPlainMessagesPerGroup);
-                    if (plain.length > 0)
-                        await this.ingestBatch(plain);
-                }
-            }
-            catch (error) {
-                this.logger.error("startup recovery failed for group; continuing", {
-                    chatId,
-                    error: toErrorMessage(error),
-                });
-            }
-        }
-    }
-    async resumeOpenTasks() {
-        const recovery = this.config.recovery;
-        const now = Date.now();
-        const maxAgeMs = recovery.resumeMaxAgeDays * 86_400_000;
-        const tasks = await this.tasks.list();
-        let resumed = 0;
-        let interrupted = 0;
-        for (const task of tasks) {
-            if (now - task.updatedAt > maxAgeMs)
-                continue;
-            if (task.state === "done" || task.state === "rejected" || task.state === "canceled") {
-                continue;
-            }
-            if (task.state === "executing" || task.state === "verifying") {
-                const staleMs = recovery.staleRunningMinutes * 60_000;
-                if (now - task.updatedAt < staleMs)
-                    continue;
-                task.state = "awaiting_approval";
-                task.updatedAt = now;
-                await this.tasks.save(task);
-                interrupted++;
-                await this.sendToOwner(`上次执行被中断，已暂停等待你重新批准：${task.title}\n不会自动重放代码修改。`);
-                continue;
-            }
-            if ((task.state === "awaiting_approval" || task.state === "needs_info") &&
-                this.pending.findForTask(task.id)) {
-                continue;
-            }
-            if (task.state === "candidate" || task.state === "analyzing") {
-                task.state = "analyzing";
-                task.updatedAt = now;
-                await this.tasks.save(task);
-                this.track(this.analyzeTask(task)).catch((error) => {
-                    this.logger.error("resumed task analysis failed", {
-                        taskId: task.id,
-                        error: toErrorMessage(error),
-                    });
-                });
-                resumed++;
-                continue;
-            }
-            const nudgeMs = recovery.nudgeHours * 3600_000;
-            if ((task.state === "awaiting_approval" || task.state === "needs_info") &&
-                (nudgeMs === 0 || now - (task.lastNudgeAt ?? 0) > nudgeMs)) {
-                task.lastNudgeAt = now;
-                task.updatedAt = now;
-                await this.tasks.save(task);
-                await this.sendToOwner(`未完成任务提醒：${task.title}\n状态：${task.state}\n发送「查看任务」可列出详情（后续实现）。`);
-                resumed++;
-            }
-        }
-        this.logger.info("task resume finished", { resumed, interrupted });
-        if (resumed > 0 || interrupted > 0) {
-            await this.sendToOwner(`启动恢复：续作 ${resumed} 个未完成任务，中断 ${interrupted} 个执行。`);
-        }
+        await this.recoveryService.recoverOnStartup();
     }
     sweepExpiredApprovals() {
         return this.approvalService.sweepExpiredApprovals();
