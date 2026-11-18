@@ -118,7 +118,12 @@ export class RecoveryService {
                 task.lastNudgeAt = now;
                 task.updatedAt = now;
                 await this.options.tasks.save(task);
-                await this.options.sendToOwner(`未完成任务提醒：${task.title}\n状态：${task.state}\n发送「查看任务」可列出详情（后续实现）。`);
+                await this.options.sendToOwner([
+                    `未完成任务提醒：${task.title}`,
+                    `状态：${task.state}`,
+                    `来源：${task.chatName ?? task.chatId} / ${task.requester.displayName ?? task.requester.id}`,
+                    "请在原审批卡或群里处理。",
+                ].join("\n"));
                 resumed++;
             }
         }
