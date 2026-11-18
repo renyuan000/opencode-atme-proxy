@@ -3,10 +3,13 @@ import type { AppConfig } from "./config.js";
 import type { AuditLog } from "./audit.js";
 import type { ContextService } from "./context-service.js";
 import type { Logger } from "./logger.js";
+import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
 import type {
   AnalysisVerification,
+  Classification,
+  IncomingMessage,
   TaskAnalysis,
   TaskRecord,
 } from "./types.js";
@@ -17,7 +20,8 @@ import {
 } from "./analysis-verify.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
-import { toErrorMessage, writeJsonAtomic } from "./util.js";
+import { makeDedupKey } from "./relevance.js";
+import { sha256, toErrorMessage, truncate, writeJsonAtomic } from "./util.js";
 
 export interface TaskServiceOptions {
   config: AppConfig;
@@ -28,8 +32,10 @@ export interface TaskServiceOptions {
   sessionManager: SessionManager;
   logger: Logger;
   readOnlyPermission: SessionPermission[];
+  memory: MemoryStore;
   resolveProject(chatId: string): Promise<{ worktree: string; resolved: boolean }>;
-  rememberOutcome(task: TaskRecord, analysis: TaskAnalysis): void;
+  projectId(chatId: string): string | undefined;
+  startAnalysis(task: TaskRecord): void;
   sendToApprover(text: string): Promise<boolean>;
   sendApproval(task: TaskRecord, analysis: TaskAnalysis): Promise<void>;
 }
@@ -67,7 +73,7 @@ export class TaskService {
       join(this.options.stateDir, "analyses", task.id, "index.json"),
       { version: analysis.version },
     );
-    this.options.rememberOutcome(task, analysis);
+    this.rememberTaskOutcome(task, analysis);
     task.state = analysis.needsInfo ? "needs_info" : "awaiting_approval";
     task.updatedAt = Date.now();
     await this.options.tasks.save(task);
@@ -89,6 +95,108 @@ export class TaskService {
       return;
     }
     await this.options.sendApproval(task, analysis);
+  }
+
+  async ensureTask(
+    message: IncomingMessage,
+    classification: Classification | undefined,
+    source: TaskRecord["source"],
+  ): Promise<TaskRecord | undefined> {
+    const taskHint = classification?.task;
+    const title = taskHint?.title ?? truncate(message.text.split("\n")[0] ?? message.text, 60);
+    const dedupKey = makeDedupKey({
+      platform: message.platform,
+      chatId: message.chat.id,
+      title,
+      project: taskHint?.project,
+      requesterId: message.sender.id,
+    });
+    const existingId = this.options.tasks.findByDedupKey(dedupKey);
+    const now = Date.now();
+    if (existingId) {
+      const existing = await this.options.tasks.get(existingId);
+      if (existing) {
+        if (!existing.messageIds.includes(message.messageId)) {
+          existing.messageIds.push(message.messageId);
+          existing.updatedAt = now;
+          await this.options.tasks.save(existing);
+        }
+        return existing;
+      }
+    }
+    const task: TaskRecord = {
+      id: `task_${sha256(`${dedupKey}:${message.messageId}`).slice(0, 12)}`,
+      platform: message.platform,
+      chatId: message.chat.id,
+      ...(message.chat.name ? { chatName: message.chat.name } : {}),
+      messageIds: message.messageIds ?? [message.messageId],
+      source,
+      requester: message.sender,
+      title,
+      excerpt: truncate(message.text, 500),
+      ...(taskHint?.project ? { project: taskHint.project } : {}),
+      ...(taskHint?.deadline ? { deadline: taskHint.deadline } : {}),
+      keywords: this.options.config.filter.profile.keywords.filter((keyword) =>
+        message.text.includes(keyword),
+      ),
+      relevance: {
+        reason: classification?.reason ?? "mentioned",
+        confidence: classification?.confidence ?? 1,
+      },
+      dedupKey,
+      state: "analyzing",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.options.tasks.save(task);
+    await this.options.audit.append({
+      actor: { system: true },
+      action: "task_created",
+      taskId: task.id,
+      details: { source, messageId: message.messageId },
+    });
+    if (!this.options.config.policy.autoAnalyzeTasks) {
+      task.state = "needs_info";
+      task.updatedAt = Date.now();
+      await this.options.tasks.save(task);
+      await this.options.sendToApprover(
+        `已记录任务，请回复补充信息或手动触发分析：${task.title}`,
+      );
+      return task;
+    }
+    this.options.startAnalysis(task);
+    return task;
+  }
+
+  private rememberTaskOutcome(task: TaskRecord, analysis: TaskAnalysis): void {
+    if (!this.options.config.memory.enabled || !this.options.config.memory.extract) return;
+    if (!this.options.config.memory.autoExtractFromAnalysis) return;
+    const projectId = this.options.projectId(task.chatId);
+    this.options.memory.upsert({
+      platform: task.platform,
+      chatId: task.chatId,
+      ...(projectId ? { projectId } : {}),
+      kind: "task",
+      key: `task:${task.id}`,
+      value: `${task.title}\n目标：${analysis.goal}\n验收：${analysis.acceptanceCriteria.join("；")}`,
+      sourceMessageIds: task.messageIds,
+      tags: ["task", ...(task.project ? [task.project] : []), ...task.keywords],
+      confidence: 0.9,
+    });
+    if (analysis.openQuestions.length > 0) {
+      this.options.memory.upsert({
+        platform: task.platform,
+        chatId: task.chatId,
+        ...(projectId ? { projectId } : {}),
+        kind: "decision",
+        key: `task:${task.id}:open`,
+        value: `待确认：${analysis.openQuestions.join("；")}`,
+        sourceMessageIds: task.messageIds,
+        tags: ["open_question"],
+        confidence: 0.8,
+      });
+    }
+    void this.options.memory.flush();
   }
 
   private async buildAnalysis(

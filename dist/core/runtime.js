@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { createLogger } from "./logger.js";
-import { OpenAiCompatibleClient, RelevanceService, buildBotIntentPrompt, makeDedupKey, parseBotIntent, parseJsonLoose, } from "./relevance.js";
+import { OpenAiCompatibleClient, RelevanceService, buildBotIntentPrompt, parseBotIntent, parseJsonLoose, } from "./relevance.js";
 import { detectReplyDepth, detectReplyStyle, enforceReplyLength, } from "./reply-style.js";
 import { DedupStore } from "./dedup.js";
 import { CursorStore } from "./cursor.js";
@@ -279,7 +279,16 @@ export class ProxyRuntime {
                 const project = await this.resolveProject(chatId);
                 return { worktree: project.worktree, resolved: project.resolved };
             },
-            rememberOutcome: (task, analysis) => this.rememberTaskOutcome(task, analysis),
+            memory: this.memory,
+            projectId: (chatId) => this.projectStore.get(chatId)?.projectId,
+            startAnalysis: (task) => {
+                this.track(this.taskService.analyzeTask(task)).catch((error) => {
+                    this.logger.error("task analysis failed", {
+                        taskId: task.id,
+                        error: toErrorMessage(error),
+                    });
+                });
+            },
             sendToApprover: (text) => this.sendToApprover(text),
             sendApproval: (task, analysis) => this.sendApproval(task, analysis),
         });
@@ -1531,72 +1540,8 @@ export class ProxyRuntime {
             return undefined;
         }
     }
-    async ensureTask(message, classification, source) {
-        const taskHint = classification?.task;
-        const title = taskHint?.title ?? truncate(message.text.split("\n")[0] ?? message.text, 60);
-        const dedupKey = makeDedupKey({
-            platform: message.platform,
-            chatId: message.chat.id,
-            title,
-            project: taskHint?.project,
-            requesterId: message.sender.id,
-        });
-        const existingId = this.tasks.findByDedupKey(dedupKey);
-        const now = Date.now();
-        if (existingId) {
-            const existing = await this.tasks.get(existingId);
-            if (existing) {
-                if (!existing.messageIds.includes(message.messageId)) {
-                    existing.messageIds.push(message.messageId);
-                    existing.updatedAt = now;
-                    await this.tasks.save(existing);
-                }
-                return existing;
-            }
-        }
-        const task = {
-            id: `task_${sha256(`${dedupKey}:${message.messageId}`).slice(0, 12)}`,
-            platform: message.platform,
-            chatId: message.chat.id,
-            ...(message.chat.name ? { chatName: message.chat.name } : {}),
-            messageIds: message.messageIds ?? [message.messageId],
-            source,
-            requester: message.sender,
-            title,
-            excerpt: truncate(message.text, 500),
-            ...(taskHint?.project ? { project: taskHint.project } : {}),
-            ...(taskHint?.deadline ? { deadline: taskHint.deadline } : {}),
-            keywords: this.config.filter.profile.keywords.filter((keyword) => message.text.includes(keyword)),
-            relevance: {
-                reason: classification?.reason ?? "mentioned",
-                confidence: classification?.confidence ?? 1,
-            },
-            dedupKey,
-            state: "analyzing",
-            createdAt: now,
-            updatedAt: now,
-        };
-        await this.tasks.save(task);
-        await this.audit.append({
-            actor: { system: true },
-            action: "task_created",
-            taskId: task.id,
-            details: { source, messageId: message.messageId },
-        });
-        if (!this.config.policy.autoAnalyzeTasks) {
-            task.state = "needs_info";
-            task.updatedAt = Date.now();
-            await this.tasks.save(task);
-            await this.sendToApprover(`已记录任务，请回复补充信息或手动触发分析：${task.title}`);
-            return task;
-        }
-        this.track(this.analyzeTask(task)).catch((error) => {
-            this.logger.error("task analysis failed", {
-                taskId: task.id,
-                error: toErrorMessage(error),
-            });
-        });
-        return task;
+    ensureTask(message, classification, source) {
+        return this.taskService.ensureTask(message, classification, source);
     }
     analyzeTask(task) {
         return this.taskService.analyzeTask(task);
@@ -1909,38 +1854,6 @@ export class ProxyRuntime {
                     });
                 }
             }
-        }
-        void this.memory.flush();
-    }
-    rememberTaskOutcome(task, analysis) {
-        if (!this.config.memory.enabled || !this.config.memory.extract)
-            return;
-        if (!this.config.memory.autoExtractFromAnalysis)
-            return;
-        const projectId = this.projectStore.get(task.chatId)?.projectId;
-        this.memory.upsert({
-            platform: task.platform,
-            chatId: task.chatId,
-            ...(projectId ? { projectId } : {}),
-            kind: "task",
-            key: `task:${task.id}`,
-            value: `${task.title}\n目标：${analysis.goal}\n验收：${analysis.acceptanceCriteria.join("；")}`,
-            sourceMessageIds: task.messageIds,
-            tags: ["task", ...(task.project ? [task.project] : []), ...task.keywords],
-            confidence: 0.9,
-        });
-        if (analysis.openQuestions.length > 0) {
-            this.memory.upsert({
-                platform: task.platform,
-                chatId: task.chatId,
-                ...(projectId ? { projectId } : {}),
-                kind: "decision",
-                key: `task:${task.id}:open`,
-                value: `待确认：${analysis.openQuestions.join("；")}`,
-                sourceMessageIds: task.messageIds,
-                tags: ["open_question"],
-                confidence: 0.8,
-            });
         }
         void this.memory.flush();
     }
