@@ -90,12 +90,12 @@ export class OwnerAccessService {
 
     const expected = claimCode.trim();
     const provided = message.text.trim();
-    if (!expected || provided !== expected) {
-      this.recordClaimAttempt(message.sender.id);
-      return false;
-    }
     if (this.tooManyClaimAttempts(message.sender.id)) {
       await this.options.sendToOwner("claim 尝试过于频繁，已暂时拒绝。");
+      return false;
+    }
+    if (!expected || provided !== expected) {
+      this.recordClaimAttempt(message.sender.id);
       return false;
     }
 
