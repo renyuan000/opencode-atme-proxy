@@ -52,6 +52,7 @@ export declare class ProxyRuntime {
     private readonly taskService;
     private readonly intentService;
     private readonly messageIngress;
+    private readonly meMentionFlow;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;

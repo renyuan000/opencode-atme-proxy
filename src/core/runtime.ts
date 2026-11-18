@@ -62,6 +62,7 @@ import { ReplyService } from "./reply-service.js";
 import { TaskService } from "./task-service.js";
 import { IntentService } from "./intent-service.js";
 import { MessageIngress } from "./message-ingress.js";
+import { MeMentionFlow } from "./me-mention-flow.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
@@ -151,6 +152,7 @@ export class ProxyRuntime {
   private readonly taskService: TaskService;
   private readonly intentService: IntentService;
   private readonly messageIngress: MessageIngress;
+  private readonly meMentionFlow: MeMentionFlow;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
@@ -466,6 +468,23 @@ export class ProxyRuntime {
       chatContext: this.chatContext,
       replyOptions: this.replyOptions,
       logger: this.logger.child("intent"),
+    });
+    this.meMentionFlow = new MeMentionFlow({
+      config: this.config,
+      logger: this.logger.child("me-mention"),
+      intentService: this.intentService,
+      replyService: this.replyService,
+      taskService: this.taskService,
+      tasks: this.tasks,
+      audit: this.audit,
+      prepare: async (message, signal) => {
+        await this.waitForBurst(message, signal);
+        const burst = await this.applyBurstGrouping(message, signal);
+        return { enriched: mergeBurst(message, burst), burst };
+      },
+      markProcessed: (message) => this.markProcessed(message),
+      safeReply: (message, text) => this.safeReply(message, text),
+      sendToApprover: (text) => this.sendToApprover(text),
     });
   }
 
@@ -1267,87 +1286,11 @@ export class ProxyRuntime {
     }
   }
 
-  private async handleMeMention(message: IncomingMessage, signal: AbortSignal): Promise<void> {
-    await this.waitForBurst(message, signal);
-    const burst = await this.applyBurstGrouping(message, signal);
-    const enriched = mergeBurst(message, burst);
-    const classification = await this.classifyOne(enriched, signal);
-    if (
-      classification?.actionability === "task" &&
-      classification.confidence >= this.config.filter.minTaskConfidence
-    ) {
-      const task = await this.ensureTask(enriched, classification, "mention_me");
-      if (task) {
-        await this.markProcessed(message);
-        for (const followup of burst) await this.markProcessed(followup);
-        return;
-      }
-    }
-    const style = detectReplyStyle(enriched, this.replyOptions);
-    const depth = detectReplyDepth(enriched, this.replyOptions);
-    const decision = await this.shouldReplyToMention(enriched, classification);
-    if (!decision.reply) {
-      this.logger.info("mention skipped by reply necessity", {
-        messageId: message.messageId,
-        reason: decision.reason,
-      });
-      await this.markProcessed(message);
-      for (const followup of burst) await this.markProcessed(followup);
-      await this.audit.append({
-        actor: { system: true },
-        action: "mention_skipped",
-        details: { messageId: message.messageId, reason: decision.reason },
-      });
-      return;
-    }
-    const task = await this.createReplyTask(enriched, classification);
-    const autoReply =
-      this.config.policy.autoReplyOnMention &&
-      classification?.actionability !== "task" &&
-      (classification?.confidence ?? 0) >= this.config.filter.minTaskConfidence;
-    if (autoReply) {
-      try {
-        const reply =
-          depth === "ack"
-            ? "收到"
-            : await this.askOpenCode(enriched, style, signal, depth);
-        const replied = await this.safeReply(
-          message,
-          `${ASSISTANT_LABEL} ${this.sanitize(reply)}`,
-        );
-        if (!replied) throw new Error("reply failed");
-        task.state = "done";
-        task.updatedAt = Date.now();
-        await this.tasks.save(task);
-        await this.audit.append({
-          actor: { system: true },
-          action: "mention_auto_replied",
-          taskId: task.id,
-          details: { messageId: message.messageId, style },
-        });
-        await this.markProcessed(message);
-        return;
-      } catch (error) {
-        this.logger.error("auto reply failed; falling back to approval", {
-          taskId: task.id,
-          error: toErrorMessage(error),
-        });
-      }
-    }
-    try {
-      await this.sendReplyApproval(task, message, enriched, depth);
-      await this.markProcessed(message);
-      for (const followup of burst) await this.markProcessed(followup);
-    } catch (error) {
-      this.logger.error("failed to send reply approval", {
-        taskId: task.id,
-        error: toErrorMessage(error),
-      });
-      const notified = await this.sendToApprover(
-        `有人 @你，但审批卡发送失败：${truncate(message.text, 200)}\n发送人：${message.sender.displayName ?? message.sender.id}`,
-      );
-      if (notified) await this.markProcessed(message);
-    }
+  private handleMeMention(
+    message: IncomingMessage,
+    signal: AbortSignal,
+  ): Promise<void> {
+    return this.meMentionFlow.handle(message, signal);
   }
 
   private shouldReplyToMention(
