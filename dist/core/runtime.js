@@ -303,11 +303,18 @@ export class ProxyRuntime {
             llm,
             logger: this.logger.child("reply"),
             replyOptions: this.replyOptions,
+            ...(this.config.opencode.replyModel ? { model: this.config.opencode.replyModel } : {}),
             readOnlyPermission: READ_ONLY_PERMISSION,
             ownerOpenId: () => this.ownerOpenId(),
             resolveProject: async (chatId) => {
                 const project = await this.resolveProject(chatId);
-                return { worktree: project.worktree, resolved: project.resolved };
+                return {
+                    worktree: project.worktree,
+                    resolved: project.resolved,
+                    ...(project.secondaryWorktrees
+                        ? { secondaryWorktrees: project.secondaryWorktrees }
+                        : {}),
+                };
             },
             refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
         });
@@ -322,7 +329,13 @@ export class ProxyRuntime {
             readOnlyPermission: READ_ONLY_PERMISSION,
             resolveProject: async (chatId) => {
                 const project = await this.resolveProject(chatId);
-                return { worktree: project.worktree, resolved: project.resolved };
+                return {
+                    worktree: project.worktree,
+                    resolved: project.resolved,
+                    ...(project.secondaryWorktrees
+                        ? { secondaryWorktrees: project.secondaryWorktrees }
+                        : {}),
+                };
             },
             memory: this.memory,
             projectId: (chatId) => this.projectStore.get(chatId)?.projectId,
@@ -784,6 +797,7 @@ export class ProxyRuntime {
                         chatId: group.chatId,
                         ...(group.name ? { name: group.name } : {}),
                         enabled: true,
+                        project: { secondary: [] },
                     });
                 }
             }
@@ -1326,6 +1340,24 @@ export class ProxyRuntime {
         });
     }
     async resolveProject(chatId) {
+        const groupProject = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.project;
+        if (groupProject) {
+            const primary = groupProject.primary?.trim();
+            if (!primary) {
+                return {
+                    worktree: join(this.stateDir, "scratch"),
+                    secondaryWorktrees: groupProject.secondary ?? [],
+                    resolved: false,
+                    reason: "group project not configured",
+                };
+            }
+            return {
+                worktree: primary,
+                secondaryWorktrees: groupProject.secondary ?? [],
+                resolved: true,
+                reason: "group project config",
+            };
+        }
         const bound = this.projectStore.get(chatId);
         if (bound) {
             return {

@@ -5,10 +5,16 @@ import { z } from "zod";
 import { createLogger } from "./logger.js";
 import { expandHome } from "./util.js";
 
+const GroupProjectSchema = z.object({
+  primary: z.string().optional(),
+  secondary: z.array(z.string()).default([]),
+});
+
 const GroupSchema = z.object({
   chatId: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().default(true),
+  project: GroupProjectSchema.optional(),
 });
 
 const FeishuSchema = z.object({
@@ -112,6 +118,9 @@ const OpenCodeSchema = z.object({
   agent: z.string().optional(),
   analysisAgent: z.string().optional(),
   executionAgent: z.string().optional(),
+  replyModel: z
+    .object({ providerID: z.string().min(1), modelID: z.string().min(1) })
+    .optional(),
   keepSessions: z.boolean().default(true),
   sessionListVisible: z.boolean().default(true),
 });

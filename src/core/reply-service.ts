@@ -36,9 +36,14 @@ export interface ReplyServiceOptions {
   llm: LlmClient;
   logger: Logger;
   replyOptions: ReplyStyleOptions;
+  model?: { providerID: string; modelID: string };
   readOnlyPermission: SessionPermission[];
   ownerOpenId(): string | undefined;
-  resolveProject(chatId: string): Promise<{ worktree: string; resolved: boolean }>;
+  resolveProject(chatId: string): Promise<{
+    worktree: string;
+    resolved: boolean;
+    secondaryWorktrees?: string[];
+  }>;
   refreshSummary(platform: string, chatId: string): Promise<void>;
 }
 
@@ -293,6 +298,12 @@ export class ReplyService {
       "只有确实无法定位、且缺失会阻塞回答时，才问一个问题，并列出已查范围与候选。",
       "你了解当前主项目，回答时优先结合项目实际情况；不确定时明确说不确定。",
       `当前项目目录：${directory}`,
+      ...(project.secondaryWorktrees?.length
+        ? [
+            "次要项目目录（只读参考，不要修改）：",
+            ...project.secondaryWorktrees.map((path) => `- ${path}`),
+          ]
+        : []),
       ...(project.resolved
         ? []
         : ["未定位到项目目录，只能给出一般性建议；不要假装了解项目细节。"]),
@@ -325,6 +336,7 @@ export class ReplyService {
           directory,
           title: `${this.options.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
           role: "reply",
+          ...(this.options.model ? { model: this.options.model } : {}),
           permission: this.options.readOnlyPermission,
           ...(this.options.config.opencode.agent
             ? { agent: this.options.config.opencode.agent }

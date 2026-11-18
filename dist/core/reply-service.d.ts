@@ -24,11 +24,16 @@ export interface ReplyServiceOptions {
     llm: LlmClient;
     logger: Logger;
     replyOptions: ReplyStyleOptions;
+    model?: {
+        providerID: string;
+        modelID: string;
+    };
     readOnlyPermission: SessionPermission[];
     ownerOpenId(): string | undefined;
     resolveProject(chatId: string): Promise<{
         worktree: string;
         resolved: boolean;
+        secondaryWorktrees?: string[];
     }>;
     refreshSummary(platform: string, chatId: string): Promise<void>;
 }

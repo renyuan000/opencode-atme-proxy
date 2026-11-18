@@ -65,14 +65,32 @@ export declare const AppConfigSchema: z.ZodObject<{
                 chatId: z.ZodString;
                 name: z.ZodOptional<z.ZodString>;
                 enabled: z.ZodDefault<z.ZodBoolean>;
+                project: z.ZodOptional<z.ZodObject<{
+                    primary: z.ZodOptional<z.ZodString>;
+                    secondary: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                }, "strip", z.ZodTypeAny, {
+                    secondary: string[];
+                    primary?: string | undefined;
+                }, {
+                    primary?: string | undefined;
+                    secondary?: string[] | undefined;
+                }>>;
             }, "strip", z.ZodTypeAny, {
                 chatId: string;
                 enabled: boolean;
                 name?: string | undefined;
+                project?: {
+                    secondary: string[];
+                    primary?: string | undefined;
+                } | undefined;
             }, {
                 chatId: string;
                 name?: string | undefined;
                 enabled?: boolean | undefined;
+                project?: {
+                    primary?: string | undefined;
+                    secondary?: string[] | undefined;
+                } | undefined;
             }>, "many">>;
             receiveAllGroupMessages: z.ZodDefault<z.ZodBoolean>;
             autoSyncGroups: z.ZodOptional<z.ZodBoolean>;
@@ -109,6 +127,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 chatId: string;
                 enabled: boolean;
                 name?: string | undefined;
+                project?: {
+                    secondary: string[];
+                    primary?: string | undefined;
+                } | undefined;
             }[];
             receiveAllGroupMessages: boolean;
             rateLimit: {
@@ -143,6 +165,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 chatId: string;
                 name?: string | undefined;
                 enabled?: boolean | undefined;
+                project?: {
+                    primary?: string | undefined;
+                    secondary?: string[] | undefined;
+                } | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;
             autoSyncGroups?: boolean | undefined;
@@ -175,6 +201,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 chatId: string;
                 enabled: boolean;
                 name?: string | undefined;
+                project?: {
+                    secondary: string[];
+                    primary?: string | undefined;
+                } | undefined;
             }[];
             receiveAllGroupMessages: boolean;
             rateLimit: {
@@ -211,6 +241,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 chatId: string;
                 name?: string | undefined;
                 enabled?: boolean | undefined;
+                project?: {
+                    primary?: string | undefined;
+                    secondary?: string[] | undefined;
+                } | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;
             autoSyncGroups?: boolean | undefined;
@@ -393,6 +427,16 @@ export declare const AppConfigSchema: z.ZodObject<{
         agent: z.ZodOptional<z.ZodString>;
         analysisAgent: z.ZodOptional<z.ZodString>;
         executionAgent: z.ZodOptional<z.ZodString>;
+        replyModel: z.ZodOptional<z.ZodObject<{
+            providerID: z.ZodString;
+            modelID: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            providerID: string;
+            modelID: string;
+        }, {
+            providerID: string;
+            modelID: string;
+        }>>;
         keepSessions: z.ZodDefault<z.ZodBoolean>;
         sessionListVisible: z.ZodDefault<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
@@ -405,6 +449,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         agent?: string | undefined;
         analysisAgent?: string | undefined;
         executionAgent?: string | undefined;
+        replyModel?: {
+            providerID: string;
+            modelID: string;
+        } | undefined;
     }, {
         baseUrl?: string | undefined;
         password?: string | undefined;
@@ -413,6 +461,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         agent?: string | undefined;
         analysisAgent?: string | undefined;
         executionAgent?: string | undefined;
+        replyModel?: {
+            providerID: string;
+            modelID: string;
+        } | undefined;
         keepSessions?: boolean | undefined;
         sessionListVisible?: boolean | undefined;
     }>>;
@@ -818,6 +870,18 @@ export declare const AppConfigSchema: z.ZodObject<{
         baseUrl?: string | undefined;
         apiKey?: string | undefined;
     };
+    project: {
+        mode: "auto" | "explicit";
+        allowlist: string[];
+        recentSessions: number;
+        maxAgeDays: number;
+        cacheSeconds: number;
+        bindChat: boolean;
+        includeRecentSessionTitles: number;
+        id?: string | undefined;
+        worktree?: string | undefined;
+        fallbackWorktree?: string | undefined;
+    };
     opencode: {
         baseUrl: string;
         passwordEnv: string;
@@ -828,6 +892,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         agent?: string | undefined;
         analysisAgent?: string | undefined;
         executionAgent?: string | undefined;
+        replyModel?: {
+            providerID: string;
+            modelID: string;
+        } | undefined;
     };
     version: number;
     app: {
@@ -860,6 +928,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 chatId: string;
                 enabled: boolean;
                 name?: string | undefined;
+                project?: {
+                    secondary: string[];
+                    primary?: string | undefined;
+                } | undefined;
             }[];
             receiveAllGroupMessages: boolean;
             rateLimit: {
@@ -947,18 +1019,6 @@ export declare const AppConfigSchema: z.ZodObject<{
         injectMaxChars: number;
         autoExtractFromMentions: boolean;
         autoExtractFromAnalysis: boolean;
-    };
-    project: {
-        mode: "auto" | "explicit";
-        allowlist: string[];
-        recentSessions: number;
-        maxAgeDays: number;
-        cacheSeconds: number;
-        bindChat: boolean;
-        includeRecentSessionTitles: number;
-        id?: string | undefined;
-        worktree?: string | undefined;
-        fallbackWorktree?: string | undefined;
     };
     botReply: {
         enabled: boolean;
@@ -1062,6 +1122,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 chatId: string;
                 name?: string | undefined;
                 enabled?: boolean | undefined;
+                project?: {
+                    primary?: string | undefined;
+                    secondary?: string[] | undefined;
+                } | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;
             autoSyncGroups?: boolean | undefined;
@@ -1093,6 +1157,18 @@ export declare const AppConfigSchema: z.ZodObject<{
             tasks?: string[] | undefined;
         } | undefined;
     } | undefined;
+    project?: {
+        mode?: "auto" | "explicit" | undefined;
+        id?: string | undefined;
+        worktree?: string | undefined;
+        allowlist?: string[] | undefined;
+        fallbackWorktree?: string | undefined;
+        recentSessions?: number | undefined;
+        maxAgeDays?: number | undefined;
+        cacheSeconds?: number | undefined;
+        bindChat?: boolean | undefined;
+        includeRecentSessionTitles?: number | undefined;
+    } | undefined;
     opencode?: {
         baseUrl?: string | undefined;
         password?: string | undefined;
@@ -1101,6 +1177,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         agent?: string | undefined;
         analysisAgent?: string | undefined;
         executionAgent?: string | undefined;
+        replyModel?: {
+            providerID: string;
+            modelID: string;
+        } | undefined;
         keepSessions?: boolean | undefined;
         sessionListVisible?: boolean | undefined;
     } | undefined;
@@ -1198,18 +1278,6 @@ export declare const AppConfigSchema: z.ZodObject<{
         injectMaxChars?: number | undefined;
         autoExtractFromMentions?: boolean | undefined;
         autoExtractFromAnalysis?: boolean | undefined;
-    } | undefined;
-    project?: {
-        mode?: "auto" | "explicit" | undefined;
-        id?: string | undefined;
-        worktree?: string | undefined;
-        allowlist?: string[] | undefined;
-        fallbackWorktree?: string | undefined;
-        recentSessions?: number | undefined;
-        maxAgeDays?: number | undefined;
-        cacheSeconds?: number | undefined;
-        bindChat?: boolean | undefined;
-        includeRecentSessionTitles?: number | undefined;
     } | undefined;
     botReply?: {
         enabled?: boolean | undefined;
