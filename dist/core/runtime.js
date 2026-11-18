@@ -33,9 +33,10 @@ import { IntentService } from "./intent-service.js";
 import { MessageIngress } from "./message-ingress.js";
 import { MeMentionFlow } from "./me-mention-flow.js";
 import { BotMentionFlow } from "./bot-mention-flow.js";
+import { ScanService } from "./scan-service.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
-import { readJsonFile, formatLocalTime, sha256, stableUuid, toErrorMessage, redactPreview, truncate, truncateMiddle, } from "./util.js";
+import { readJsonFile, sha256, stableUuid, toErrorMessage, redactPreview, truncate, truncateMiddle, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
 const READ_ONLY_PERMISSION = [
     { permission: "edit", pattern: "*", action: "deny" },
@@ -91,6 +92,7 @@ export class ProxyRuntime {
     messageIngress;
     meMentionFlow;
     botMentionFlow;
+    scanService;
     groupLocks = new Map();
     memory;
     owners;
@@ -417,6 +419,24 @@ export class ProxyRuntime {
             safeReply: (message, text) => this.safeReply(message, text),
             markProcessed: (message) => this.markProcessed(message),
             rememberFromMention: (message, intent, analysis) => this.rememberFromMention(message, intent, analysis),
+        });
+        this.scanService = new ScanService({
+            config: this.config,
+            logger: this.logger.child("scan"),
+            relevance: () => this.relevance,
+            dispatcher: this.dispatcher,
+            chatContext: this.chatContext,
+            intentService: this.intentService,
+            taskService: this.taskService,
+            filterEnabled: this.filterEnabled,
+            groupIds: this.groupIds,
+            dedup: this.dedup,
+            activeMessageIds: this.activeMessageIds,
+            isMention: (message) => this.isMention(message),
+            onMessage: (message, wait) => this.onMessage(message, wait),
+            markProcessed: (message) => this.markProcessed(message),
+            sendToApprover: (text) => this.sendToApprover(text),
+            sendToOwner: (text) => this.sendToOwner(text),
         });
     }
     initOwner() {
@@ -1017,199 +1037,11 @@ export class ProxyRuntime {
     sendReplyApproval(task, message, draftSource = message, depth = "answer") {
         return this.replyService.sendReplyApproval(task, message, draftSource, depth);
     }
-    async handlePolledBatch(messages) {
-        let failed = false;
-        const candidates = messages.filter((message) => {
-            if (message.senderType !== "user")
-                return false;
-            if (message.chat.kind !== "group")
-                return false;
-            if (this.config.policy.defaultDenyGroups && !this.groupIds.has(message.chat.id))
-                return false;
-            return true;
-        });
-        if (candidates.length === 0)
-            return;
-        for (const message of candidates) {
-            if (!this.isMention(message))
-                continue;
-            try {
-                await this.onMessage(message, true);
-            }
-            catch (error) {
-                failed = true;
-                this.logger.error("polled mention handling failed", {
-                    messageId: message.messageId,
-                    error: toErrorMessage(error),
-                });
-            }
-        }
-        const plain = candidates.filter((message) => !this.isMention(message));
-        if (plain.length === 0)
-            return;
-        const fresh = plain.filter((message) => {
-            const key = `${message.platform}:${message.messageId}`;
-            return !this.dedup.has(key) && !this.activeMessageIds.has(key);
-        });
-        if (fresh.length === 0)
-            return;
-        const perSender = new Map();
-        const capped = fresh.filter((message) => {
-            const count = (perSender.get(message.sender.id) ?? 0) + 1;
-            if (count > this.config.botReply.maxMessagesPerSenderPerRun)
-                return false;
-            perSender.set(message.sender.id, count);
-            return true;
-        });
-        if (capped.length < fresh.length) {
-            this.logger.warn("per-sender message cap applied", {
-                dropped: fresh.length - capped.length,
-            });
-        }
-        for (const message of capped) {
-            this.activeMessageIds.add(`${message.platform}:${message.messageId}`);
-        }
-        const chatId = capped[0]?.chat.id ?? "unknown";
-        const budget = this.config.budget.maxMessagesPerRun;
-        const limitedMessages = capped.slice(0, budget);
-        if (limitedMessages.length < capped.length) {
-            await this.sendToApprover(`本轮消息超过预算，仅处理 ${limitedMessages.length}/${capped.length} 条；剩余留待下一轮。`);
-            failed = true;
-        }
-        try {
-            await this.dispatcher.enqueue({
-                id: `scan:${chatId}:${limitedMessages[0]?.messageId ?? Date.now()}`,
-                key: `${chatId}:scan`,
-                keyConcurrency: this.config.concurrency.scanConcurrency,
-                priority: 5,
-                timeoutMs: this.config.concurrency.scanTimeoutMs,
-                run: async (signal) => {
-                    try {
-                        await this.handlePolledBatchJob(limitedMessages, signal);
-                    }
-                    finally {
-                        for (const message of capped) {
-                            this.activeMessageIds.delete(`${message.platform}:${message.messageId}`);
-                        }
-                    }
-                },
-            });
-        }
-        catch (error) {
-            for (const message of capped) {
-                this.activeMessageIds.delete(`${message.platform}:${message.messageId}`);
-            }
-            this.logger.error("polled batch failed", {
-                chatId,
-                count: capped.length,
-                error: toErrorMessage(error),
-            });
-            throw error;
-        }
-        if (failed) {
-            throw new Error("polled batch had failed messages; cursor not advanced");
-        }
+    handlePolledBatch(messages) {
+        return this.scanService.handlePolledBatch(messages);
     }
-    async digestWithoutFilter(messages) {
-        const usable = messages.filter((message) => message.senderType === "user" && message.text.trim().length > 0);
-        if (usable.length === 0) {
-            for (const message of messages)
-                await this.markProcessed(message);
-            return;
-        }
-        await this.sendOwnerDigest(usable, []);
-        for (const message of messages)
-            await this.markProcessed(message);
-    }
-    async sendOwnerDigest(messages, items) {
-        const byId = new Map(items.map((item) => [item.messageId, item]));
-        const lines = [];
-        const related = [];
-        for (const message of messages) {
-            const item = byId.get(message.messageId);
-            if (item?.relevant)
-                related.push(message);
-        }
-        const highlighted = related.length > 0 ? related : messages.slice(0, 5);
-        for (const message of highlighted.slice(0, 8)) {
-            const item = byId.get(message.messageId);
-            const sender = message.sender.displayName ?? message.sender.id;
-            const time = formatLocalTime(message.createdAt);
-            const reason = item?.reason ? `｜判断：${truncate(item.reason, 80)}` : "";
-            const action = item?.actionability ? `｜类型：${item.actionability}` : "";
-            lines.push([
-                `• ${time} ${sender}${action}${reason}`,
-                `  ${truncate(message.text.replace(/\s+/g, " "), 160)}`,
-                `  message_id: ${message.messageId}`,
-            ].join("\n"));
-        }
-        const summary = related.length > 0
-            ? `与你相关 ${related.length} 条，共 ${messages.length} 条`
-            : `本轮 ${messages.length} 条，未识别出强相关；下面是最近的`;
-        await this.sendToOwner([`群消息分析：${summary}`, ...lines].join("\n\n"));
-    }
-    async handlePolledBatchJob(messages, signal) {
-        if (!this.filterEnabled) {
-            await this.digestWithoutFilter(messages);
-            return;
-        }
-        const { items, stats } = await this.relevance.classify(messages, signal);
-        if (stats.totalTokens > this.config.budget.maxTokensPerRun) {
-            await this.sendToApprover(`本轮筛选 token 超预算：${stats.totalTokens}/${this.config.budget.maxTokensPerRun}，已停止后续批次。`);
-        }
-        if (stats.failures > 0) {
-            const failed = stats.failedMessageIds;
-            await this.sendToApprover(`筛选失败：${failed.length} 条消息未处理，已保留待重试。\n原因见日志；不会静默丢弃。`);
-        }
-        const byId = new Map(items.map((item) => [item.messageId, item]));
-        const failed = new Set(stats.failedMessageIds);
-        for (const message of messages) {
-            if (failed.has(message.messageId))
-                continue;
-            const item = byId.get(message.messageId);
-            if (!item?.relevant) {
-                await this.markProcessed(message);
-                continue;
-            }
-            this.appendContextForScan(message);
-            if (item.actionability === "task" &&
-                item.confidence >= this.config.filter.minTaskConfidence) {
-                await this.ensureTask(message, item, "group_scan");
-            }
-            await this.markProcessed(message);
-        }
-        await this.sendOwnerDigest(messages, items);
-        this.logger.info("polled batch classified", {
-            chatId: messages[0]?.chat.id,
-            messages: stats.messages,
-            batches: stats.batches,
-            tokens: stats.totalTokens,
-            relevant: items.filter((item) => item.relevant).length,
-        });
-    }
-    async handleGroupScan(message, signal) {
-        const classification = await this.classifyOne(message, signal);
-        if (!classification?.relevant)
-            return;
-        let handled = false;
-        if (classification.actionability === "task" &&
-            classification.confidence >= this.config.filter.minTaskConfidence) {
-            const task = await this.ensureTask(message, classification, "group_scan");
-            if (task)
-                handled = true;
-        }
-        else {
-            handled = await this.sendToApprover([
-                "群消息可能与你相关",
-                `群：${message.chat.name ?? message.chat.id}`,
-                `发送人：${message.sender.displayName ?? message.sender.id}`,
-                `内容：${truncate(message.text, 200)}`,
-                `判断：${classification.reason}`,
-                `建议：${suggestedActionLabel(classification.actionability)}`,
-            ].join("\n"));
-        }
-        if (handled)
-            await this.markProcessed(message);
+    handleGroupScan(message, signal) {
+        return this.scanService.handleGroupScan(message, signal);
     }
     classifyOne(message, signal) {
         return this.intentService.classifyOne(message, signal);
@@ -1531,26 +1363,6 @@ export class ProxyRuntime {
         }
         void this.memory.flush();
     }
-    appendContextForScan(message) {
-        if (!this.config.context.enabled || !this.config.context.storeRelevantScan)
-            return;
-        this.chatContext.append(`${message.platform}:${message.chat.id}`, {
-            messageId: message.messageId,
-            senderId: message.sender.id,
-            ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
-            text: message.text,
-            at: message.createdAt,
-            ...(message.replyToMessageId ? { replyToMessageId: message.replyToMessageId } : {}),
-            ...(message.threadId ? { threadId: message.threadId } : {}),
-            mentionMe: false,
-            mentionBot: false,
-            origin: "scan_relevant",
-        }, {
-            platform: message.platform,
-            chatId: message.chat.id,
-            ...(message.chat.name ? { chatName: message.chat.name } : {}),
-        });
-    }
     createGroupSession(platform, chatId, directory) {
         return this.sessionManager.createGroupSession(platform, chatId, directory);
     }
@@ -1812,18 +1624,6 @@ function createFilterClient(options, logger) {
         timeoutMs: config.filter.timeoutMs,
         logger: logger.child("llm"),
     });
-}
-function suggestedActionLabel(actionability) {
-    switch (actionability) {
-        case "task":
-            return "转任务";
-        case "question":
-            return "可代答";
-        case "fyi":
-            return "仅知会";
-        default:
-            return "忽略";
-    }
 }
 function stringArray(value) {
     return Array.isArray(value)

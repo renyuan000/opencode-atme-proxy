@@ -54,6 +54,7 @@ export declare class ProxyRuntime {
     private readonly messageIngress;
     private readonly meMentionFlow;
     private readonly botMentionFlow;
+    private readonly scanService;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
@@ -101,9 +102,6 @@ export declare class ProxyRuntime {
     private createReplyTask;
     private sendReplyApproval;
     private handlePolledBatch;
-    private digestWithoutFilter;
-    private sendOwnerDigest;
-    private handlePolledBatchJob;
     private handleGroupScan;
     private classifyOne;
     private ensureTask;
@@ -125,7 +123,6 @@ export declare class ProxyRuntime {
     private finishSession;
     private memoryBlock;
     private rememberFromMention;
-    private appendContextForScan;
     private createGroupSession;
     private summaryText;
     private updateGroupSummary;
