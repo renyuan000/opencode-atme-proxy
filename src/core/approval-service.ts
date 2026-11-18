@@ -330,6 +330,14 @@ export class ApprovalService {
     }
   }
 
+  private groupLabel(chatId: string | undefined): string {
+    if (!chatId) return "未知群";
+    return (
+      this.options.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.name ??
+      chatId
+    );
+  }
+
   private async replyManagementResult(toast: string): Promise<PlatformActionResult> {
     const view = await this.replyManagementView();
     const message = this.options.platform.renderReplyManagement?.(view);
@@ -351,7 +359,7 @@ export class ApprovalService {
       pending.push({
         taskId: card.taskId,
         planHash: card.planHash,
-        chatLabel: task?.chatName ?? card.chatId ?? "未知群",
+        chatLabel: task?.chatName ?? this.groupLabel(card.chatId),
         senderLabel:
           task?.requester.displayName ?? task?.requester.id ?? card.actorId,
         draft: card.draft ?? "（无草稿）",
@@ -361,9 +369,9 @@ export class ApprovalService {
     }
     return {
       pending,
-      sent: this.options.sentReplies.listRecallable(5).map((item) => ({
+      sent: this.options.sentReplies.listRecallable(8).map((item) => ({
         id: item.id,
-        chatLabel: item.chatName ?? item.chatId,
+        chatLabel: item.chatName ?? this.groupLabel(item.chatId),
         senderLabel: item.senderLabel,
         text: item.text,
         sourceText: item.sourceText,

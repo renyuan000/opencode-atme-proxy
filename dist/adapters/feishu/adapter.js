@@ -664,8 +664,8 @@ export function renderReplyManagementCard(view) {
         }
     }
     if (view.sent.length > 0) {
-        section("最近已发送", "最近 5 条可撤回回复；受企业撤回时限限制（默认 24 小时）。");
-        for (const item of view.sent.slice(0, 5)) {
+        section("最近已发送", "最近 8 条可撤回回复；受企业撤回时限限制（默认 24 小时）。");
+        for (const item of view.sent.slice(0, 8)) {
             const time = new Date(item.sentAt).toLocaleString("zh-CN", { hour12: false });
             elements.push({
                 tag: "div",
@@ -692,12 +692,12 @@ export function renderReplyManagementCard(view) {
                 ],
             });
         }
-        if (view.sent.length > 5) {
+        if (view.sent.length > 8) {
             elements.push({
                 tag: "div",
                 text: {
                     tag: "plain_text",
-                    content: `已发送仅显示最近 5 条，共 ${view.sent.length} 条。`,
+                    content: `已发送仅显示最近 8 条，共 ${view.sent.length} 条。`,
                 },
             });
         }
