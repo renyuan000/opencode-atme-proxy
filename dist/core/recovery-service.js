@@ -92,7 +92,7 @@ export class RecoveryService {
                 task.updatedAt = now;
                 await this.options.tasks.save(task);
                 interrupted++;
-                await this.options.sendToOwner(`上次执行被中断，已暂停等待你重新批准：${task.title}\n不会自动重放代码修改。`);
+                await this.options.sendToOwner(`上次执行被中断，已暂停等待你重新批准：\n群：${task.chatName ?? task.chatId}\n${task.title}\n不会自动重放代码修改。`);
                 continue;
             }
             if ((task.state === "awaiting_approval" || task.state === "needs_info") &&
@@ -119,7 +119,7 @@ export class RecoveryService {
                 task.updatedAt = now;
                 await this.options.tasks.save(task);
                 await this.options.sendToOwner([
-                    `未完成任务提醒：${task.title}`,
+                    `未完成任务提醒（${task.chatName ?? task.chatId}）：${task.title}`,
                     `状态：${task.state}`,
                     `来源：${task.chatName ?? task.chatId} / ${task.requester.displayName ?? task.requester.id}`,
                     "请在原审批卡或群里处理。",

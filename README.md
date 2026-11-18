@@ -417,11 +417,12 @@ websocket ready
 
 ### 重启恢复与不重复
 
-WSL2 可能随时重启，插件启动时会做三件事：
+WSL2 可能随时重启，插件启动时会做四件事：
 
-1. **补拉最近的 @我 / @机器人 消息**：`recovery.lookbackSeconds` 默认 6 小时。
-2. **少量补拉非 @ 的群消息**：每个群最多 `maxPlainMessagesPerGroup` 条（默认 50），只做项目相关筛选，不刷屏。
-3. **续作未完成任务**：`candidate/analyzing` 重新分析；`awaiting_approval/needs_info` 到期提醒；`executing/verifying` 若超过 `staleRunningMinutes` 则标记中断并等你重新批准，**不会自动重放代码修改**。
+1. **同步机器人所在群**：启动时调用飞书群列表，把新加入的群补进本次白名单（`autoSyncGroups` 默认 `true`）。
+2. **补拉最近的 @我 / @机器人 消息**：`recovery.lookbackSeconds` 默认 6 小时。
+3. **少量补拉非 @ 的群消息**：每个群最多 `maxPlainMessagesPerGroup` 条（默认 50），只做项目相关筛选，不刷屏。
+4. **续作未完成任务**：`candidate/analyzing` 重新分析；`awaiting_approval/needs_info` 到期提醒；`executing/verifying` 若超过 `staleRunningMinutes` 则标记中断并等你重新批准，**不会自动重放代码修改**。
 
 去重记录的是什么：
 

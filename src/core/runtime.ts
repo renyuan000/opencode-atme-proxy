@@ -660,6 +660,7 @@ export class ProxyRuntime {
       onChatMembership: (event) => this.onChatMembership(event),
       onMessageRecalled: (event) => this.onMessageRecalled(event),
     });
+    await this.syncGroups();
     this.poller.start();
     this.sweepTimer = setInterval(() => {
       void this.sweepExpiredApprovals();
@@ -830,6 +831,28 @@ export class ProxyRuntime {
     return Boolean(bot) && message.mentions.some((mention) => mention.id === bot);
   }
 
+  private async syncGroups(): Promise<void> {
+    const feishu = this.config.platforms.feishu;
+    if (feishu.autoSyncGroups === false || !this.options.platform.listGroups) return;
+    try {
+      const groups = await this.options.platform.listGroups();
+      const added = groups.filter((group) => !this.groupIds.has(group.chatId));
+      for (const group of groups) {
+        this.groupIds.add(group.chatId);
+        if (group.name) this.notificationService.rememberChatName(group.chatId, group.name);
+      }
+      if (added.length > 0) {
+        this.logger.info("startup group sync added groups", {
+          added: added.map((group) => group.chatId),
+        });
+      }
+    } catch (error) {
+      this.logger.warn("startup group sync failed; using configured allowlist", {
+        error: toErrorMessage(error),
+      });
+    }
+  }
+
   private async onChatMembership(event: ChatMembershipEvent): Promise<void> {
     if (event.change === "bot_removed") {
       this.logger.info("bot removed from chat", {
@@ -848,7 +871,7 @@ export class ProxyRuntime {
       allowlisted: true,
     });
     await this.sendToOwner(
-      `机器人已被加入群：${name}\nchat_id：${event.chatId}\n已自动加入处理白名单；重启后仍生效需写入配置（atme-proxy chats --sync）。`,
+      `机器人已被加入群：${name}\nchat_id：${event.chatId}\n已自动加入处理白名单；后续启动会自动同步群列表。`,
     );
     await this.audit.append({
       actor: { system: true },
@@ -1124,7 +1147,7 @@ export class ProxyRuntime {
       planHash: analysis.planHash,
       mode: "develop" as const,
       title: task.title,
-      summary: truncate(task.excerpt, 200),
+      summary: `【${task.chatName ?? task.chatId}】${truncate(task.excerpt, 200)}`,
       repo: repo?.id ?? "未配置",
       baseBranch: repo?.defaultBranch ?? "main",
       targetBranch: `atme/${task.id}`,

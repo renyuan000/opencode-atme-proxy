@@ -185,7 +185,7 @@ export class ReplyService {
       planHash,
       mode: "reply" as const,
       title: style === "detailed" ? "对方要求详细回答，将给出完整信息" : "将用极简格式代答",
-      summary: `${message.sender.displayName ?? message.sender.id} 在群里提到你：${truncate(message.text, 120)}`,
+      summary: `【${message.chat.name ?? message.chat.id}】${message.sender.displayName ?? message.sender.id} 在群里提到你：${truncate(message.text, 120)}`,
       ...(draft ? { draft } : {}),
       chatId: message.chat.id,
       sourceMessageId: message.messageId,

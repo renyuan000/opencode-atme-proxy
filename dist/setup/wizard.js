@@ -241,6 +241,7 @@ function buildConfig(existing, answers) {
             enabled: true,
         })),
         receiveAllGroupMessages: false,
+        autoSyncGroups: true,
         rateLimit: { sendPerSecond: 5, burst: 10 },
         ...(base.platforms.feishu ?? {}),
     };

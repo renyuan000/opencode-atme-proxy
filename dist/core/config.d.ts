@@ -75,6 +75,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled?: boolean | undefined;
             }>, "many">>;
             receiveAllGroupMessages: z.ZodDefault<z.ZodBoolean>;
+            autoSyncGroups: z.ZodOptional<z.ZodBoolean>;
             rateLimit: z.ZodDefault<z.ZodObject<{
                 sendPerSecond: z.ZodDefault<z.ZodNumber>;
                 burst: z.ZodDefault<z.ZodNumber>;
@@ -116,6 +117,7 @@ export declare const AppConfigSchema: z.ZodObject<{
             };
             appSecret?: string | undefined;
             botOpenId?: string | undefined;
+            autoSyncGroups?: boolean | undefined;
         }, {
             appId: string;
             enabled?: boolean | undefined;
@@ -143,6 +145,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled?: boolean | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;
+            autoSyncGroups?: boolean | undefined;
             rateLimit?: {
                 sendPerSecond?: number | undefined;
                 burst?: number | undefined;
@@ -180,6 +183,7 @@ export declare const AppConfigSchema: z.ZodObject<{
             };
             appSecret?: string | undefined;
             botOpenId?: string | undefined;
+            autoSyncGroups?: boolean | undefined;
         };
     }, {
         feishu: {
@@ -209,6 +213,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled?: boolean | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;
+            autoSyncGroups?: boolean | undefined;
             rateLimit?: {
                 sendPerSecond?: number | undefined;
                 burst?: number | undefined;
@@ -863,6 +868,7 @@ export declare const AppConfigSchema: z.ZodObject<{
             };
             appSecret?: string | undefined;
             botOpenId?: string | undefined;
+            autoSyncGroups?: boolean | undefined;
         };
     };
     polling: {
@@ -1058,6 +1064,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled?: boolean | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;
+            autoSyncGroups?: boolean | undefined;
             rateLimit?: {
                 sendPerSecond?: number | undefined;
                 burst?: number | undefined;

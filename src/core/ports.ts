@@ -53,6 +53,7 @@ export interface PlatformAdapter {
   stop(): Promise<void>;
   healthCheck(): Promise<{ ok: boolean; detail?: string }>;
   listMessages(input: ListMessagesInput): Promise<ListMessagesResult>;
+  listGroups?(): Promise<Array<{ chatId: string; name?: string }>>;
   send(target: OutboundTarget, message: OutboundMessage): Promise<{ messageId: string }>;
   reply(
     target: { chatId: string; messageId: string },

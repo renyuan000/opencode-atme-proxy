@@ -41,6 +41,10 @@ export class HybridFeishuAdapter implements PlatformAdapter {
     return this.adapter.listMessages(input);
   }
 
+  listGroups(): Promise<Array<{ chatId: string; name?: string }>> {
+    return this.adapter.listGroups();
+  }
+
   send(target: OutboundTarget, message: OutboundMessage): Promise<{ messageId: string }> {
     return this.adapter.send(target, message);
   }

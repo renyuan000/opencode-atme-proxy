@@ -204,6 +204,31 @@ export class FeishuAdapter {
     getBotOpenId() {
         return this.botOpenId;
     }
+    async listGroups() {
+        const groups = [];
+        let pageToken;
+        do {
+            const response = await this.client.request({
+                method: "GET",
+                url: "/open-apis/im/v1/chats",
+                params: { page_size: 100, ...(pageToken ? { page_token: pageToken } : {}) },
+            });
+            if (response?.code !== 0) {
+                throw new Error(`Feishu chat list failed: ${response?.msg ?? "unknown"}`);
+            }
+            const items = Array.isArray(response?.data?.items) ? response.data.items : [];
+            for (const item of items) {
+                if (typeof item?.chat_id === "string" && item.chat_id) {
+                    groups.push({
+                        chatId: item.chat_id,
+                        ...(typeof item.name === "string" ? { name: item.name } : {}),
+                    });
+                }
+            }
+            pageToken = response?.data?.has_more ? response.data.page_token : undefined;
+        } while (pageToken);
+        return groups;
+    }
     async listMessages(input) {
         const messages = [];
         let pageToken = input.cursor;

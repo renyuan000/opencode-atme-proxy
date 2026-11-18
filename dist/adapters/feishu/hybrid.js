@@ -23,6 +23,9 @@ export class HybridFeishuAdapter {
     listMessages(input) {
         return this.adapter.listMessages(input);
     }
+    listGroups() {
+        return this.adapter.listGroups();
+    }
     send(target, message) {
         return this.adapter.send(target, message);
     }

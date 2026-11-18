@@ -18,6 +18,10 @@ export declare class HybridFeishuAdapter implements PlatformAdapter {
         nextCursor?: string | undefined;
         messages: IncomingMessage[];
     }>;
+    listGroups(): Promise<Array<{
+        chatId: string;
+        name?: string;
+    }>>;
     send(target: OutboundTarget, message: OutboundMessage): Promise<{
         messageId: string;
     }>;

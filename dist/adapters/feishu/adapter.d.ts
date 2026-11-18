@@ -67,6 +67,10 @@ export declare class FeishuAdapter implements PlatformAdapter {
         detail?: string;
     }>;
     getBotOpenId(): string | undefined;
+    listGroups(): Promise<Array<{
+        chatId: string;
+        name?: string;
+    }>>;
     listMessages(input: Parameters<PlatformAdapter["listMessages"]>[0]): Promise<{
         nextCursor?: string | undefined;
         messages: IncomingMessage[];

@@ -35,6 +35,7 @@ const FeishuSchema = z.object({
         .default({}),
     groups: z.array(GroupSchema).default([]),
     receiveAllGroupMessages: z.boolean().default(false),
+    autoSyncGroups: z.boolean().optional(),
     rateLimit: z
         .object({
         sendPerSecond: z.number().positive().default(5),

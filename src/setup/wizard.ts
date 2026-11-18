@@ -327,6 +327,7 @@ function buildConfig(existing: Partial<AppConfig>, answers: Answers): AppConfig 
       enabled: true,
     })),
     receiveAllGroupMessages: false,
+    autoSyncGroups: true,
     rateLimit: { sendPerSecond: 5, burst: 10 },
     ...(base.platforms.feishu ?? {}),
   };
