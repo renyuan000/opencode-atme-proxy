@@ -33,6 +33,7 @@ export interface OpenCodeBridge {
   deleteSession(sessionId: string): Promise<void>;
   getClient(): OpencodeClient;
   getInfo?(): { baseUrl: string; mode: "http" | "injected" };
+  healthCheck?(): Promise<{ ok: boolean; detail?: string }>;
   getSession?(sessionId: string, directory?: string): Promise<SessionInfo | undefined>;
   archiveSession?(sessionId: string, directory?: string): Promise<void>;
   listChildren?(sessionId: string, directory?: string): Promise<SessionInfo[]>;
@@ -74,6 +75,25 @@ export class HttpOpenCodeBridge implements OpenCodeBridge {
 
   getInfo(): { baseUrl: string; mode: "http" | "injected" } {
     return { baseUrl: this.options.baseUrl, mode: "http" };
+  }
+
+  async healthCheck(): Promise<{ ok: boolean; detail?: string }> {
+    try {
+      const result = await this.client.provider.list({});
+      if (result.error || !result.data) {
+        return { ok: false, detail: formatError(result.error) };
+      }
+      const connected = result.data.connected ?? [];
+      return {
+        ok: true,
+        detail:
+          connected.length > 0
+            ? `providers: ${connected.join(", ")}`
+            : "providers: none connected",
+      };
+    } catch (error) {
+      return { ok: false, detail: toErrorMessage(error) };
+    }
   }
 
   async createSession(input: SessionCreateInput): Promise<string> {
@@ -162,6 +182,10 @@ export class InjectedOpenCodeBridge implements OpenCodeBridge {
 
   getInfo(): { baseUrl: string; mode: "http" | "injected" } {
     return { baseUrl: "injected", mode: "injected" };
+  }
+
+  async healthCheck(): Promise<{ ok: boolean; detail?: string }> {
+    return { ok: true, detail: "injected bridge" };
   }
 
   getClient(): OpencodeClient {

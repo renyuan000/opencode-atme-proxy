@@ -30,6 +30,24 @@ export class HttpOpenCodeBridge {
     getInfo() {
         return { baseUrl: this.options.baseUrl, mode: "http" };
     }
+    async healthCheck() {
+        try {
+            const result = await this.client.provider.list({});
+            if (result.error || !result.data) {
+                return { ok: false, detail: formatError(result.error) };
+            }
+            const connected = result.data.connected ?? [];
+            return {
+                ok: true,
+                detail: connected.length > 0
+                    ? `providers: ${connected.join(", ")}`
+                    : "providers: none connected",
+            };
+        }
+        catch (error) {
+            return { ok: false, detail: toErrorMessage(error) };
+        }
+    }
     async createSession(input) {
         const result = await this.client.session.create({
             title: input.title,
@@ -114,6 +132,9 @@ export class InjectedOpenCodeBridge {
     }
     getInfo() {
         return { baseUrl: "injected", mode: "injected" };
+    }
+    async healthCheck() {
+        return { ok: true, detail: "injected bridge" };
     }
     getClient() {
         return this.client;

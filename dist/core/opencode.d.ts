@@ -36,6 +36,10 @@ export interface OpenCodeBridge {
         baseUrl: string;
         mode: "http" | "injected";
     };
+    healthCheck?(): Promise<{
+        ok: boolean;
+        detail?: string;
+    }>;
     getSession?(sessionId: string, directory?: string): Promise<SessionInfo | undefined>;
     archiveSession?(sessionId: string, directory?: string): Promise<void>;
     listChildren?(sessionId: string, directory?: string): Promise<SessionInfo[]>;
@@ -54,6 +58,10 @@ export declare class HttpOpenCodeBridge implements OpenCodeBridge {
         baseUrl: string;
         mode: "http" | "injected";
     };
+    healthCheck(): Promise<{
+        ok: boolean;
+        detail?: string;
+    }>;
     createSession(input: SessionCreateInput): Promise<string>;
     prompt(sessionId: string, input: SessionPromptInput): Promise<string>;
     getSession(sessionId: string, directory?: string): Promise<SessionInfo | undefined>;
@@ -69,6 +77,10 @@ export declare class InjectedOpenCodeBridge implements OpenCodeBridge {
         baseUrl: string;
         mode: "http" | "injected";
     };
+    healthCheck(): Promise<{
+        ok: boolean;
+        detail?: string;
+    }>;
     getClient(): OpencodeClient;
     createSession(input: SessionCreateInput): Promise<string>;
     prompt(sessionId: string, input: SessionPromptInput): Promise<string>;

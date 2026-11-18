@@ -65,6 +65,13 @@ export async function startDaemon(options: StartOptions = {}): Promise<{
       : {}),
     logger: logger.child("opencode"),
   });
+  const health = await bridge.healthCheck?.();
+  if (health && !health.ok) {
+    logger.warn("OpenCode backend unavailable; bot will start but replies may fail", {
+      baseUrl: loaded.config.opencode.baseUrl,
+      detail: health.detail,
+    });
+  }
   const runtime = new ProxyRuntime({
     platform: hybrid as unknown as import("./core/ports.js").PlatformAdapter,
     bridge,
