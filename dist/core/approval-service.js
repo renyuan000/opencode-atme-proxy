@@ -4,6 +4,7 @@ export class ApprovalService {
     constructor(options) {
         this.options = options;
     }
+    inflight = new Set();
     async sweepExpiredApprovals() {
         const ttlMs = this.options.config.policy.approvalTimeoutHours * 3600_000;
         const now = Date.now();
@@ -37,6 +38,26 @@ export class ApprovalService {
         return this.options.platform.verifyActor(actor);
     }
     async onAction(action) {
+        if (action.action === "reply_manage") {
+            return this.handleAction(action);
+        }
+        const key = action.action === "recall_reply"
+            ? `recall:${action.replyId ?? "missing"}`
+            : action.action === "cancel_pending"
+                ? `cancel:${action.taskId}`
+                : `approval:${action.taskId}:${action.action}`;
+        if (this.inflight.has(key)) {
+            return { ok: true, toast: "处理中，请稍候" };
+        }
+        this.inflight.add(key);
+        try {
+            return await this.handleAction(action);
+        }
+        finally {
+            this.inflight.delete(key);
+        }
+    }
+    async handleAction(action) {
         if (action.action === "reply_manage") {
             if (!(await this.isAuthorizedActor(action.actor))) {
                 return { ok: false, toast: "无权操作" };
@@ -119,7 +140,10 @@ export class ApprovalService {
             return { ok: false, toast: "计划已变更，请重新审批" };
         }
         if (action.action === "approve") {
-            await this.approveTask(action);
+            const approved = await this.approveTask(action);
+            if (!approved) {
+                return { ok: false, toast: "发送失败，草稿已保留" };
+            }
             return {
                 ok: true,
                 toast: "已批准",
@@ -212,7 +236,7 @@ export class ApprovalService {
         }
         return {
             pending,
-            sent: this.options.sentReplies.list(5).map((item) => ({
+            sent: this.options.sentReplies.listRecallable(5).map((item) => ({
                 id: item.id,
                 chatLabel: item.chatName ?? item.chatId,
                 senderLabel: item.senderLabel,
@@ -227,14 +251,13 @@ export class ApprovalService {
         const pending = this.options.pending.get(`${action.taskId}:develop`) ??
             this.options.pending.get(`${action.taskId}:reply`);
         if (!pending)
-            return;
+            return false;
         if (pending.mode === "reply") {
-            await this.options.approveReply(action, pending);
-            return;
+            return this.options.approveReply(action, pending);
         }
         const task = await this.options.tasks.get(action.taskId);
         if (!task)
-            return;
+            return false;
         assertTransition(task.state, "approved");
         task.state = "approved";
         task.updatedAt = Date.now();
@@ -258,6 +281,7 @@ export class ApprovalService {
         this.options.pending.deleteForTask(task.id);
         await this.options.pending.flush();
         this.options.startExecution(task, pending.planHash);
+        return true;
     }
     async rejectTask(action) {
         const task = await this.options.tasks.get(action.taskId);

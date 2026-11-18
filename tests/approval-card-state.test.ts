@@ -37,6 +37,13 @@ test("unresolved card has enabled buttons", () => {
   }
 });
 
+test("develop card also exposes reply management", () => {
+  const out = renderApprovalCard(view({ mode: "develop" }));
+  const card = (out as { card: any }).card;
+  const actions = buttons(card);
+  assert.equal(actions.at(-1)?.value?.a, "reply_manage");
+});
+
 test("reply management card shows recallable reply data", () => {
   const out = renderReplyManagementCard({
     pending: [],

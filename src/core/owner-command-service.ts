@@ -25,7 +25,7 @@ export interface OwnerCommandServiceOptions {
     style: ReplyStyle,
     signal: AbortSignal,
   ): Promise<string>;
-  approveReply(action: PlatformAction, pending: PendingCard): Promise<void>;
+  approveReply(action: PlatformAction, pending: PendingCard): Promise<boolean>;
   logger: Logger;
 }
 
@@ -33,6 +33,9 @@ export class OwnerCommandService {
   constructor(private readonly options: OwnerCommandServiceOptions) {}
 
   async handle(message: IncomingMessage, command: OwnerCommand): Promise<string> {
+    const ownerId = this.options.ownerOpenId();
+    if (!ownerId) return "owner 未绑定，无法执行命令。";
+    if (message.sender.id !== ownerId) return "无权操作。";
     if (command.command === "help") {
       return [
         "可用命令：",
@@ -90,8 +93,8 @@ export class OwnerCommandService {
         ...(pending.sourceMessageId ? { messageId: pending.sourceMessageId } : {}),
         actor: message.sender,
       };
-      await this.options.approveReply(action, pending);
-      return "已按当前草稿发送到群里。";
+      const sent = await this.options.approveReply(action, pending);
+      return sent ? "已按当前草稿发送到群里。" : "发送失败，草稿已保留。";
     }
     if (!command.arg) {
       return command.command === "rewrite" ? "用法：/改写 <新内容>" : "用法：/重写 <要求>";

@@ -726,7 +726,7 @@ export class ProxyRuntime {
         if (!this.config.directChat.enabled)
             return;
         const ownerId = this.ownerOpenId();
-        if (this.config.directChat.onlyOwner && ownerId && message.sender.id !== ownerId) {
+        if (this.config.directChat.onlyOwner && (!ownerId || message.sender.id !== ownerId)) {
             this.logger.info("ignoring direct message from non-owner", {
                 senderId: message.sender.id,
             });
@@ -976,12 +976,12 @@ export class ProxyRuntime {
     async approveReply(action, pending) {
         const task = await this.tasks.get(action.taskId);
         if (!task)
-            return;
+            return false;
         const chatId = pending.chatId;
         const sourceMessageId = pending.sourceMessageId;
         if (!chatId || !sourceMessageId) {
             await this.sendToApprover("代答失败：缺少原消息信息");
-            return;
+            return false;
         }
         const original = {
             platform: pending.platform,
@@ -999,7 +999,11 @@ export class ProxyRuntime {
             const reply = pending.draft
                 ? enforceReplyLength(pending.draft, style, this.replyOptions)
                 : await this.askOpenCode(original, style, new AbortController().signal);
-            await this.safeReply(original, `${ASSISTANT_LABEL} ${this.sanitize(reply)}`);
+            const sent = await this.safeReply(original, `${ASSISTANT_LABEL} ${this.sanitize(reply)}`);
+            if (!sent) {
+                await this.sendToApprover(`代答发送失败，草稿已保留：${task.title}`);
+                return false;
+            }
             task.state = "done";
             task.updatedAt = Date.now();
             await this.tasks.save(task);
@@ -1021,6 +1025,7 @@ export class ProxyRuntime {
             });
             this.pending.deleteForTask(task.id);
             await this.pending.flush();
+            return true;
         }
         catch (error) {
             this.logger.error("approved reply failed", {
@@ -1028,6 +1033,7 @@ export class ProxyRuntime {
                 error: toErrorMessage(error),
             });
             await this.sendToApprover(`代答失败：${task.title}\n${toErrorMessage(error)}`);
+            return false;
         }
     }
     async latestAnalysis(taskId) {

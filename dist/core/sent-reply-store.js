@@ -40,6 +40,12 @@ export class SentReplyStore {
     list(limit = 5) {
         return this.replies.slice(0, Math.max(0, limit));
     }
+    listRecallable(limit = 5, now = Date.now()) {
+        const windowMs = 24 * 3600_000;
+        return this.replies
+            .filter((item) => item.status === "sent" && now - item.sentAt <= windowMs)
+            .slice(0, Math.max(0, limit));
+    }
     get(id) {
         return this.replies.find((item) => item.id === id);
     }

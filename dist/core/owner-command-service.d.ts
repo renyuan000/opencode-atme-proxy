@@ -20,7 +20,7 @@ export interface OwnerCommandServiceOptions {
     };
     analysisTimeoutMs: number;
     askOpenCode(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal): Promise<string>;
-    approveReply(action: PlatformAction, pending: PendingCard): Promise<void>;
+    approveReply(action: PlatformAction, pending: PendingCard): Promise<boolean>;
     logger: Logger;
 }
 export declare class OwnerCommandService {

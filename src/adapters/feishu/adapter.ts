@@ -520,6 +520,12 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
               type: "danger",
               value: { a: "reject", t: view.taskId, h: view.planHash },
             }),
+            {
+              tag: "button",
+              text: { tag: "plain_text", content: "回复管理" },
+              type: "default",
+              value: { a: "reply_manage", t: "__manage__" },
+            },
           ],
         },
       ],
@@ -536,7 +542,7 @@ export function renderReplyManagementCard(view: ReplyManagementView): OutboundMe
     });
   };
   if (view.pending.length === 0 && view.sent.length === 0) {
-    section("回复管理", "当前没有待审批草稿，也没有已发送回复。");
+    section("回复管理", "当前没有待审批草稿，也没有可撤回回复。");
   }
   if (view.pending.length > 0) {
     section("待审批草稿", `共 ${view.pending.length} 条，取消后不会发送。`);
@@ -579,7 +585,7 @@ export function renderReplyManagementCard(view: ReplyManagementView): OutboundMe
     }
   }
   if (view.sent.length > 0) {
-    section("最近已发送", "最近 5 条，可直接撤回误发回复；受企业撤回时限限制（默认 24 小时）。");
+    section("最近已发送", "最近 5 条可撤回回复；受企业撤回时限限制（默认 24 小时）。");
     for (const item of view.sent.slice(0, 5)) {
       const time = new Date(item.sentAt).toLocaleString("zh-CN", { hour12: false });
       elements.push({
@@ -592,23 +598,20 @@ export function renderReplyManagementCard(view: ReplyManagementView): OutboundMe
             `时间：${time}`,
             `回复：${item.text.slice(0, 160)}`,
             `原消息：${item.sourceText.slice(0, 120)}`,
-            `状态：${item.status === "recalled" ? "已撤回" : "已发送"}`,
           ].join("\n"),
         },
       });
-      if (item.status === "sent") {
-        elements.push({
-          tag: "action",
-          actions: [
-            {
-              tag: "button",
-              text: { tag: "plain_text", content: "撤回此回复" },
-              type: "danger",
-              value: { a: "recall_reply", t: "__manage__", r: item.id },
-            },
-          ],
-        });
-      }
+      elements.push({
+        tag: "action",
+        actions: [
+          {
+            tag: "button",
+            text: { tag: "plain_text", content: "撤回此回复" },
+            type: "danger",
+            value: { a: "recall_reply", t: "__manage__", r: item.id },
+          },
+        ],
+      });
     }
     if (view.sent.length > 5) {
       elements.push({

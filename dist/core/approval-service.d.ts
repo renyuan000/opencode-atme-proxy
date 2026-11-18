@@ -18,19 +18,21 @@ export interface ApprovalServiceOptions {
     logger: Logger;
     ownerOpenId(): string | undefined;
     sendToApprover(text: string): Promise<boolean>;
-    approveReply(action: PlatformAction, pending: PendingCard): Promise<void>;
+    approveReply(action: PlatformAction, pending: PendingCard): Promise<boolean>;
     sentReplies: SentReplyStore;
     startExecution(task: TaskRecord, planHash: string): void;
 }
 export declare class ApprovalService {
     private readonly options;
     constructor(options: ApprovalServiceOptions);
+    private readonly inflight;
     sweepExpiredApprovals(): Promise<void>;
     isAuthorizedActor(actor: {
         platform: string;
         id: string;
     }): Promise<boolean>;
     onAction(action: PlatformAction): Promise<PlatformActionResult>;
+    private handleAction;
     private resolvedCardFor;
     private replyManagementResult;
     private replyManagementView;

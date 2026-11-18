@@ -26,13 +26,15 @@ export interface ApprovalServiceOptions {
   logger: Logger;
   ownerOpenId(): string | undefined;
   sendToApprover(text: string): Promise<boolean>;
-  approveReply(action: PlatformAction, pending: PendingCard): Promise<void>;
+  approveReply(action: PlatformAction, pending: PendingCard): Promise<boolean>;
   sentReplies: SentReplyStore;
   startExecution(task: TaskRecord, planHash: string): void;
 }
 
 export class ApprovalService {
   constructor(private readonly options: ApprovalServiceOptions) {}
+
+  private readonly inflight = new Set<string>();
 
   async sweepExpiredApprovals(): Promise<void> {
     const ttlMs = this.options.config.policy.approvalTimeoutHours * 3600_000;
@@ -71,6 +73,27 @@ export class ApprovalService {
   }
 
   async onAction(action: PlatformAction): Promise<PlatformActionResult> {
+    if (action.action === "reply_manage") {
+      return this.handleAction(action);
+    }
+    const key =
+      action.action === "recall_reply"
+        ? `recall:${action.replyId ?? "missing"}`
+        : action.action === "cancel_pending"
+          ? `cancel:${action.taskId}`
+          : `approval:${action.taskId}:${action.action}`;
+    if (this.inflight.has(key)) {
+      return { ok: true, toast: "处理中，请稍候" };
+    }
+    this.inflight.add(key);
+    try {
+      return await this.handleAction(action);
+    } finally {
+      this.inflight.delete(key);
+    }
+  }
+
+  private async handleAction(action: PlatformAction): Promise<PlatformActionResult> {
     if (action.action === "reply_manage") {
       if (!(await this.isAuthorizedActor(action.actor))) {
         return { ok: false, toast: "无权操作" };
@@ -150,7 +173,10 @@ export class ApprovalService {
       return { ok: false, toast: "计划已变更，请重新审批" };
     }
     if (action.action === "approve") {
-      await this.approveTask(action);
+      const approved = await this.approveTask(action);
+      if (!approved) {
+        return { ok: false, toast: "发送失败，草稿已保留" };
+      }
       return {
         ok: true,
         toast: "已批准",
@@ -251,7 +277,7 @@ export class ApprovalService {
     }
     return {
       pending,
-      sent: this.options.sentReplies.list(5).map((item) => ({
+      sent: this.options.sentReplies.listRecallable(5).map((item) => ({
         id: item.id,
         chatLabel: item.chatName ?? item.chatId,
         senderLabel: item.senderLabel,
@@ -263,17 +289,16 @@ export class ApprovalService {
     };
   }
 
-  private async approveTask(action: PlatformAction): Promise<void> {
+  private async approveTask(action: PlatformAction): Promise<boolean> {
     const pending =
       this.options.pending.get(`${action.taskId}:develop`) ??
       this.options.pending.get(`${action.taskId}:reply`);
-    if (!pending) return;
+    if (!pending) return false;
     if (pending.mode === "reply") {
-      await this.options.approveReply(action, pending);
-      return;
+      return this.options.approveReply(action, pending);
     }
     const task = await this.options.tasks.get(action.taskId);
-    if (!task) return;
+    if (!task) return false;
     assertTransition(task.state, "approved");
     task.state = "approved";
     task.updatedAt = Date.now();
@@ -297,6 +322,7 @@ export class ApprovalService {
     this.options.pending.deleteForTask(task.id);
     await this.options.pending.flush();
     this.options.startExecution(task, pending.planHash);
+    return true;
   }
 
   private async rejectTask(action: PlatformAction): Promise<void> {

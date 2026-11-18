@@ -23,6 +23,7 @@ export declare class SentReplyStore {
     constructor(file: string, ttlMs?: number, maxEntries?: number, logger?: Logger);
     load(): Promise<void>;
     list(limit?: number): SentReplyRecord[];
+    listRecallable(limit?: number, now?: number): SentReplyRecord[];
     get(id: string): SentReplyRecord | undefined;
     add(input: Omit<SentReplyRecord, "id" | "status">): Promise<SentReplyRecord>;
     markRecalled(id: string, at?: number): Promise<boolean>;

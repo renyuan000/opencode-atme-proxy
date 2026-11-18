@@ -309,3 +309,21 @@ test("owner can view and recall a sent reply from the card", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("direct messages are ignored when owner is not bound", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const loaded = config(dir);
+    loaded.config.platforms.feishu.me = {};
+    loaded.config.platforms.feishu.approvers = [];
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded });
+    await runtime.start();
+    await runtime.ingest(dm("m1", "stranger", "hello"));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(adapter.replies.length, 0);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
