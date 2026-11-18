@@ -61,6 +61,7 @@ import { ApprovalService } from "./approval-service.js";
 import { ExecutionService } from "./execution-service.js";
 import { OwnerCommandService } from "./owner-command-service.js";
 import { ReplyService } from "./reply-service.js";
+import { TaskService } from "./task-service.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
@@ -148,6 +149,7 @@ export class ProxyRuntime {
   private readonly executionService: ExecutionService;
   private readonly ownerCommandService: OwnerCommandService;
   private readonly replyService: ReplyService;
+  private readonly taskService: TaskService;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
@@ -354,6 +356,23 @@ export class ProxyRuntime {
         return { worktree: project.worktree, resolved: project.resolved };
       },
       refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
+    });
+    this.taskService = new TaskService({
+      config: this.config,
+      stateDir: this.stateDir,
+      tasks: this.tasks,
+      audit: this.audit,
+      contextService: this.contextService,
+      sessionManager: this.sessionManager,
+      logger: this.logger.child("task"),
+      readOnlyPermission: READ_ONLY_PERMISSION,
+      resolveProject: async (chatId) => {
+        const project = await this.resolveProject(chatId);
+        return { worktree: project.worktree, resolved: project.resolved };
+      },
+      rememberOutcome: (task, analysis) => this.rememberTaskOutcome(task, analysis),
+      sendToApprover: (text) => this.sendToApprover(text),
+      sendApproval: (task, analysis) => this.sendApproval(task, analysis),
     });
     this.executor = new GitExecutor({
       worktreeRoot: join(this.stateDir, "worktrees"),
@@ -1750,138 +1769,8 @@ export class ProxyRuntime {
     return task;
   }
 
-  private async analyzeTask(task: TaskRecord): Promise<void> {
-    const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(new Error("analysis timed out")),
-      this.config.concurrency.analysisTimeoutMs,
-    );
-    let analysis: TaskAnalysis;
-    let verification: AnalysisVerification | undefined;
-    try {
-      analysis = await this.buildAnalysis(task, controller.signal);
-      verification = await this.verifyAnalysis(task, analysis, controller.signal);
-      analysis.verification = verification;
-      if (verification.drift === "major") {
-        analysis.needsInfo = true;
-        analysis.openQuestions = [
-          ...new Set([...analysis.openQuestions, ...verification.reasons]),
-        ];
-      }
-    } finally {
-      clearTimeout(timer);
-    }
-    await this.tasks.save(task);
-    await writeJsonAtomic(
-      join(this.stateDir, "analyses", task.id, `${analysis.version}.json`),
-      analysis,
-    );
-    await writeJsonAtomic(
-      join(this.stateDir, "analyses", task.id, "index.json"),
-      { version: analysis.version },
-    );
-    this.rememberTaskOutcome(task, analysis);
-    task.state = analysis.needsInfo ? "needs_info" : "awaiting_approval";
-    task.updatedAt = Date.now();
-    await this.tasks.save(task);
-    await this.audit.append({
-      actor: { system: true },
-      action: "analysis_verified",
-      taskId: task.id,
-      details: {
-        drift: verification?.drift ?? "unknown",
-        unverified: verification?.unverifiedIdentifiers.length ?? 0,
-      },
-    });
-    if (analysis.needsInfo) {
-      await this.sendToApprover(
-        `任务需要补充信息：${task.title}\n${analysis.openQuestions
-          .map((question) => `- ${question}`)
-          .join("\n")}`,
-      );
-      return;
-    }
-    await this.sendApproval(task, analysis);
-  }
-
-  private async buildAnalysis(task: TaskRecord, signal?: AbortSignal): Promise<TaskAnalysis> {
-    const repo = this.config.repos[0];
-    if (!repo) {
-      const project = await this.resolveProject(task.chatId);
-      if (!project.resolved) {
-        return {
-          taskId: task.id,
-          version: 1,
-          needsInfo: true,
-          goal: task.title,
-          scope: [],
-          outOfScope: [],
-          repos: [],
-          plan: [],
-          commands: [],
-          risks: [],
-          openQuestions: ["未定位到当前主项目，请配置 project.worktree 或 repos"],
-          acceptanceCriteria: [],
-          model: "none",
-          createdAt: Date.now(),
-          planHash: "",
-        };
-      }
-      return this.buildAnalysisInWorktree(task, project.worktree, signal);
-    }
-    const ctx = await this.analysisContext(task);
-    const prompt = buildAnalysisPrompt({
-      task,
-      repositoryIds: this.config.repos.map((item) => item.id),
-      directory: repo.path,
-      context: ctx,
-    });
-    const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
-    const raw = await this.runWorker(
-      {
-        platform: task.platform,
-        chatId: task.chatId,
-        directory: repo.path,
-        title: `${this.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
-        role: "analysis",
-        permission: READ_ONLY_PERMISSION,
-        ...(analysisAgent ? { agent: analysisAgent } : {}),
-        ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-      },
-      prompt,
-      signal,
-    );
-    return parseAnalysis(raw, task, repo.id);
-  }
-
-  private async buildAnalysisInWorktree(
-    task: TaskRecord,
-    worktree: string,
-    signal?: AbortSignal,
-  ): Promise<TaskAnalysis> {
-    const ctx = await this.analysisContext(task);
-    const prompt = buildAnalysisPrompt({
-      task,
-      repositoryIds: this.config.repos.map((item) => item.id),
-      directory: worktree,
-      context: ctx,
-    });
-    const analysisAgent = this.config.opencode.analysisAgent ?? this.config.opencode.agent;
-    const raw = await this.runWorker(
-      {
-        platform: task.platform,
-        chatId: task.chatId,
-        directory: worktree,
-        title: `${this.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
-        role: "analysis",
-        permission: READ_ONLY_PERMISSION,
-        ...(analysisAgent ? { agent: analysisAgent } : {}),
-        ...(this.config.analysis.model ? { model: this.config.analysis.model } : {}),
-      },
-      prompt,
-      signal,
-    );
-    return parseAnalysis(raw, task, "auto");
+  private analyzeTask(task: TaskRecord): Promise<void> {
+    return this.taskService.analyzeTask(task);
   }
 
   private async createApprovalCard(task: TaskRecord, source: string): Promise<void> {
@@ -2408,65 +2297,6 @@ export class ProxyRuntime {
 
   private analysisContext(task: TaskRecord): Promise<AnalysisContext> {
     return this.contextService.analysisContext(task);
-  }
-
-  private async verifyAnalysis(
-    task: TaskRecord,
-    analysis: TaskAnalysis,
-    signal?: AbortSignal,
-  ): Promise<AnalysisVerification> {
-    const context = await this.analysisContext(task);
-    const base = deterministicVerification(analysis, context.corpus);
-    if (!this.config.subagents.enabled || !this.config.subagents.reviewer) return base;
-    const directory = await this.analysisDirectory(task);
-    const title = `${this.config.opencode.sessionTitlePrefix}:worker:review:${task.chatId}`;
-    try {
-      const raw = await this.runWorker(
-        {
-          platform: task.platform,
-          chatId: task.chatId,
-          directory,
-          title,
-          role: "review",
-          permission: READ_ONLY_PERMISSION,
-          agent: this.config.subagents.reviewer,
-        },
-        [
-          "你是只读核实器。不要修改文件，不要执行写操作。",
-          "核对任务分析是否忠于群上下文，是否跑偏、扩大范围或把假设写成事实。",
-          "表名 / 接口 / 字段 / 配置要能在上下文或仓库找到；找不到就列出。",
-          '输出严格 JSON：{drift: "none"|"minor"|"major", reasons: [], unverified_identifiers: [], checked: [], assumptions: []}。',
-          "上下文：",
-          JSON.stringify({
-            title: task.title,
-            excerpt: task.excerpt,
-            messageIds: task.messageIds,
-            sourceMessages: context.sourceMessages,
-            recentContext: context.recentContext,
-            pinned: context.pinned,
-            memory: context.memory,
-            openTasks: context.openTasks,
-          }),
-          "分析：",
-          JSON.stringify(analysis),
-        ].join("\n"),
-        signal,
-      );
-      return mergeVerification(base, parseVerification(raw));
-    } catch (error) {
-      this.logger.warn("analysis verification failed; keeping deterministic checks", {
-        taskId: task.id,
-        error: toErrorMessage(error),
-      });
-      return base;
-    }
-  }
-
-  private async analysisDirectory(task: TaskRecord): Promise<string> {
-    const repo = this.config.repos[0];
-    if (repo) return repo.path;
-    const project = await this.resolveProject(task.chatId);
-    return project.worktree;
   }
 
   private async resolveProject(chatId: string): Promise<{

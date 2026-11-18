@@ -49,6 +49,7 @@ export declare class ProxyRuntime {
     private readonly executionService;
     private readonly ownerCommandService;
     private readonly replyService;
+    private readonly taskService;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
@@ -106,8 +107,6 @@ export declare class ProxyRuntime {
     private classifyOne;
     private ensureTask;
     private analyzeTask;
-    private buildAnalysis;
-    private buildAnalysisInWorktree;
     private createApprovalCard;
     private sendApproval;
     recoverOnStartup(): Promise<void>;
@@ -136,8 +135,6 @@ export declare class ProxyRuntime {
     private evidenceRecall;
     private quotedContext;
     private analysisContext;
-    private verifyAnalysis;
-    private analysisDirectory;
     private resolveProject;
     private askOpenCode;
     private safeReply;
