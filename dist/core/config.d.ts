@@ -445,12 +445,15 @@ export declare const AppConfigSchema: z.ZodObject<{
     directChat: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
         onlyOwner: z.ZodDefault<z.ZodBoolean>;
+        notifyBlocked: z.ZodOptional<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
         enabled: boolean;
         onlyOwner: boolean;
+        notifyBlocked?: boolean | undefined;
     }, {
         enabled?: boolean | undefined;
         onlyOwner?: boolean | undefined;
+        notifyBlocked?: boolean | undefined;
     }>>;
     context: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
@@ -902,6 +905,7 @@ export declare const AppConfigSchema: z.ZodObject<{
     directChat: {
         enabled: boolean;
         onlyOwner: boolean;
+        notifyBlocked?: boolean | undefined;
     };
     context: {
         enabled: boolean;
@@ -1139,6 +1143,7 @@ export declare const AppConfigSchema: z.ZodObject<{
     directChat?: {
         enabled?: boolean | undefined;
         onlyOwner?: boolean | undefined;
+        notifyBlocked?: boolean | undefined;
     } | undefined;
     context?: {
         enabled?: boolean | undefined;

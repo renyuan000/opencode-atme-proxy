@@ -123,6 +123,7 @@ const DirectChatSchema = z
     .object({
     enabled: z.boolean().default(true),
     onlyOwner: z.boolean().default(true),
+    notifyBlocked: z.boolean().optional(),
 })
     .default({});
 const ContextSchema = z

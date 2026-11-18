@@ -105,6 +105,7 @@ test("non-owner direct message is ignored", async () => {
     await runtime.ingest(dm("m1", "stranger"));
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(adapter.replies.length, 0);
+    assert.ok(adapter.sent.some((item) => item.includes("试图私聊机器人")));
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

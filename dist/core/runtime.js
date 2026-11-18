@@ -102,6 +102,7 @@ export class ProxyRuntime {
     sentReplies;
     ownerAccess;
     groupLocks = new Map();
+    blockedDirectAlerts = new Map();
     memory;
     senderLimiter;
     projectResolver;
@@ -722,6 +723,26 @@ export class ProxyRuntime {
     handleOwnerCommand(message, command) {
         return this.ownerCommandService.handle(message, command);
     }
+    async notifyBlockedDirect(message) {
+        const now = Date.now();
+        const last = this.blockedDirectAlerts.get(message.sender.id) ?? 0;
+        if (now - last < 10 * 60_000)
+            return;
+        this.blockedDirectAlerts.set(message.sender.id, now);
+        if (this.blockedDirectAlerts.size > 500)
+            this.blockedDirectAlerts.clear();
+        const preview = message.text.trim()
+            ? redactPreview(message.text)
+            : "[非文本消息]";
+        const sent = await this.sendToOwner([
+            "有人试图私聊机器人，已被拦截。",
+            `发送人：${message.sender.displayName ?? message.sender.id}`,
+            `ID：${message.sender.id}`,
+            `内容：${truncate(preview, 160)}`,
+        ].join("\n"));
+        if (sent)
+            await this.markProcessed(message);
+    }
     async handleDirectMessage(message) {
         if (!this.config.directChat.enabled)
             return;
@@ -730,6 +751,9 @@ export class ProxyRuntime {
             this.logger.info("ignoring direct message from non-owner", {
                 senderId: message.sender.id,
             });
+            if (ownerId && this.config.directChat.notifyBlocked !== false) {
+                await this.notifyBlockedDirect(message);
+            }
             return;
         }
         const dedupKey = `${message.platform}:${message.messageId}`;

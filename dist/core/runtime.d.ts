@@ -60,6 +60,7 @@ export declare class ProxyRuntime {
     private readonly sentReplies;
     private readonly ownerAccess;
     private readonly groupLocks;
+    private readonly blockedDirectAlerts;
     private readonly memory;
     private readonly senderLimiter;
     private projectResolver?;
@@ -86,6 +87,7 @@ export declare class ProxyRuntime {
     private fetchChatName;
     private chatLabel;
     private handleOwnerCommand;
+    private notifyBlockedDirect;
     private handleDirectMessage;
     private recentKey;
     private rememberRecent;
