@@ -23,7 +23,7 @@ export class ApprovalService {
                 taskId: card.taskId,
                 details: { planHash: card.planHash },
             });
-            await this.options.notifier.send(`审批已超时：${task?.title ?? card.taskId}`);
+            await this.options.sendToApprover(`审批已超时：${task?.title ?? card.taskId}`);
         }
         await this.options.pending.flush();
     }
@@ -125,7 +125,7 @@ export class ApprovalService {
         if (!pending)
             return;
         if (pending.mode === "reply") {
-            await this.options.replyActions.approve(action, pending);
+            await this.options.approveReply(action, pending);
             return;
         }
         const task = await this.options.tasks.get(action.taskId);
@@ -153,7 +153,7 @@ export class ApprovalService {
         });
         this.options.pending.deleteForTask(task.id);
         await this.options.pending.flush();
-        this.options.executionActions.start(task, pending.planHash);
+        this.options.startExecution(task, pending.planHash);
     }
     async rejectTask(action) {
         const task = await this.options.tasks.get(action.taskId);

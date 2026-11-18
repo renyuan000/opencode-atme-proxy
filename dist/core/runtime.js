@@ -133,17 +133,15 @@ export class ProxyRuntime {
             platform: this.options.platform,
             logger: this.logger.child("approval"),
             ownerOpenId: () => this.ownerOpenId(),
-            notifier: { send: (text) => this.sendToApprover(text) },
-            replyActions: { approve: (action, pending) => this.approveReply(action, pending) },
-            executionActions: {
-                start: (task, planHash) => {
-                    this.track(this.executionService.executeTask(task, planHash)).catch((error) => {
-                        this.logger.error("execution failed", {
-                            taskId: task.id,
-                            error: toErrorMessage(error),
-                        });
+            sendToApprover: (text) => this.sendToApprover(text),
+            approveReply: (action, pending) => this.approveReply(action, pending),
+            startExecution: (task, planHash) => {
+                this.track(this.executionService.executeTask(task, planHash)).catch((error) => {
+                    this.logger.error("execution failed", {
+                        taskId: task.id,
+                        error: toErrorMessage(error),
                     });
-                },
+                });
             },
         });
         this.projectStore = new ProjectStore(join(this.stateDir, "projects.json"), this.logger.child("projects"));
