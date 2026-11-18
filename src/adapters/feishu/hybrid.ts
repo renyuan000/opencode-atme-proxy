@@ -79,6 +79,10 @@ export class HybridFeishuAdapter implements PlatformAdapter {
     return this.adapter.fetchResource(messageId, key);
   }
 
+  acknowledge(messageId: string, emojiType?: string): Promise<void> {
+    return this.adapter.acknowledge(messageId, emojiType);
+  }
+
   verifyActor(actor: { platform: string; id: string; displayName?: string }): Promise<boolean> {
     return this.adapter.verifyActor(actor);
   }

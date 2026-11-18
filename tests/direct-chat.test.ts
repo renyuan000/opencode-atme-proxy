@@ -43,6 +43,7 @@ class Adapter implements PlatformAdapter {
   replies: string[] = [];
   sent: string[] = [];
   recalled: string[] = [];
+  acknowledged: string[] = [];
   async start(): Promise<void> {}
   async stop(): Promise<void> {}
   capabilities(): CapabilitySet {
@@ -67,6 +68,9 @@ class Adapter implements PlatformAdapter {
   }
   async fetchResource() {
     return { data: Buffer.from([137, 80, 78, 71]), mime: "image/png" };
+  }
+  async acknowledge(messageId: string) {
+    this.acknowledged.push(messageId);
   }
   async verifyActor() { return true; }
 }
@@ -97,6 +101,7 @@ test("owner direct message gets a reply", async () => {
     await runtime.ingest(dm("m1"));
     await new Promise((r) => setTimeout(r, 100));
     assert.deepEqual(adapter.replies, ["私聊回复"]);
+    assert.ok(adapter.acknowledged.includes("m1"));
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

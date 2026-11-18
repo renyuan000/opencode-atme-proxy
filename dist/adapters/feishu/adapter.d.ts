@@ -93,6 +93,7 @@ export declare class FeishuAdapter implements PlatformAdapter {
         mime: string;
     }>;
     verifyActor(actor: ActorRef): Promise<boolean>;
+    acknowledge(messageId: string, emojiType?: string): Promise<void>;
     private requireMessageId;
     private resolveBotOpenId;
 }

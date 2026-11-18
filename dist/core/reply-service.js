@@ -242,8 +242,8 @@ export class ReplyService {
         return enforceReplyLength(raw, style, this.options.replyOptions);
     }
     async loadImages(message) {
-        const fetchResource = this.options.platform.fetchResource;
-        if (!fetchResource)
+        const platform = this.options.platform;
+        if (!platform.fetchResource)
             return [];
         const candidates = (message.attachments ?? [])
             .filter((item) => item.kind === "image" && item.key)
@@ -251,7 +251,7 @@ export class ReplyService {
         const images = [];
         for (const item of candidates) {
             try {
-                const resource = await fetchResource(message.messageId, item.key);
+                const resource = await platform.fetchResource(message.messageId, item.key);
                 if (resource.data.length > 3 * 1024 * 1024)
                     continue;
                 images.push({

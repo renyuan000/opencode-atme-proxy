@@ -52,6 +52,7 @@ export interface PlatformAdapter {
   ): Promise<{ messageId: string }>;
   renderApproval(view: ApprovalView): OutboundMessage;
   fetchResource?(messageId: string, key: string): Promise<{ data: Buffer; mime: string; filename?: string }>;
+  acknowledge?(messageId: string, emojiType?: string): Promise<void>;
   renderReplyManagement?(view: ReplyManagementView): OutboundMessage;
   renderCancelConfirm?(input: { taskId: string; planHash: string; draft?: string }): OutboundMessage;
   recallMessage?(chatId: string, messageId: string): Promise<void>;

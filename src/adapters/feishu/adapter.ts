@@ -371,6 +371,17 @@ export class FeishuAdapter implements PlatformAdapter {
     return this.options.config.approvers.some((approver) => approver.openId === actor.id);
   }
 
+  async acknowledge(messageId: string, emojiType = "OK"): Promise<void> {
+    const response = await this.client.request({
+      method: "POST",
+      url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions`,
+      data: { reaction_type: { emoji_type: emojiType } },
+    });
+    if (response?.code !== 0) {
+      throw new Error(`Feishu reaction failed: ${response?.msg ?? "unknown"}`);
+    }
+  }
+
   private requireMessageId(response: any, operation: string): { messageId: string } {
     if (response?.code !== 0) {
       throw new Error(`Feishu ${operation} failed: ${response?.msg ?? "unknown"}`);

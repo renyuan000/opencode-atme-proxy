@@ -71,6 +71,7 @@ export declare class ProxyRuntime {
     private ownerName;
     private claimOwner;
     private sendToOwner;
+    private acknowledge;
     private track;
     private drainBackground;
     private sweepTimer?;

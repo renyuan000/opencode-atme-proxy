@@ -44,6 +44,9 @@ export class HybridFeishuAdapter {
     fetchResource(messageId, key) {
         return this.adapter.fetchResource(messageId, key);
     }
+    acknowledge(messageId, emojiType) {
+        return this.adapter.acknowledge(messageId, emojiType);
+    }
     verifyActor(actor) {
         return this.adapter.verifyActor(actor);
     }

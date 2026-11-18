@@ -662,6 +662,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         acknowledgeLongTasks: z.ZodDefault<z.ZodBoolean>;
         ackDelayMs: z.ZodDefault<z.ZodNumber>;
         ackText: z.ZodDefault<z.ZodString>;
+        ackReaction: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         maxChars: number;
         defaultStyle: "concise" | "detailed";
@@ -671,6 +672,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         acknowledgeLongTasks: boolean;
         ackDelayMs: number;
         ackText: string;
+        ackReaction?: string | undefined;
     }, {
         maxChars?: number | undefined;
         defaultStyle?: "concise" | "detailed" | undefined;
@@ -680,6 +682,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         acknowledgeLongTasks?: boolean | undefined;
         ackDelayMs?: number | undefined;
         ackText?: string | undefined;
+        ackReaction?: string | undefined;
     }>>;
     concurrency: z.ZodDefault<z.ZodObject<{
         global: z.ZodDefault<z.ZodNumber>;
@@ -975,6 +978,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         acknowledgeLongTasks: boolean;
         ackDelayMs: number;
         ackText: string;
+        ackReaction?: string | undefined;
     };
     concurrency: {
         global: number;
@@ -1224,6 +1228,7 @@ export declare const AppConfigSchema: z.ZodObject<{
         acknowledgeLongTasks?: boolean | undefined;
         ackDelayMs?: number | undefined;
         ackText?: string | undefined;
+        ackReaction?: string | undefined;
     } | undefined;
     concurrency?: {
         global?: number | undefined;

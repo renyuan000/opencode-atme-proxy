@@ -256,6 +256,7 @@ const ReplySchema = z.object({
   acknowledgeLongTasks: z.boolean().default(true),
   ackDelayMs: z.number().int().min(0).default(2000),
   ackText: z.string().default("收到，处理中…"),
+  ackReaction: z.string().optional(),
 });
 
 const ConcurrencySchema = z.object({

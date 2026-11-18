@@ -312,15 +312,15 @@ export class ReplyService {
   }
 
   private async loadImages(message: IncomingMessage): Promise<PromptAttachment[]> {
-    const fetchResource = this.options.platform.fetchResource;
-    if (!fetchResource) return [];
+    const platform = this.options.platform;
+    if (!platform.fetchResource) return [];
     const candidates = (message.attachments ?? [])
       .filter((item) => item.kind === "image" && item.key)
       .slice(0, 2);
     const images: PromptAttachment[] = [];
     for (const item of candidates) {
       try {
-        const resource = await fetchResource(message.messageId, item.key!);
+        const resource = await platform.fetchResource(message.messageId, item.key!);
         if (resource.data.length > 3 * 1024 * 1024) continue;
         images.push({
           mime: resource.mime,

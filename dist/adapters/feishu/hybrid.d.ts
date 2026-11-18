@@ -36,6 +36,7 @@ export declare class HybridFeishuAdapter implements PlatformAdapter {
         mime: string;
         filename?: string;
     }>;
+    acknowledge(messageId: string, emojiType?: string): Promise<void>;
     verifyActor(actor: {
         platform: string;
         id: string;

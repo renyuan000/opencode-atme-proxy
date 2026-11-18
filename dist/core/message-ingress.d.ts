@@ -17,6 +17,7 @@ export interface MessageIngressOptions {
     botOpenId(): string | undefined;
     rememberRecent(message: IncomingMessage): void;
     updateGroupSummary(platform: string, chatId: string): void;
+    acknowledge?(message: IncomingMessage): Promise<void>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
     dispatch(message: IncomingMessage, limited: boolean, wait: boolean): Promise<void>;
 }

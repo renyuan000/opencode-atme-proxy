@@ -48,6 +48,7 @@ export interface PlatformAdapter {
         mime: string;
         filename?: string;
     }>;
+    acknowledge?(messageId: string, emojiType?: string): Promise<void>;
     renderReplyManagement?(view: ReplyManagementView): OutboundMessage;
     renderCancelConfirm?(input: {
         taskId: string;

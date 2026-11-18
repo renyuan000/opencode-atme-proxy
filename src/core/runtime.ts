@@ -313,6 +313,7 @@ export class ProxyRuntime {
       updateGroupSummary: (platform, chatId) => {
         void this.updateGroupSummary(platform, chatId);
       },
+      acknowledge: (message) => this.acknowledge(message),
       safeReply: (message, text) => this.safeReply(message, text),
       dispatch: (message, limited, wait) =>
         this.dispatchGroupMessage(message, limited, wait),
@@ -574,6 +575,21 @@ export class ProxyRuntime {
 
   private sendToOwner(text: string): Promise<boolean> {
     return this.notificationService.sendToOwner(text);
+  }
+
+  private async acknowledge(message: IncomingMessage): Promise<void> {
+    const emoji = this.config.reply.ackReaction ?? "OK";
+    if (!emoji) return;
+    const acknowledge = this.options.platform.acknowledge;
+    if (!acknowledge) return;
+    try {
+      await acknowledge.call(this.options.platform, message.messageId, emoji);
+    } catch (error) {
+      this.logger.warn("failed to add acknowledgement reaction", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
+      });
+    }
   }
 
   private track<T>(promise: Promise<T>): Promise<T> {
@@ -856,6 +872,7 @@ export class ProxyRuntime {
     const dedupKey = `${message.platform}:${message.messageId}`;
     if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey)) return;
     this.activeMessageIds.add(dedupKey);
+    void this.acknowledge(message);
     const command = parseOwnerCommand(message.text);
     if (command) {
       try {

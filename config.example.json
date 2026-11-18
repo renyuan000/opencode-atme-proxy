@@ -157,7 +157,8 @@
     "detailMaxChars": 2000,
     "acknowledgeLongTasks": true,
     "ackDelayMs": 2000,
-    "ackText": "收到，处理中…"
+    "ackText": "收到，处理中…",
+    "ackReaction": "OK"
   },
   "concurrency": {
     "global": 8,

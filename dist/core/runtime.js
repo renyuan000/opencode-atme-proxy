@@ -238,6 +238,7 @@ export class ProxyRuntime {
             updateGroupSummary: (platform, chatId) => {
                 void this.updateGroupSummary(platform, chatId);
             },
+            acknowledge: (message) => this.acknowledge(message),
             safeReply: (message, text) => this.safeReply(message, text),
             dispatch: (message, limited, wait) => this.dispatchGroupMessage(message, limited, wait),
         });
@@ -492,6 +493,23 @@ export class ProxyRuntime {
     }
     sendToOwner(text) {
         return this.notificationService.sendToOwner(text);
+    }
+    async acknowledge(message) {
+        const emoji = this.config.reply.ackReaction ?? "OK";
+        if (!emoji)
+            return;
+        const acknowledge = this.options.platform.acknowledge;
+        if (!acknowledge)
+            return;
+        try {
+            await acknowledge.call(this.options.platform, message.messageId, emoji);
+        }
+        catch (error) {
+            this.logger.warn("failed to add acknowledgement reaction", {
+                messageId: message.messageId,
+                error: toErrorMessage(error),
+            });
+        }
     }
     track(promise) {
         this.background.add(promise);
@@ -760,6 +778,7 @@ export class ProxyRuntime {
         if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey))
             return;
         this.activeMessageIds.add(dedupKey);
+        void this.acknowledge(message);
         const command = parseOwnerCommand(message.text);
         if (command) {
             try {

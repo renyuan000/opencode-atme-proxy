@@ -20,6 +20,7 @@ export interface MessageIngressOptions {
   botOpenId(): string | undefined;
   rememberRecent(message: IncomingMessage): void;
   updateGroupSummary(platform: string, chatId: string): void;
+  acknowledge?(message: IncomingMessage): Promise<void>;
   safeReply(message: IncomingMessage, text: string): Promise<boolean>;
   dispatch(message: IncomingMessage, limited: boolean, wait: boolean): Promise<void>;
 }
@@ -53,6 +54,14 @@ export class MessageIngress {
       return;
     }
     const mentionMe = this.isMentionMe(message);
+    if ((mentionMe || mentionBot) && this.options.acknowledge) {
+      void this.options.acknowledge(message).catch((error) => {
+        this.options.logger.warn("failed to add acknowledgement reaction", {
+          messageId: message.messageId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
     const storeOwnerGroup =
       fromOwner &&
       this.options.config.context.enabled &&

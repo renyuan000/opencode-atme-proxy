@@ -312,6 +312,16 @@ export class FeishuAdapter {
             return false;
         return this.options.config.approvers.some((approver) => approver.openId === actor.id);
     }
+    async acknowledge(messageId, emojiType = "OK") {
+        const response = await this.client.request({
+            method: "POST",
+            url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions`,
+            data: { reaction_type: { emoji_type: emojiType } },
+        });
+        if (response?.code !== 0) {
+            throw new Error(`Feishu reaction failed: ${response?.msg ?? "unknown"}`);
+        }
+    }
     requireMessageId(response, operation) {
         if (response?.code !== 0) {
             throw new Error(`Feishu ${operation} failed: ${response?.msg ?? "unknown"}`);
