@@ -48,6 +48,7 @@ export declare class ProxyRuntime {
     private readonly evidence;
     private readonly groupContext;
     private readonly contextService;
+    private readonly approvalService;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
@@ -118,12 +119,8 @@ export declare class ProxyRuntime {
     private pullStartupWindow;
     private resumeOpenTasks;
     private sweepExpiredApprovals;
-    private isAuthorizedActor;
-    private resolvedCardFor;
     private onAction;
-    private approveTask;
     private approveReply;
-    private rejectTask;
     private executeTask;
     private latestAnalysis;
     private executeInWorktree;

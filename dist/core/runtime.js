@@ -25,12 +25,13 @@ import { MemoryStore } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
 import { SessionManager } from "./session-manager.js";
 import { ContextService } from "./context-service.js";
+import { ApprovalService } from "./approval-service.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { deterministicVerification, mergeVerification, parseVerification, } from "./analysis-verify.js";
 import { OwnerStore } from "./owner-store.js";
-import { assertTransition, canTransition } from "./task-state.js";
+import { canTransition } from "./task-state.js";
 import { readJsonFile, formatLocalTime, sha256, stableUuid, toErrorMessage, redactPreview, isLowValueMessage, truncate, truncateMiddle, writeJsonAtomic, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
 const READ_ONLY_PERMISSION = [
@@ -81,6 +82,7 @@ export class ProxyRuntime {
     evidence;
     groupContext;
     contextService;
+    approvalService;
     groupLocks = new Map();
     memory;
     owners;
@@ -125,6 +127,26 @@ export class ProxyRuntime {
         this.approvals = new ApprovalStore(this.stateDir);
         this.audit = new AuditLog(AuditLog.defaultPath(this.stateDir));
         this.pending = new PendingStore(join(this.stateDir, "pending.json"), this.logger.child("pending"));
+        this.approvalService = new ApprovalService({
+            config: this.config,
+            pending: this.pending,
+            tasks: this.tasks,
+            approvals: this.approvals,
+            audit: this.audit,
+            platform: this.options.platform,
+            logger: this.logger.child("approval"),
+            ownerOpenId: () => this.ownerOpenId(),
+            sendToApprover: (text) => this.sendToApprover(text),
+            approveReply: (action, pending) => this.approveReply(action, pending),
+            startExecution: (task, planHash) => {
+                this.track(this.executeTask(task, planHash)).catch((error) => {
+                    this.logger.error("execution failed", {
+                        taskId: task.id,
+                        error: toErrorMessage(error),
+                    });
+                });
+            },
+        });
         this.projectStore = new ProjectStore(join(this.stateDir, "projects.json"), this.logger.child("projects"));
         this.senderLimiter = new SenderLimiter({
             maxPerMinute: this.config.botReply.perSenderPerMinute,
@@ -2098,158 +2120,11 @@ export class ProxyRuntime {
             await this.sendToOwner(`启动恢复：续作 ${resumed} 个未完成任务，中断 ${interrupted} 个执行。`);
         }
     }
-    async sweepExpiredApprovals() {
-        const ttlMs = this.config.policy.approvalTimeoutHours * 3600_000;
-        const now = Date.now();
-        for (const [key, card] of this.pending.snapshot()) {
-            if (now - card.createdAt < ttlMs)
-                continue;
-            const task = await this.tasks.get(card.taskId);
-            if (task && canTransition(task.state, "expired")) {
-                task.state = "expired";
-                task.updatedAt = now;
-                await this.tasks.save(task);
-            }
-            this.pending.delete(key);
-            await this.audit.append({
-                actor: { system: true },
-                action: "approval_expired",
-                taskId: card.taskId,
-                details: { planHash: card.planHash },
-            });
-            await this.sendToApprover(`审批已超时：${task?.title ?? card.taskId}`);
-        }
-        await this.pending.flush();
+    sweepExpiredApprovals() {
+        return this.approvalService.sweepExpiredApprovals();
     }
-    async isAuthorizedActor(actor) {
-        const ownerId = this.ownerOpenId();
-        if (ownerId && actor.id === ownerId)
-            return true;
-        if (this.config.platforms.feishu.approvers.some((approver) => approver.openId === actor.id)) {
-            return true;
-        }
-        return this.options.platform.verifyActor(actor);
-    }
-    resolvedCardFor(pending, resolution) {
-        const taskId = pending.taskId;
-        const title = pending.mode === "reply"
-            ? pending.style === "detailed"
-                ? "对方要求详细回答"
-                : "代答"
-            : `任务 ${taskId}`;
-        const view = {
-            taskId,
-            planHash: pending.planHash,
-            mode: pending.mode,
-            title,
-            summary: pending.draft ?? "（无草稿）",
-            repo: "—",
-            baseBranch: "—",
-            targetBranch: "—",
-            commands: [],
-            risks: [],
-            acceptanceCriteria: [],
-            openQuestions: [],
-            resolution,
-        };
-        const rendered = this.options.platform.renderApproval(view);
-        return rendered.kind === "card" ? rendered.card : undefined;
-    }
-    async onAction(action) {
-        const pending = this.pending.get(`${action.taskId}:develop`) ??
-            this.pending.get(`${action.taskId}:reply`);
-        if (!pending)
-            return { ok: false, toast: "任务不存在或已处理" };
-        const actorOk = await this.isAuthorizedActor(action.actor);
-        if (!actorOk) {
-            await this.audit.append({
-                actor: action.actor,
-                action: "approval_denied",
-                taskId: action.taskId,
-                details: { reason: "unauthorized actor" },
-            });
-            return { ok: false, toast: "无权操作" };
-        }
-        if (action.planHash && action.planHash !== pending.planHash) {
-            return { ok: false, toast: "计划已变更，请重新审批" };
-        }
-        if (action.action === "approve") {
-            await this.approveTask(action);
-            return {
-                ok: true,
-                toast: "已批准",
-                card: this.resolvedCardFor(pending, "approved"),
-            };
-        }
-        if (action.action === "reject") {
-            await this.rejectTask(action);
-            return {
-                ok: true,
-                toast: "已拒绝",
-                card: this.resolvedCardFor(pending, "rejected"),
-            };
-        }
-        if (action.action === "revise") {
-            return {
-                ok: true,
-                toast: "请回复补充信息",
-                card: this.resolvedCardFor(pending, "revised"),
-            };
-        }
-        if (action.action === "self") {
-            const task = await this.tasks.get(action.taskId);
-            if (task) {
-                task.state = "done";
-                task.updatedAt = Date.now();
-                await this.tasks.save(task);
-            }
-            this.pending.deleteForTask(action.taskId);
-            await this.pending.flush();
-            return {
-                ok: true,
-                toast: "已标记为我自己回",
-                card: this.resolvedCardFor(pending, "self"),
-            };
-        }
-        return { ok: false, toast: "未知操作" };
-    }
-    async approveTask(action) {
-        const pending = this.pending.get(`${action.taskId}:develop`) ??
-            this.pending.get(`${action.taskId}:reply`);
-        if (!pending)
-            return;
-        if (pending.mode === "reply") {
-            await this.approveReply(action, pending);
-            return;
-        }
-        const task = await this.tasks.get(action.taskId);
-        if (!task)
-            return;
-        assertTransition(task.state, "approved");
-        task.state = "approved";
-        task.updatedAt = Date.now();
-        await this.tasks.save(task);
-        await this.approvals.append({
-            taskId: task.id,
-            analysisVersion: pending.analysisVersion,
-            planHash: pending.planHash,
-            kind: "develop",
-            decision: "approved",
-            approvedBy: action.actor,
-            decidedAt: Date.now(),
-            createdAt: Date.now(),
-        });
-        await this.audit.append({
-            actor: action.actor,
-            action: "task_approved",
-            taskId: task.id,
-            details: { planHash: pending.planHash },
-        });
-        this.pending.deleteForTask(task.id);
-        await this.pending.flush();
-        this.track(this.executeTask(task, pending.planHash)).catch((error) => {
-            this.logger.error("execution failed", { taskId: task.id, error: toErrorMessage(error) });
-        });
+    onAction(action) {
+        return this.approvalService.onAction(action);
     }
     async approveReply(action, pending) {
         const task = await this.tasks.get(action.taskId);
@@ -2307,24 +2182,6 @@ export class ProxyRuntime {
             });
             await this.sendToApprover(`代答失败：${task.title}\n${toErrorMessage(error)}`);
         }
-    }
-    async rejectTask(action) {
-        const task = await this.tasks.get(action.taskId);
-        if (!task)
-            return;
-        if (task.state !== "rejected" && canTransition(task.state, "rejected")) {
-            task.state = "rejected";
-            task.updatedAt = Date.now();
-            await this.tasks.save(task);
-        }
-        this.pending.deleteForTask(task.id);
-        await this.pending.flush();
-        await this.audit.append({
-            actor: action.actor,
-            action: "task_rejected",
-            taskId: task.id,
-            details: {},
-        });
     }
     async executeTask(task, planHash) {
         const analysis = await this.latestAnalysis(task.id);
