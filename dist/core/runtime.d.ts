@@ -53,6 +53,7 @@ export declare class ProxyRuntime {
     private readonly intentService;
     private readonly messageIngress;
     private readonly meMentionFlow;
+    private readonly botMentionFlow;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
@@ -95,10 +96,6 @@ export declare class ProxyRuntime {
     private applyBurstGrouping;
     private handleMessage;
     private handleBotMention;
-    private decideBotIntent;
-    private analyzeBotRequest;
-    private sendOwnerDecisionCard;
-    private escalateToOwner;
     private handleMeMention;
     private shouldReplyToMention;
     private createReplyTask;

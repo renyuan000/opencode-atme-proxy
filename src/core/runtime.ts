@@ -63,6 +63,7 @@ import { TaskService } from "./task-service.js";
 import { IntentService } from "./intent-service.js";
 import { MessageIngress } from "./message-ingress.js";
 import { MeMentionFlow } from "./me-mention-flow.js";
+import { BotMentionFlow } from "./bot-mention-flow.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
@@ -153,6 +154,7 @@ export class ProxyRuntime {
   private readonly intentService: IntentService;
   private readonly messageIngress: MessageIngress;
   private readonly meMentionFlow: MeMentionFlow;
+  private readonly botMentionFlow: BotMentionFlow;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
@@ -485,6 +487,27 @@ export class ProxyRuntime {
       markProcessed: (message) => this.markProcessed(message),
       safeReply: (message, text) => this.safeReply(message, text),
       sendToApprover: (text) => this.sendToApprover(text),
+    });
+    this.botMentionFlow = new BotMentionFlow({
+      config: this.config,
+      logger: this.logger.child("bot-mention"),
+      intentService: this.intentService,
+      replyService: this.replyService,
+      sessionManager: this.sessionManager,
+      bridge: this.options.bridge,
+      platform: this.options.platform,
+      sendLimiter: this.sendLimiter,
+      audit: this.audit,
+      readOnlyPermission: READ_ONLY_PERMISSION,
+      ownerOpenId: () => this.ownerOpenId(),
+      ownerName: () => this.ownerName(),
+      resolveProject: (chatId) => this.resolveProject(chatId),
+      sendToOwner: (text) => this.sendToOwner(text),
+      sendToApprover: (text) => this.sendToApprover(text),
+      safeReply: (message, text) => this.safeReply(message, text),
+      markProcessed: (message) => this.markProcessed(message),
+      rememberFromMention: (message, intent, analysis) =>
+        this.rememberFromMention(message, intent, analysis),
     });
   }
 
@@ -1092,198 +1115,11 @@ export class ProxyRuntime {
     await this.handleGroupScan(message, signal);
   }
 
-  private async handleBotMention(message: IncomingMessage, signal: AbortSignal): Promise<void> {
-    const enriched = message;
-    const intent = await this.decideBotIntent(enriched, signal);
-    if (intent.action === "no_reply") {
-      this.logger.info("bot mention skipped by necessity check", {
-        messageId: message.messageId,
-        reason: intent.reason,
-        confidence: intent.confidence,
-      });
-      await this.markProcessed(message);
-      await this.audit.append({
-        actor: { system: true },
-        action: "bot_mention_skipped",
-        details: { messageId: message.messageId, reason: intent.reason },
-      });
-      return;
-    }
-
-    if (intent.action === "notify_owner") {
-      const notified = await this.sendOwnerDecisionCard(message, intent, "notify");
-      this.rememberFromMention(message, intent);
-      if (notified) await this.markProcessed(message);
-      await this.audit.append({
-        actor: { system: true },
-        action: "bot_mention_owner_notified",
-        details: { messageId: message.messageId, kind: intent.kind, reason: intent.reason },
-      });
-      return;
-    }
-
-    if (intent.action === "need_decision") {
-      const analysis = await this.analyzeBotRequest(message, intent, signal);
-      const escalated = await this.escalateToOwner(message, intent);
-      const notified = await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
-      this.rememberFromMention(message, intent, analysis);
-      if (escalated || notified) await this.markProcessed(message);
-      await this.audit.append({
-        actor: { system: true },
-        action: "bot_mention_escalated",
-        details: {
-          messageId: message.messageId,
-          kind: intent.kind,
-          reason: intent.reason,
-          analysisHash: analysis ? sha256(analysis).slice(0, 12) : undefined,
-        },
-      });
-      return;
-    }
-
-    const style = intent.style;
-    const ackTimer = this.config.reply.acknowledgeLongTasks
-      ? setTimeout(() => {
-          void this.safeReply(message, this.config.reply.ackText);
-        }, this.config.reply.ackDelayMs)
-      : undefined;
-    if (ackTimer) ackTimer.unref?.();
-    let replied = false;
-    try {
-      const reply = await this.askOpenCode(enriched, style, signal);
-      if (ackTimer) clearTimeout(ackTimer);
-      replied = await this.safeReply(message, this.sanitize(reply));
-      this.rememberFromMention(message, intent, reply);
-    } catch (error) {
-      this.logger.error("bot mention handling failed", {
-        messageId: message.messageId,
-        error: toErrorMessage(error),
-      });
-      replied = await this.safeReply(message, "处理失败，请稍后重试或直接联系我。");
-    } finally {
-      if (ackTimer) clearTimeout(ackTimer);
-    }
-    if (replied) await this.markProcessed(message);
-    await this.audit.append({
-      actor: { system: true },
-      action: "bot_mention_replied",
-      details: { messageId: message.messageId, style, reason: intent.reason },
-    });
-  }
-
-  private decideBotIntent(
+  private handleBotMention(
     message: IncomingMessage,
     signal: AbortSignal,
-  ): Promise<BotIntent> {
-    return this.intentService.decideBotIntent(message, signal);
-  }
-
-  private async analyzeBotRequest(
-    message: IncomingMessage,
-    intent: BotIntent,
-    signal: AbortSignal,
-  ): Promise<string | undefined> {
-    if (!this.config.botReply.analyzeBeforeEscalate) return undefined;
-    try {
-      const project = await this.resolveProject(message.chat.id);
-      const prompt = [
-        "你是研发任务助手。请对下面这个群里的请求做简短可行性分析，供主人决策。",
-        "只输出 3-5 行：请求实质、影响范围、建议做/不做/先确认什么、风险。",
-        "不要执行代码，不要承诺排期，不要编造。",
-        `消息类型：${intent.kind}`,
-        `发送人：${message.sender.displayName ?? message.sender.id}`,
-        `内容：${message.text}`,
-        `当前项目目录：${project.worktree}`,
-      ].join("\n");
-      const { sessionId, release } = await this.createChildSession({
-        platform: message.platform,
-        chatId: message.chat.id,
-        directory: project.worktree,
-        title: `${this.config.opencode.sessionTitlePrefix}:analyze:${message.messageId}`,
-        role: "analysis",
-        permission: READ_ONLY_PERMISSION,
-        signal,
-      });
-      try {
-        const raw = await this.options.bridge.prompt(sessionId, {
-          directory: project.worktree,
-          title: `${this.config.opencode.sessionTitlePrefix}:analyze:${message.messageId}`,
-          text: prompt,
-          signal,
-        });
-        return truncate(raw.trim(), 600);
-      } finally {
-        release();
-        await this.finishSession(
-          sessionId,
-          `${this.config.opencode.sessionTitlePrefix}:analyze:${message.messageId}`,
-          project.worktree,
-          "bot_request_analysis",
-        );
-      }
-    } catch (error) {
-      this.logger.warn("bot request analysis failed", {
-        messageId: message.messageId,
-        error: toErrorMessage(error),
-      });
-      return undefined;
-    }
-  }
-
-  private async sendOwnerDecisionCard(
-    message: IncomingMessage,
-    intent: BotIntent,
-    mode: "decision" | "notify",
-    analysis?: string,
-  ): Promise<boolean> {
-    const text = [
-      mode === "decision" ? "群里有人 @机器人，需要你判断是否要做" : "群里有人 @机器人，仅需你知会",
-      `类型：${intent.kind}`,
-      `来源：${message.chat.name ?? message.chat.id} / ${message.sender.displayName ?? message.sender.id}`,
-      `内容：${truncate(intent.summary ?? message.text, 240)}`,
-      `判断：${intent.reason}`,
-      ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),
-      ...(analysis ? [`分析：\n${analysis}`] : []),
-    ].join("\n");
-    return this.sendToOwner(text);
-  }
-
-  private async escalateToOwner(message: IncomingMessage, intent: BotIntent): Promise<boolean> {
-    const question = intent.question
-      ? truncate(intent.question, this.config.botReply.maxQuestionChars)
-      : truncate(message.text, this.config.botReply.maxQuestionChars);
-    const text = [
-      this.config.botReply.decisionMentionText,
-      `类型：${intent.kind}`,
-      `问题：${question}`,
-      `来源：${message.sender.displayName ?? message.sender.id}`,
-      `原因：${intent.reason || "需要你本人决策"}`,
-      ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),
-    ].join("\n");
-    try {
-      await this.sendLimiter.take();
-      await this.options.platform.reply(
-        { chatId: message.chat.id, messageId: message.messageId },
-        {
-          kind: "text",
-          text,
-          uuid: stableUuid("escalate", message.messageId),
-          mentions: [
-            {
-              id: this.ownerOpenId() ?? "",
-              name: this.ownerName(),
-            },
-          ].filter((mention) => mention.id),
-        },
-      );
-      return true;
-    } catch (error) {
-      this.logger.error("failed to escalate to owner in group", {
-        messageId: message.messageId,
-        error: toErrorMessage(error),
-      });
-      return this.sendToApprover(text);
-    }
+  ): Promise<void> {
+    return this.botMentionFlow.handle(message, signal);
   }
 
   private handleMeMention(
