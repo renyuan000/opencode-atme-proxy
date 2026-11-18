@@ -266,6 +266,8 @@ export class ReplyService {
         ? this.options.contextService.summaryText(message.platform, message.chat.id)
         : "";
     const quoteBlock = this.options.contextService.quotedContext(message);
+    const quotedChain = await this.loadQuotedChain(message);
+    quoteBlock.push(...quotedChain);
     const evidenceBlock = this.options.contextService.evidenceRecall(message);
     const images = await this.loadImages(message);
     const ocrText = images.length > 0 ? await this.loadImageText(message) : undefined;
@@ -384,6 +386,32 @@ export class ReplyService {
       }
     }
     return texts.length > 0 ? texts.join("\n\n---\n\n").slice(0, 6000) : undefined;
+  }
+
+  private async loadQuotedChain(message: IncomingMessage): Promise<string[]> {
+    const platform = this.options.platform;
+    if (!message.replyToMessageId || !platform.fetchMessage) return [];
+    const lines: string[] = [];
+    const seen = new Set<string>();
+    let id: string | undefined = message.replyToMessageId;
+    for (let depth = 0; depth < 3 && id && !seen.has(id); depth++) {
+      seen.add(id);
+      try {
+        const fetched = await platform.fetchMessage(id);
+        if (!fetched) break;
+        lines.push(
+          `- [引用链 ${depth + 1}] ${fetched.sender.displayName ?? fetched.sender.id}: ${truncateMiddle(fetched.text, 500)}`,
+        );
+        id = fetched.replyToMessageId;
+      } catch (error) {
+        this.options.logger.warn("failed to fetch quoted message", {
+          messageId: id,
+          error: toErrorMessage(error),
+        });
+        break;
+      }
+    }
+    return lines;
   }
 
   private async loadRecentDocuments(message: IncomingMessage): Promise<string | undefined> {

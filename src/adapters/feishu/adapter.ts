@@ -281,6 +281,40 @@ export class FeishuAdapter implements PlatformAdapter {
     return groups;
   }
 
+  async fetchMessage(messageId: string): Promise<IncomingMessage | undefined> {
+    const response = await this.client.request({
+      method: "GET",
+      url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+      params: { with_sender_name: true },
+    });
+    if (response?.code !== 0) {
+      throw new Error(`Feishu get message failed: ${response?.msg ?? "unknown"}`);
+    }
+    const item = response?.data?.items?.[0];
+    if (!item) return undefined;
+    return mapFeishuMessage({
+      message_id: item.message_id,
+      chat_id: item.chat_id,
+      message_type: item.msg_type,
+      content: item.body?.content,
+      create_time: item.create_time,
+      parent_id: item.parent_id,
+      root_id: item.root_id,
+      thread_id: item.thread_id,
+      sender: {
+        sender_id: { open_id: item.sender?.id },
+        sender_type: item.sender?.sender_type,
+      },
+      mentions: Array.isArray(item.mentions)
+        ? item.mentions.map((mention: any) => ({
+            key: mention.key,
+            id: { open_id: mention.id },
+            name: mention.name,
+          }))
+        : undefined,
+    });
+  }
+
   async listMessages(input: Parameters<PlatformAdapter["listMessages"]>[0]) {
     const messages: IncomingMessage[] = [];
     let pageToken = input.cursor;

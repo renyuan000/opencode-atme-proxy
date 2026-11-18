@@ -54,6 +54,7 @@ export interface PlatformAdapter {
   healthCheck(): Promise<{ ok: boolean; detail?: string }>;
   listMessages(input: ListMessagesInput): Promise<ListMessagesResult>;
   listGroups?(): Promise<Array<{ chatId: string; name?: string }>>;
+  fetchMessage?(messageId: string): Promise<IncomingMessage | undefined>;
   getBotName?(): string | undefined;
   send(target: OutboundTarget, message: OutboundMessage): Promise<{ messageId: string }>;
   reply(
