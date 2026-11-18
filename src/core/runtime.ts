@@ -55,7 +55,7 @@ import { EvidenceStore } from "./evidence-store.js";
 import { GroupContextStore, type GroupSummary } from "./group-context.js";
 import { MemoryStore, type MemoryKind } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
-import { SessionManager, type WorkerInput } from "./session-manager.js";
+import { SessionManager, type ChildInput, type WorkerInput } from "./session-manager.js";
 import { ContextService, type AnalysisContext } from "./context-service.js";
 import { ApprovalService } from "./approval-service.js";
 import { parseAnalysis } from "./analysis.js";
@@ -118,8 +118,6 @@ export class ProxyRuntime {
   private readonly cursors: CursorStore;
   private readonly sessions: SessionStore;
   private readonly sessionManager: SessionManager;
-  private readonly childSlots: Semaphore;
-  private readonly taskChildCounts = new Map<string, number>();
   private readonly chatNames = new Map<string, { name: string; at: number }>();
   private readonly recentMessages = new Map<string, IncomingMessage[]>();
   private readonly tasks: TaskStore;
@@ -188,9 +186,6 @@ export class ProxyRuntime {
       config: this.config,
       logger: this.logger.child("sessions"),
       readOnlyPermission: READ_ONLY_PERMISSION,
-      createChildSession: (input) => this.createChildSession(input),
-      finishSession: (sessionId, title, directory, purpose) =>
-        this.finishSession(sessionId, title, directory, purpose),
     });
     this.tasks = new TaskStore(this.stateDir, this.logger.child("tasks"));
     this.approvals = new ApprovalStore(this.stateDir);
@@ -282,7 +277,6 @@ export class ProxyRuntime {
       this.config.platforms.feishu.rateLimit.burst,
     );
     this.executionSlots = new Semaphore(this.config.policy.maxConcurrentExecutions);
-    this.childSlots = new Semaphore(this.config.subagents.maxChildrenGlobal);
     this.groupIds = new Set(
       this.config.platforms.feishu.groups
         .filter((group) => group.enabled)
@@ -2705,155 +2699,25 @@ export class ProxyRuntime {
     return this.sessionManager.runWorker(input, promptText, signal);
   }
 
-  private async createChildSession(input: {
-    platform: string;
-    chatId: string;
-    directory: string;
-    title: string;
-    role: "reply" | "analysis" | "execution" | "review";
-    agent?: string;
-    permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>;
-    taskId?: string;
-    model?: { providerID: string; modelID: string };
-    signal?: AbortSignal;
-  }): Promise<{ sessionId: string; release: () => void }> {
-    if (!this.config.subagents.enabled) {
-      const sessionId = await this.options.bridge.createSession({
-        directory: input.directory,
-        title: input.title,
-        ...(input.agent ? { agent: input.agent } : {}),
-        ...(input.permission ? { permission: input.permission } : {}),
-        ...(input.model ? { model: input.model } : {}),
-      });
-      return { sessionId, release: () => {} };
-    }
-    if (input.taskId) {
-      const current = this.taskChildCounts.get(input.taskId) ?? 0;
-      if (current >= this.config.subagents.maxChildrenPerTask) {
-        throw new Error(
-          `task ${input.taskId} already has ${current} active children (max ${this.config.subagents.maxChildrenPerTask})`,
-        );
-      }
-    }
-    const releaseSlot = await this.childSlots.acquire(input.signal);
-    let released = false;
-    const release = (): void => {
-      if (released) return;
-      released = true;
-      releaseSlot();
-      if (input.taskId) {
-        const next = (this.taskChildCounts.get(input.taskId) ?? 1) - 1;
-        if (next <= 0) this.taskChildCounts.delete(input.taskId);
-        else this.taskChildCounts.set(input.taskId, next);
-      }
-    };
-    if (input.taskId) {
-      this.taskChildCounts.set(input.taskId, (this.taskChildCounts.get(input.taskId) ?? 0) + 1);
-    }
-    try {
-      const coordinator = await this.coordinatorSession(
-        input.platform,
-        input.chatId,
-        input.directory,
-        `${this.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`,
-      );
-      const roleAgent =
-        input.role === "analysis"
-          ? this.config.subagents.analyst
-          : input.role === "execution"
-            ? this.config.subagents.executor
-            : input.role === "review"
-              ? this.config.subagents.reviewer
-              : input.agent;
-      const sessionId = await this.options.bridge.createSession({
-        directory: input.directory,
-        title: input.title,
-        parentID: coordinator,
-        ...(roleAgent ? { agent: roleAgent } : {}),
-        ...(input.permission ? { permission: input.permission } : {}),
-        ...(input.model ? { model: input.model } : {}),
-      });
-      this.sessions.set(`child:${sessionId}`, sessionId, input.directory, {
-        kind: "child",
-        createdAt: Date.now(),
-        ...(input.taskId ? { taskId: input.taskId } : {}),
-      });
-      await this.sessions.flush();
-      return { sessionId, release };
-    } catch (error) {
-      release();
-      throw error;
-    }
+  private createChildSession(input: ChildInput): Promise<{ sessionId: string; release: () => void }> {
+    return this.sessionManager.createChildSession(input);
   }
 
-  private async archiveTaskChildren(taskId: string): Promise<void> {
-    if (!this.config.subagents.enabled) return;
-    for (const [key, record] of this.sessions.findByTask(taskId)) {
-      if (record.archivedAt) continue;
-      try {
-        await this.options.bridge.archiveSession?.(record.sessionId, record.directory);
-        this.sessions.set(key, record.sessionId, record.directory, {
-          ...(record.taskId ? { taskId: record.taskId } : {}),
-          kind: "child",
-          createdAt: record.createdAt,
-          archivedAt: Date.now(),
-        });
-      } catch (error) {
-        this.logger.warn("failed to archive task child session", {
-          sessionId: record.sessionId,
-          taskId,
-          error: toErrorMessage(error),
-        });
-      }
-    }
-    await this.sessions.flush();
+  private archiveTaskChildren(taskId: string): Promise<void> {
+    return this.sessionManager.archiveTaskChildren(taskId);
   }
 
-  private async sweepSessions(): Promise<void> {
-    if (!this.config.subagents.enabled) return;
-    const now = Date.now();
-    const archiveMs = this.config.subagents.archiveAfterDays * 86_400_000;
-    const deleteMs = this.config.subagents.deleteAfterDays * 86_400_000;
-    for (const [key, record] of this.sessions.list("child")) {
-      const age = now - record.createdAt;
-      const archivedAge = record.archivedAt ? now - record.archivedAt : 0;
-      if (age < archiveMs && archivedAge < deleteMs) continue;
-      try {
-        if (age >= deleteMs) {
-          await this.options.bridge.deleteSession(record.sessionId);
-          this.sessions.delete(key);
-        } else if (!record.archivedAt) {
-          await this.options.bridge.archiveSession?.(record.sessionId, record.directory);
-          this.sessions.set(key, record.sessionId, record.directory, {
-            ...(record.taskId ? { taskId: record.taskId } : {}),
-            kind: "child",
-            createdAt: record.createdAt,
-            archivedAt: now,
-          });
-        }
-      } catch (error) {
-        this.logger.warn("session cleanup failed", {
-          sessionId: record.sessionId,
-          error: toErrorMessage(error),
-        });
-      }
-    }
-    await this.sessions.flush();
+  private sweepSessions(): Promise<void> {
+    return this.sessionManager.sweepSessions();
   }
 
-  private async finishSession(
+  private finishSession(
     sessionId: string,
     title: string,
     directory: string,
     purpose: string,
   ): Promise<void> {
-    if (this.config.opencode.keepSessions) {
-      if (this.config.opencode.sessionListVisible) {
-        this.logger.info("session kept for review", { sessionId, title, directory, purpose });
-      }
-      return;
-    }
-    await this.options.bridge.deleteSession(sessionId);
+    return this.sessionManager.finishSession(sessionId, title, directory, purpose);
   }
 
   private memoryBlock(platform: string, chatId: string | undefined, text: string): string {

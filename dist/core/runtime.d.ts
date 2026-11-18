@@ -22,8 +22,6 @@ export declare class ProxyRuntime {
     private readonly cursors;
     private readonly sessions;
     private readonly sessionManager;
-    private readonly childSlots;
-    private readonly taskChildCounts;
     private readonly chatNames;
     private readonly recentMessages;
     private readonly tasks;

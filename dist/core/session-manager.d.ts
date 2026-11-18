@@ -43,19 +43,23 @@ export interface SessionManagerOptions {
     config: AppConfig;
     logger: Logger;
     readOnlyPermission: SessionPermission[];
-    createChildSession(input: ChildInput): Promise<{
-        sessionId: string;
-        release: () => void;
-    }>;
-    finishSession(sessionId: string, title: string, directory: string, purpose: string): Promise<void>;
 }
 export declare class SessionManager {
     private readonly options;
     private readonly coordinatorLocks;
     private readonly workerLocks;
+    private readonly taskChildCounts;
+    private readonly childSlots;
     constructor(options: SessionManagerOptions);
     coordinatorSession(platform: string, chatId: string, directory: string, title: string): Promise<string>;
     createGroupSession(platform: string, chatId: string, directory: string): Promise<string>;
     createWorkerSession(input: WorkerInput): Promise<string>;
     runWorker(input: WorkerInput, promptText: string, signal?: AbortSignal): Promise<string>;
+    createChildSession(input: ChildInput): Promise<{
+        sessionId: string;
+        release: () => void;
+    }>;
+    archiveTaskChildren(taskId: string): Promise<void>;
+    sweepSessions(): Promise<void>;
+    finishSession(sessionId: string, title: string, directory: string, purpose: string): Promise<void>;
 }
