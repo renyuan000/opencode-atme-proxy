@@ -290,8 +290,12 @@ test("owner can view and recall a sent reply from the card", async () => {
     };
     const listed = await (runtime as any).onAction(action);
     assert.equal(listed.ok, true);
-    assert.equal((listed.card as any).view.sent[0].text, "私聊回复");
-    assert.equal((listed.card as any).view.pending.length, 0);
+    assert.equal(listed.card, undefined);
+    const management = JSON.parse(adapter.sent.at(-1) ?? "{}") as {
+      card: { view: { sent: Array<{ text: string }>; pending: unknown[] } };
+    };
+    assert.equal(management.card.view.sent[0]?.text, "私聊回复");
+    assert.equal(management.card.view.pending.length, 0);
     const recall = await (runtime as any).onAction({
       ...action,
       actionId: "a2",

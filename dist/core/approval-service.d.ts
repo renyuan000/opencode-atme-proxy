@@ -34,6 +34,7 @@ export declare class ApprovalService {
     onAction(action: PlatformAction): Promise<PlatformActionResult>;
     private handleAction;
     private resolvedCardFor;
+    private sendReplyManagementCard;
     private replyManagementResult;
     private replyManagementView;
     private approveTask;
