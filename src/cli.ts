@@ -123,7 +123,23 @@ async function runInit(): Promise<void> {
       ? "\n初始化完成，可以启动：atme-proxy start\n"
       : `\n还有 ${failed} 项未通过，按上面的 fix 处理后重跑：atme-proxy init\n`,
   );
+  printServiceHint();
   if (failed > 0) process.exitCode = 1;
+}
+
+function printServiceHint(): void {
+  if (process.platform !== "linux") return;
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const script = join(root, "deploy", "systemd", "install.sh");
+  if (!existsSync("/run/systemd/system")) {
+    process.stdout.write("开机自启：未检测到 systemd，见 README 3.1。\n");
+    return;
+  }
+  if (!existsSync(script)) {
+    process.stdout.write("开机自启：见 README 3.1（systemd）。\n");
+    return;
+  }
+  process.stdout.write(`开机自启（可选）：sudo bash ${script}\n`);
 }
 
 async function installAgents(): Promise<void> {

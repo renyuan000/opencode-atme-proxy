@@ -260,16 +260,26 @@ nohup npm start >> ~/.local/state/opencode-atme-proxy/daemon.log 2>&1 &
 
 ### 3.1 开机自启（WSL2 + systemd）
 
-WSL2 已启用 systemd 时，用仓库自带 unit：
+WSL2 已启用 systemd 时，用仓库自带安装脚本：
 
 ```bash
 sudo bash deploy/systemd/install.sh
 ```
 
-会安装并启用两个服务：
+脚本会按当前环境**生成**两个 unit，而不是复制固定路径：
 
 - `opencode-serve.service`：`opencode serve --port 19876`
-- `atme-proxy.service`：`atme-proxy start`，依赖前者
+- `atme-proxy.service`：`node <repo>/dist/cli.js start`，依赖前者
+
+默认使用 `sudo` 前的用户、当前仓库路径、当前 `node`/`opencode`；需要覆盖时：
+
+```bash
+sudo ATME_SERVICE_USER=myuser ATME_REPO_DIR=/path/to/repo \
+  ATME_NODE_BIN=/path/to/node ATME_OPENCODE_BIN=/path/to/opencode \
+  bash deploy/systemd/install.sh
+```
+
+`atme-proxy init` / `setup` 结束时会提示这条自启命令。服务读取该用户的默认配置（`~/.config/opencode-atme-proxy/config.json`），所以请用运行机器人服务的同一用户执行 init/setup。
 
 日志用 journald：
 
@@ -293,7 +303,7 @@ Windows 登录时自动拉起 WSL：任务计划程序 → 创建任务 → 触�
 -d <发行版名> -u root --exec /bin/true
 ```
 
-发行版名用 `wsl.exe -l -v` 查看。unit 默认按 `root` 和当前仓库路径写；换用户或路径时改 `deploy/systemd/*.service`。
+发行版名用 `wsl.exe -l -v` 查看。安装脚本会按当前用户、仓库路径和可执行文件位置生成 unit；换环境时重新运行脚本或用上面的 `ATME_*` 变量覆盖。
 
 开发模式：
 

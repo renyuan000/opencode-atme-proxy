@@ -77,7 +77,8 @@ export async function runSetup(defaults = {}) {
     output.write("  atme-proxy chats\n");
     output.write("  atme-proxy doctor\n");
     output.write("  atme-proxy agents\n");
-    output.write("  atme-proxy start\n\n");
+    output.write("  atme-proxy start\n");
+    output.write("\n开机自启（可选）：sudo bash deploy/systemd/install.sh（仓库根目录；详见 README 3.1）\n\n");
 }
 function maskIfSecret(label, value) {
     if (/secret|key|password/i.test(label)) {

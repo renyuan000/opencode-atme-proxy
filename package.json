@@ -13,7 +13,8 @@
     "README.md",
     "config.example.json",
     ".opencode/agents",
-    "scripts"
+    "scripts",
+    "deploy"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
