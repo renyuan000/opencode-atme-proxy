@@ -191,7 +191,12 @@ export class ReplyService {
             : "";
         const memoryBlock = this.options.contextService.memoryBlock(message.platform, message.chat.id, `${message.text} ${this.options.config.filter.profile.projects.join(" ")}`);
         if (message.chat.kind === "group") {
-            await this.options.refreshSummary(message.platform, message.chat.id);
+            void this.options.refreshSummary(message.platform, message.chat.id).catch((error) => {
+                this.options.logger.warn("group summary refresh failed during reply", {
+                    chatId: message.chat.id,
+                    error: toErrorMessage(error),
+                });
+            });
         }
         const summaryBlock = message.chat.kind === "group"
             ? this.options.contextService.summaryText(message.platform, message.chat.id)

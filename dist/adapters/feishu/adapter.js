@@ -608,34 +608,21 @@ export function renderApprovalCard(view) {
 }
 export function renderReplyManagementCard(view) {
     const elements = [];
-    const groupTitle = (label) => {
+    const groupHeader = (label) => {
         elements.push({
             tag: "div",
             text: { tag: "lark_md", content: `<font color='blue'>**${label}**</font>` },
         });
     };
-    const textBlock = (lines) => ({
-        tag: "column",
-        width: "weighted",
-        weight: 3,
-        vertical_align: "top",
-        padding: "8px",
-        elements: [{ tag: "div", text: { tag: "plain_text", content: lines.join("\n") } }],
-    });
-    const actionBlock = (actions) => ({
-        tag: "column",
-        width: "auto",
-        vertical_align: "top",
-        padding: "8px",
-        elements: [{ tag: "action", actions }],
-    });
-    const itemBox = (lines, actions) => ({
-        tag: "column_set",
-        flex_mode: "none",
-        horizontal_spacing: "8px",
-        background_style: "grey",
-        columns: [textBlock(lines), actionBlock(actions)],
-    });
+    const itemText = (lines) => {
+        elements.push({
+            tag: "div",
+            text: { tag: "plain_text", content: lines.join("\n") },
+        });
+    };
+    const itemActions = (actions) => {
+        elements.push({ tag: "action", actions });
+    };
     const pendingByGroup = new Map();
     for (const item of view.pending) {
         const group = pendingByGroup.get(item.chatLabel) ?? [];
@@ -649,27 +636,21 @@ export function renderReplyManagementCard(view) {
         sentByGroup.set(item.chatLabel, group);
     }
     if (view.pending.length === 0 && view.sent.length === 0) {
-        elements.push({
-            tag: "div",
-            text: { tag: "plain_text", content: "当前没有待审批草稿，也没有可撤回回复。" },
-        });
+        itemText(["当前没有待审批草稿，也没有可撤回回复。"]);
     }
     if (view.pending.length > 0) {
-        elements.push({ tag: "hr" });
-        elements.push({
-            tag: "div",
-            text: { tag: "lark_md", content: "**待审批草稿**" },
-        });
+        elements.push({ tag: "div", text: { tag: "lark_md", content: "**待审批草稿**" } });
         for (const [group, items] of pendingByGroup) {
-            groupTitle(group);
+            groupHeader(group);
             for (const item of items.slice(0, 5)) {
                 const time = new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false });
-                elements.push(itemBox([
+                itemText([
                     `发送人：${item.senderLabel}`,
                     `时间：${time}`,
                     `草稿：${item.draft.slice(0, 160)}`,
                     `原消息：${item.excerpt.slice(0, 120)}`,
-                ], [
+                ]);
+                itemActions([
                     {
                         tag: "button",
                         text: { tag: "plain_text", content: "取消此草稿" },
@@ -682,33 +663,33 @@ export function renderReplyManagementCard(view) {
                         type: "default",
                         value: { a: "restore_approval", t: item.taskId, h: item.planHash },
                     },
-                ]));
+                ]);
             }
         }
     }
     if (view.sent.length > 0) {
-        elements.push({ tag: "hr" });
         elements.push({
             tag: "div",
             text: { tag: "lark_md", content: "**最近已发送（仅可撤回）**" },
         });
         for (const [group, items] of sentByGroup) {
-            groupTitle(group);
+            groupHeader(group);
             for (const item of items.slice(0, 8)) {
                 const time = new Date(item.sentAt).toLocaleString("zh-CN", { hour12: false });
-                elements.push(itemBox([
+                itemText([
                     `发送人：${item.senderLabel}`,
                     `时间：${time}`,
                     `回复：${item.text.slice(0, 160)}`,
                     `原消息：${item.sourceText.slice(0, 120)}`,
-                ], [
+                ]);
+                itemActions([
                     {
                         tag: "button",
                         text: { tag: "plain_text", content: "撤回此回复" },
                         type: "danger",
                         value: { a: "recall_reply", t: "__manage__", r: item.id },
                     },
-                ]));
+                ]);
             }
         }
     }
