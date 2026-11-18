@@ -20,9 +20,7 @@ import type { LlmClient, Profile } from "./relevance.js";
 import {
   OpenAiCompatibleClient,
   RelevanceService,
-  buildBotIntentPrompt,
   makeDedupKey,
-  parseBotIntent,
   parseJsonLoose,
   type KeywordRule,
 } from "./relevance.js";
@@ -62,6 +60,7 @@ import { ExecutionService } from "./execution-service.js";
 import { OwnerCommandService } from "./owner-command-service.js";
 import { ReplyService } from "./reply-service.js";
 import { TaskService } from "./task-service.js";
+import { IntentService } from "./intent-service.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
@@ -150,6 +149,7 @@ export class ProxyRuntime {
   private readonly ownerCommandService: OwnerCommandService;
   private readonly replyService: ReplyService;
   private readonly taskService: TaskService;
+  private readonly intentService: IntentService;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
@@ -436,6 +436,15 @@ export class ProxyRuntime {
       minTaskConfidence: this.config.filter.minTaskConfidence,
       minReviewConfidence: this.config.filter.minReviewConfidence,
       logger: this.logger.child("relevance"),
+    });
+    this.intentService = new IntentService({
+      config: this.config,
+      relevance: () => this.relevance,
+      llm,
+      filterEnabled: this.filterEnabled,
+      chatContext: this.chatContext,
+      replyOptions: this.replyOptions,
+      logger: this.logger.child("intent"),
     });
   }
 
@@ -1185,86 +1194,11 @@ export class ProxyRuntime {
     });
   }
 
-  private async decideBotIntent(
+  private decideBotIntent(
     message: IncomingMessage,
     signal: AbortSignal,
   ): Promise<BotIntent> {
-    if (!this.config.botReply.enabled) {
-      return {
-        action: "answer",
-        kind: "question",
-        style: detectReplyStyle(message, this.replyOptions),
-        confidence: 1,
-        reason: "necessity check disabled",
-      };
-    }
-    if (!this.config.filter.enabled) {
-      const trivial = /^(谢谢|收到|好的| ok|ok|测试一下|test)[！!。.\s]*$/i.test(message.text.trim());
-      return {
-        action: trivial ? "no_reply" : "answer",
-        kind: trivial ? "chat" : "question",
-        style: detectReplyStyle(message, this.replyOptions),
-        confidence: 0.5,
-        reason: trivial ? "寒暄/确认，无需回复" : "未启用筛选模型，按普通问题回答",
-      };
-    }
-    const recent = this.config.context.enabled
-      ? this.chatContext
-          .recent(`${message.platform}:${message.chat.id}`, 6, message.messageId)
-          .map((item) => `${item.senderName ?? item.senderId}: ${truncate(item.text, 160)}`)
-      : [];
-    try {
-      const completion = await this.llm.complete(
-        buildBotIntentPrompt({
-          text: message.text,
-          history: recent,
-          profile: {
-            name: this.config.filter.profile.name,
-            role: this.config.filter.profile.role,
-            keywords: this.config.filter.profile.keywords,
-            projects: this.config.filter.profile.projects,
-            tasks: this.config.filter.profile.tasks,
-          },
-          allowNoReply: this.config.botReply.allowNoReply,
-        }),
-        signal,
-      );
-      const intent = parseBotIntent(completion.text, {
-        text: message.text,
-        history: recent,
-        profile: {
-          name: this.config.filter.profile.name,
-          role: this.config.filter.profile.role,
-          keywords: this.config.filter.profile.keywords,
-          projects: this.config.filter.profile.projects,
-          tasks: this.config.filter.profile.tasks,
-        },
-        allowNoReply: this.config.botReply.allowNoReply,
-      });
-      if (
-        intent.action === "answer" &&
-        intent.confidence < this.config.botReply.minAnswerConfidence
-      ) {
-        return {
-          ...intent,
-          action: this.config.botReply.escalateWhenUnsure ? "need_decision" : "no_reply",
-          reason: `${intent.reason} (low confidence ${intent.confidence.toFixed(2)})`,
-        };
-      }
-      return intent;
-    } catch (error) {
-      this.logger.warn("bot intent classification failed", {
-        messageId: message.messageId,
-        error: toErrorMessage(error),
-      });
-      return {
-        action: this.config.botReply.escalateWhenUnsure ? "need_decision" : "no_reply",
-        kind: "other",
-        style: detectReplyStyle(message, this.replyOptions),
-        confidence: 0,
-        reason: "intent classification failed",
-      };
-    }
+    return this.intentService.decideBotIntent(message, signal);
   }
 
   private async analyzeBotRequest(
@@ -1687,21 +1621,11 @@ export class ProxyRuntime {
     if (handled) await this.markProcessed(message);
   }
 
-  private async classifyOne(
+  private classifyOne(
     message: IncomingMessage,
     signal: AbortSignal,
   ): Promise<Classification | undefined> {
-    if (!this.filterEnabled) return undefined;
-    try {
-      const { items } = await this.relevance.classify([message], signal);
-      return items.find((item) => item.messageId === message.messageId);
-    } catch (error) {
-      this.logger.error("classification failed; falling back to approval", {
-        messageId: message.messageId,
-        error: toErrorMessage(error),
-      });
-      return undefined;
-    }
+    return this.intentService.classifyOne(message, signal);
   }
 
   private ensureTask(
