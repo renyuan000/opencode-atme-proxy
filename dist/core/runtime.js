@@ -429,7 +429,7 @@ export class ProxyRuntime {
             audit: this.audit,
             prepare: async (message, signal) => {
                 await this.waitForBurst(message, signal);
-                const burst = await this.applyBurstGrouping(message, signal);
+                const burst = await this.applyBurstGrouping(message);
                 return { enriched: mergeBurst(message, burst), burst };
             },
             markProcessed: (message) => this.markProcessed(message),
@@ -849,7 +849,7 @@ export class ProxyRuntime {
         }
         return result;
     }
-    async waitForBurst(message, signal) {
+    async waitForBurst(_message, signal) {
         if (!this.config.context.burstGrouping)
             return;
         const waitMs = this.config.context.burstWaitMs;
@@ -864,7 +864,7 @@ export class ProxyRuntime {
             }, { once: true });
         });
     }
-    async applyBurstGrouping(message, signal) {
+    async applyBurstGrouping(message) {
         const candidates = this.collectBurst(message);
         if (candidates.length === 0)
             return [];
@@ -904,36 +904,14 @@ export class ProxyRuntime {
     handleMeMention(message, signal) {
         return this.meMentionFlow.handle(message, signal);
     }
-    shouldReplyToMention(message, classification) {
-        return this.replyService.shouldReplyToMention(message, classification);
-    }
-    createReplyTask(message, classification) {
-        return this.replyService.createReplyTask(message, classification);
-    }
-    sendReplyApproval(task, message, draftSource = message, depth = "answer") {
-        return this.replyService.sendReplyApproval(task, message, draftSource, depth);
-    }
     handlePolledBatch(messages) {
         return this.scanService.handlePolledBatch(messages);
     }
     handleGroupScan(message, signal) {
         return this.scanService.handleGroupScan(message, signal);
     }
-    classifyOne(message, signal) {
-        return this.intentService.classifyOne(message, signal);
-    }
-    ensureTask(message, classification, source) {
-        return this.taskService.ensureTask(message, classification, source);
-    }
     analyzeTask(task) {
         return this.taskService.analyzeTask(task);
-    }
-    async createApprovalCard(task, source) {
-        const analysis = await this.latestAnalysis(task.id);
-        if (!analysis)
-            return;
-        await this.sendApproval(task, analysis);
-        void source;
     }
     async sendApproval(task, analysis) {
         if (this.pending.get(`${task.id}:develop`) || this.pending.get(`${task.id}:reply`))
@@ -1051,26 +1029,11 @@ export class ProxyRuntime {
         const version = index?.version ?? 1;
         return readJsonFile(join(dir, `${version}.json`), undefined);
     }
-    coordinatorSession(platform, chatId, directory, title) {
-        return this.sessionManager.coordinatorSession(platform, chatId, directory, title);
-    }
-    runWorker(input, promptText, signal) {
-        return this.sessionManager.runWorker(input, promptText, signal);
-    }
     createChildSession(input) {
         return this.sessionManager.createChildSession(input);
     }
-    archiveTaskChildren(taskId) {
-        return this.sessionManager.archiveTaskChildren(taskId);
-    }
     sweepSessions() {
         return this.sessionManager.sweepSessions();
-    }
-    finishSession(sessionId, title, directory, purpose) {
-        return this.sessionManager.finishSession(sessionId, title, directory, purpose);
-    }
-    memoryBlock(platform, chatId, text) {
-        return this.contextService.memoryBlock(platform, chatId, text);
     }
     rememberFromMention(message, intent, analysis) {
         if (!this.config.memory.enabled || !this.config.memory.extract)
@@ -1121,9 +1084,6 @@ export class ProxyRuntime {
     }
     createGroupSession(platform, chatId, directory) {
         return this.sessionManager.createGroupSession(platform, chatId, directory);
-    }
-    summaryText(platform, chatId) {
-        return this.contextService.summaryText(platform, chatId);
     }
     async updateGroupSummary(platform, chatId) {
         if (this.config.groupSession?.enabled === false)
@@ -1206,15 +1166,6 @@ export class ProxyRuntime {
             action: "group_summary_updated",
             details: { chatId, messages: messages.length },
         });
-    }
-    evidenceRecall(message) {
-        return this.contextService.evidenceRecall(message);
-    }
-    quotedContext(message) {
-        return this.contextService.quotedContext(message);
-    }
-    analysisContext(task) {
-        return this.contextService.analysisContext(task);
     }
     async resolveProject(chatId) {
         const bound = this.projectStore.get(chatId);

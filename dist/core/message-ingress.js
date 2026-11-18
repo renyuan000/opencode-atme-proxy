@@ -4,7 +4,7 @@ export class MessageIngress {
     constructor(options) {
         this.options = options;
     }
-    async handle(message, chatName, wait = false) {
+    async handle(message, _chatName, wait = false) {
         const dedupKey = `${message.platform}:${message.messageId}`;
         if (this.options.dedup.has(dedupKey) || this.options.activeMessageIds.has(dedupKey)) {
             return;

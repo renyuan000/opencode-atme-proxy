@@ -27,7 +27,7 @@ export interface MessageIngressOptions {
 export class MessageIngress {
   constructor(private readonly options: MessageIngressOptions) {}
 
-  async handle(message: IncomingMessage, chatName: string, wait = false): Promise<void> {
+  async handle(message: IncomingMessage, _chatName: string, wait = false): Promise<void> {
     const dedupKey = `${message.platform}:${message.messageId}`;
     if (this.options.dedup.has(dedupKey) || this.options.activeMessageIds.has(dedupKey)) {
       return;

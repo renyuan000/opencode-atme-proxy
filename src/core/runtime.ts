@@ -1,9 +1,6 @@
 import { join } from "node:path";
 import type {
-  AnalysisVerification,
   BotIntent,
-  Classification,
-  ExecutionRecord,
   IncomingMessage,
   PlatformAction,
   PlatformActionResult,
@@ -11,23 +8,19 @@ import type {
   TaskRecord,
 } from "./types.js";
 import type { ChatMembershipEvent, PlatformAdapter } from "./ports.js";
-import type { AppConfig, LoadedConfig, RepoConfig } from "./config.js";
+import type { AppConfig, LoadedConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import { createLogger } from "./logger.js";
 import type { OpenCodeBridge } from "./opencode.js";
-import { repoById } from "./opencode.js";
 import type { LlmClient, Profile } from "./relevance.js";
 import {
   OpenAiCompatibleClient,
   RelevanceService,
-  makeDedupKey,
   parseJsonLoose,
   type KeywordRule,
 } from "./relevance.js";
 import type { ReplyStyle, ReplyStyleOptions } from "./reply-style.js";
 import {
-  buildStyleInstruction,
-  detectReplyDepth,
   detectReplyStyle,
   enforceReplyLength,
   type ReplyDepth,
@@ -42,7 +35,7 @@ import { ConcurrentDispatcher } from "./dispatcher.js";
 import { PollingService } from "./poller.js";
 import type { PendingCard } from "./pending-store.js";
 import { PendingStore } from "./pending-store.js";
-import { Semaphore, TokenBucket } from "./rate-limit.js";
+import { TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
@@ -53,8 +46,8 @@ import { EvidenceStore } from "./evidence-store.js";
 import { GroupContextStore, type GroupSummary } from "./group-context.js";
 import { MemoryStore, type MemoryKind } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
-import { SessionManager, type ChildInput, type WorkerInput } from "./session-manager.js";
-import { ContextService, type AnalysisContext } from "./context-service.js";
+import { SessionManager, type ChildInput } from "./session-manager.js";
+import { ContextService } from "./context-service.js";
 import { ApprovalService } from "./approval-service.js";
 import { ExecutionService } from "./execution-service.js";
 import { OwnerCommandService } from "./owner-command-service.js";
@@ -67,27 +60,16 @@ import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
-import { parseAnalysis } from "./analysis.js";
-import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
-import {
-  deterministicVerification,
-  mergeVerification,
-  parseVerification,
-} from "./analysis-verify.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerAccessService } from "./owner-access-service.js";
-import { canTransition } from "./task-state.js";
 import {
   readJsonFile,
-  formatLocalTime,
   sha256,
-  stableUuid,
   toErrorMessage,
   redactPreview,
   truncate,
   truncateMiddle,
-  writeJsonAtomic,
 } from "./util.js";
 
 const ASSISTANT_LABEL = "（助手代答）";
@@ -519,7 +501,7 @@ export class ProxyRuntime {
       audit: this.audit,
       prepare: async (message, signal) => {
         await this.waitForBurst(message, signal);
-        const burst = await this.applyBurstGrouping(message, signal);
+        const burst = await this.applyBurstGrouping(message);
         return { enriched: mergeBurst(message, burst), burst };
       },
       markProcessed: (message) => this.markProcessed(message),
@@ -954,7 +936,7 @@ export class ProxyRuntime {
     return result;
   }
 
-  private async waitForBurst(message: IncomingMessage, signal: AbortSignal): Promise<void> {
+  private async waitForBurst(_message: IncomingMessage, signal: AbortSignal): Promise<void> {
     if (!this.config.context.burstGrouping) return;
     const waitMs = this.config.context.burstWaitMs;
     if (signal.aborted) return;
@@ -974,7 +956,6 @@ export class ProxyRuntime {
 
   private async applyBurstGrouping(
     message: IncomingMessage,
-    signal: AbortSignal,
   ): Promise<IncomingMessage[]> {
     const candidates = this.collectBurst(message);
     if (candidates.length === 0) return [];
@@ -1023,29 +1004,6 @@ export class ProxyRuntime {
     return this.meMentionFlow.handle(message, signal);
   }
 
-  private shouldReplyToMention(
-    message: IncomingMessage,
-    classification: Classification | undefined,
-  ): Promise<{ reply: boolean; reason: string }> {
-    return this.replyService.shouldReplyToMention(message, classification);
-  }
-
-  private createReplyTask(
-    message: IncomingMessage,
-    classification: Classification | undefined,
-  ): Promise<TaskRecord> {
-    return this.replyService.createReplyTask(message, classification);
-  }
-
-  private sendReplyApproval(
-    task: TaskRecord,
-    message: IncomingMessage,
-    draftSource: IncomingMessage = message,
-    depth: ReplyDepth = "answer",
-  ): Promise<void> {
-    return this.replyService.sendReplyApproval(task, message, draftSource, depth);
-  }
-
   private handlePolledBatch(messages: IncomingMessage[]): Promise<void> {
     return this.scanService.handlePolledBatch(messages);
   }
@@ -1057,30 +1015,8 @@ export class ProxyRuntime {
     return this.scanService.handleGroupScan(message, signal);
   }
 
-  private classifyOne(
-    message: IncomingMessage,
-    signal: AbortSignal,
-  ): Promise<Classification | undefined> {
-    return this.intentService.classifyOne(message, signal);
-  }
-
-  private ensureTask(
-    message: IncomingMessage,
-    classification: Classification | undefined,
-    source: TaskRecord["source"],
-  ): Promise<TaskRecord | undefined> {
-    return this.taskService.ensureTask(message, classification, source);
-  }
-
   private analyzeTask(task: TaskRecord): Promise<void> {
     return this.taskService.analyzeTask(task);
-  }
-
-  private async createApprovalCard(task: TaskRecord, source: string): Promise<void> {
-    const analysis = await this.latestAnalysis(task.id);
-    if (!analysis) return;
-    await this.sendApproval(task, analysis);
-    void source;
   }
 
   private async sendApproval(
@@ -1206,46 +1142,12 @@ export class ProxyRuntime {
     return readJsonFile<TaskAnalysis | undefined>(join(dir, `${version}.json`), undefined);
   }
 
-  private coordinatorSession(
-    platform: string,
-    chatId: string,
-    directory: string,
-    title: string,
-  ): Promise<string> {
-    return this.sessionManager.coordinatorSession(platform, chatId, directory, title);
-  }
-
-  private runWorker(
-    input: WorkerInput,
-    promptText: string,
-    signal?: AbortSignal,
-  ): Promise<string> {
-    return this.sessionManager.runWorker(input, promptText, signal);
-  }
-
   private createChildSession(input: ChildInput): Promise<{ sessionId: string; release: () => void }> {
     return this.sessionManager.createChildSession(input);
   }
 
-  private archiveTaskChildren(taskId: string): Promise<void> {
-    return this.sessionManager.archiveTaskChildren(taskId);
-  }
-
   private sweepSessions(): Promise<void> {
     return this.sessionManager.sweepSessions();
-  }
-
-  private finishSession(
-    sessionId: string,
-    title: string,
-    directory: string,
-    purpose: string,
-  ): Promise<void> {
-    return this.sessionManager.finishSession(sessionId, title, directory, purpose);
-  }
-
-  private memoryBlock(platform: string, chatId: string | undefined, text: string): string {
-    return this.contextService.memoryBlock(platform, chatId, text);
   }
 
   private rememberFromMention(
@@ -1304,10 +1206,6 @@ export class ProxyRuntime {
     directory: string,
   ): Promise<string> {
     return this.sessionManager.createGroupSession(platform, chatId, directory);
-  }
-
-  private summaryText(platform: string, chatId: string): string {
-    return this.contextService.summaryText(platform, chatId);
   }
 
   private async updateGroupSummary(platform: string, chatId: string): Promise<void> {
@@ -1388,18 +1286,6 @@ export class ProxyRuntime {
       action: "group_summary_updated",
       details: { chatId, messages: messages.length },
     });
-  }
-
-  private evidenceRecall(message: IncomingMessage): string[] {
-    return this.contextService.evidenceRecall(message);
-  }
-
-  private quotedContext(message: IncomingMessage): string[] {
-    return this.contextService.quotedContext(message);
-  }
-
-  private analysisContext(task: TaskRecord): Promise<AnalysisContext> {
-    return this.contextService.analysisContext(task);
   }
 
   private async resolveProject(chatId: string): Promise<{

@@ -23,7 +23,7 @@ export interface MessageIngressOptions {
 export declare class MessageIngress {
     private readonly options;
     constructor(options: MessageIngressOptions);
-    handle(message: IncomingMessage, chatName: string, wait?: boolean): Promise<void>;
+    handle(message: IncomingMessage, _chatName: string, wait?: boolean): Promise<void>;
     private shouldStoreContext;
     private isMediaMessage;
     private isMentionMe;
