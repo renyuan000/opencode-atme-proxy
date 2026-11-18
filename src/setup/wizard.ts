@@ -114,7 +114,7 @@ export async function runSetup(defaults: WizardDefaults = {}): Promise<void> {
   output.write("  atme-proxy doctor\n");
   output.write("  atme-proxy agents\n");
   output.write("  atme-proxy start\n");
-  output.write("\n开机自启（可选）：sudo bash deploy/systemd/install.sh（仓库根目录；详见 README 3.1）\n\n");
+  output.write("\n开机自启（可选）：运行 atme-proxy init 会提示 systemd 安装命令；详见 README 3.1。\n\n");
 }
 
 function maskIfSecret(label: string, value: string): string {

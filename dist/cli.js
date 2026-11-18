@@ -122,6 +122,9 @@ function printServiceHint() {
         return;
     }
     process.stdout.write(`开机自启（可选）：sudo bash ${script}\n`);
+    if (script.includes("/_npx/") || script.includes("/npm-cache/")) {
+        process.stdout.write("注意：当前是 npm exec 临时缓存路径，长期服务请先全局安装或 clone 仓库。\n");
+    }
 }
 async function installAgents() {
     const source = join(dirname(fileURLToPath(import.meta.url)), "..", ".opencode", "agents");

@@ -95,8 +95,10 @@ npx atme-proxy version
 
 安装脚本说明：
 
-- 仓库已带预构建 `dist/`，`prepare` 找不到 `tsc` 时会直接使用 `dist`，不会因缺开发依赖失败。
+- 仓库已带预构建 `dist/`，`prepare` 找不到 `tsc` 或构建失败时会直接使用 `dist`，不会因缺开发依赖失败。
 - npm 11 仍可能提示 `install-scripts ... allowScripts`；这是安全提示，不是错误。
+- `npm exec` 的安装目录是缓存，可能被清理；**长期运行/配置 systemd 请用全局安装或 clone**，不要把 systemd 指向 `_npx` 路径。
+- `deploy/systemd/*.service` 是示例；`install.sh` 会按当前环境重新生成 unit。
 - 如果公司 npm 策略禁止 `prepare`，直接克隆安装：
 
 ```bash
@@ -266,7 +268,7 @@ WSL2 已启用 systemd 时，用仓库自带安装脚本：
 sudo bash deploy/systemd/install.sh
 ```
 
-脚本会按当前环境**生成**两个 unit，而不是复制固定路径：
+脚本会按当前环境**生成**两个 unit，而不是复制固定路径；`deploy/systemd/*.service` 仅作示例。长期服务请用全局安装或 clone，不要用 `npm exec` 的临时缓存路径。
 
 - `opencode-serve.service`：`opencode serve --port 19876`
 - `atme-proxy.service`：`node <repo>/dist/cli.js start`，依赖前者

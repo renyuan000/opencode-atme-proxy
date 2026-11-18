@@ -17,6 +17,7 @@ if ! id "$service_user" >/dev/null 2>&1; then
 fi
 home_dir="$(getent passwd "$service_user" | cut -d: -f6)"
 home_dir="${home_dir:-/root}"
+config_path="${ATME_CONFIG:-$home_dir/.config/opencode-atme-proxy/config.json}"
 
 node_bin="${ATME_NODE_BIN:-$(command -v node || true)}"
 if [[ -z "$node_bin" ]]; then
@@ -78,6 +79,7 @@ Type=simple
 User=$service_user
 WorkingDirectory=$repo_dir
 Environment=HOME=$home_dir
+Environment=ATME_CONFIG=$config_path
 Environment=PATH=$node_dir:$opencode_dir:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=$node_bin $repo_dir/dist/cli.js start
 Restart=always

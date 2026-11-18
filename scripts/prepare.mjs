@@ -7,6 +7,13 @@ if (existsSync(tsc)) {
   const result = spawnSync(process.execPath, [tsc, "-p", "tsconfig.build.json"], {
     stdio: "inherit",
   });
+  if ((result.status ?? 1) === 0) process.exit(0);
+  if (existsSync("dist/cli.js")) {
+    console.warn(
+      "[atme-proxy] build failed; using the prebuilt dist/ shipped with the package",
+    );
+    process.exit(0);
+  }
   process.exit(result.status ?? 1);
 }
 
