@@ -598,12 +598,6 @@ export class ProxyRuntime {
             textPreview: redactPreview(message.text),
         });
         if (message.chat.kind === "direct") {
-            if (!this.config.directChat.enabled) {
-                this.logger.info("ignoring direct message: direct chat disabled", {
-                    senderId: message.sender.id,
-                });
-                return;
-            }
             if (await this.claimOwner(message)) {
                 await this.markProcessed(message);
                 return;
