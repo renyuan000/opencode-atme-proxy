@@ -98,7 +98,9 @@ export class ApprovalService {
       if (!(await this.isAuthorizedActor(action.actor))) {
         return { ok: false, toast: "无权操作" };
       }
-      return this.sendReplyManagementCard();
+      return (await this.sendReplyManagementCard())
+        ? { ok: true, toast: "回复管理已发送" }
+        : { ok: false, toast: "回复管理卡片发送失败" };
     }
     if (action.action === "cancel_pending") {
       if (!(await this.isAuthorizedActor(action.actor))) {
@@ -311,20 +313,20 @@ export class ApprovalService {
     return rendered.kind === "card" ? rendered.card : undefined;
   }
 
-  private async sendReplyManagementCard(): Promise<PlatformActionResult> {
+  async sendReplyManagementCard(): Promise<boolean> {
     const ownerId = this.options.ownerOpenId();
-    if (!ownerId) return { ok: false, toast: "owner 未绑定" };
+    if (!ownerId) return false;
     const view = await this.replyManagementView();
     const message = this.options.platform.renderReplyManagement?.(view);
-    if (!message) return { ok: false, toast: "当前平台不支持回复管理卡片" };
+    if (!message) return false;
     try {
       await this.options.platform.send({ kind: "user", userId: ownerId }, message);
-      return { ok: true, toast: "回复管理已发送" };
+      return true;
     } catch (error) {
       this.options.logger.warn("failed to send reply management card", {
         error: error instanceof Error ? error.message : String(error),
       });
-      return { ok: false, toast: "回复管理卡片发送失败" };
+      return false;
     }
   }
 

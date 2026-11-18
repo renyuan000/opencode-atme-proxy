@@ -271,6 +271,7 @@ export class ProxyRuntime {
             analysisTimeoutMs: this.config.concurrency.analysisTimeoutMs,
             askOpenCode: (message, style, signal) => this.askOpenCode(message, style, signal),
             approveReply: (action, pending) => this.approveReply(action, pending),
+            sendReplyManagementCard: () => this.approvalService.sendReplyManagementCard(),
             logger: this.logger.child("owner-command"),
         });
         const profile = {

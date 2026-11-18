@@ -19,7 +19,12 @@ export class OwnerCommandService {
                 "/重写 <要求>           重新生成最近一条草稿",
                 "/发送                  发送最近一条草稿",
                 "/取消 [编号|taskId]    取消指定或最近一条",
+                "/回复管理              查看并撤回最近回复",
             ].join("\n");
+        }
+        if (command.command === "replies") {
+            const sent = await this.options.sendReplyManagementCard();
+            return sent ? "已发送回复管理卡片。" : "回复管理卡片发送失败。";
         }
         const list = this.replyPendingList();
         if (command.command === "list") {

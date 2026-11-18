@@ -11,6 +11,7 @@ test("parses slash commands", () => {
   assert.deepEqual(parseOwnerCommand("/发送"), { command: "send", arg: "" });
   assert.deepEqual(parseOwnerCommand("/取消"), { command: "cancel", arg: "" });
   assert.deepEqual(parseOwnerCommand("/列表"), { command: "list", arg: "" });
+  assert.deepEqual(parseOwnerCommand("/回复管理"), { command: "replies", arg: "" });
   assert.deepEqual(parseOwnerCommand("/取消 2"), { command: "cancel", arg: "2" });
   assert.deepEqual(parseOwnerCommand("／帮助"), { command: "help", arg: "" });
 });
