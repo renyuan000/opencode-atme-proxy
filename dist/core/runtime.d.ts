@@ -34,7 +34,6 @@ export declare class ProxyRuntime {
     private readonly replyOptions;
     private readonly activeMessageIds;
     private readonly pending;
-    private readonly executionSlots;
     private readonly poller;
     private readonly executor;
     private started;
@@ -47,6 +46,7 @@ export declare class ProxyRuntime {
     private readonly groupContext;
     private readonly contextService;
     private readonly approvalService;
+    private readonly executionService;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
@@ -119,11 +119,7 @@ export declare class ProxyRuntime {
     private sweepExpiredApprovals;
     private onAction;
     private approveReply;
-    private executeTask;
     private latestAnalysis;
-    private executeInWorktree;
-    private reviewExecution;
-    private runOpenCodeExecution;
     private coordinatorSession;
     private runWorker;
     private createChildSession;

@@ -58,6 +58,7 @@ import { SenderLimiter } from "./sender-limiter.js";
 import { SessionManager, type ChildInput, type WorkerInput } from "./session-manager.js";
 import { ContextService, type AnalysisContext } from "./context-service.js";
 import { ApprovalService } from "./approval-service.js";
+import { ExecutionService } from "./execution-service.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
@@ -130,7 +131,6 @@ export class ProxyRuntime {
   private readonly replyOptions: ReplyStyleOptions;
   private readonly activeMessageIds = new Set<string>();
   private readonly pending: PendingStore;
-  private readonly executionSlots: Semaphore;
   private readonly poller: PollingService;
   private readonly executor: GitExecutor;
   private started = false;
@@ -143,6 +143,7 @@ export class ProxyRuntime {
   private readonly groupContext: GroupContextStore;
   private readonly contextService: ContextService;
   private readonly approvalService: ApprovalService;
+  private readonly executionService: ExecutionService;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
@@ -206,7 +207,7 @@ export class ProxyRuntime {
       sendToApprover: (text) => this.sendToApprover(text),
       approveReply: (action, pending) => this.approveReply(action, pending),
       startExecution: (task, planHash) => {
-        this.track(this.executeTask(task, planHash)).catch((error) => {
+        this.track(this.executionService.executeTask(task, planHash)).catch((error) => {
           this.logger.error("execution failed", {
             taskId: task.id,
             error: toErrorMessage(error),
@@ -276,7 +277,6 @@ export class ProxyRuntime {
       this.config.platforms.feishu.rateLimit.sendPerSecond,
       this.config.platforms.feishu.rateLimit.burst,
     );
-    this.executionSlots = new Semaphore(this.config.policy.maxConcurrentExecutions);
     this.groupIds = new Set(
       this.config.platforms.feishu.groups
         .filter((group) => group.enabled)
@@ -320,6 +320,26 @@ export class ProxyRuntime {
       worktreeRoot: join(this.stateDir, "worktrees"),
       timeoutMs: this.config.policy.executionTimeoutMinutes * 60_000,
       logger: this.logger.child("executor"),
+    });
+    this.executionService = new ExecutionService({
+      config: this.config,
+      stateDir: this.stateDir,
+      tasks: this.tasks,
+      approvals: this.approvals,
+      audit: this.audit,
+      executor: this.executor,
+      bridge: this.options.bridge,
+      sessionManager: this.sessionManager,
+      logger: this.logger.child("execution"),
+      executionPermission: EXECUTION_PERMISSION,
+      readOnlyPermission: READ_ONLY_PERMISSION,
+      latestAnalysis: (taskId) => this.latestAnalysis(taskId),
+      resolveProject: async (chatId) => {
+        const project = await this.resolveProject(chatId);
+        return { worktree: project.worktree, resolved: project.resolved };
+      },
+      sendToApprover: (text) => this.sendToApprover(text),
+      sendToOwner: (text) => this.sendToOwner(text),
     });
     this.poller = new PollingService({
       enabled: this.config.polling.enabled,
@@ -2390,54 +2410,6 @@ export class ProxyRuntime {
     }
   }
 
-  private async executeTask(task: TaskRecord, planHash: string): Promise<void> {
-    const analysis = await this.latestAnalysis(task.id);
-    if (!analysis) throw new Error("analysis missing");
-    const repo = repoById(this.config.repos, analysis.repos[0] ?? "");
-    if (!repo) {
-      const project = await this.resolveProject(task.chatId);
-      if (!project.resolved) throw new Error("no project resolved; refusing to execute");
-      return this.executeInWorktree(task, analysis, project.worktree, planHash);
-    }
-    const approved = await this.approvals.latest(task.id, "develop");
-    if (!approved || approved.decision !== "approved" || approved.planHash !== planHash) {
-      throw new Error("approval missing or stale");
-    }
-    const release = await this.executionSlots.acquire();
-    try {
-      task.state = "executing";
-      task.updatedAt = Date.now();
-      await this.tasks.save(task);
-      const execution = await this.runOpenCodeExecution(task, repo, analysis);
-      await writeJsonAtomic(join(this.stateDir, "executions", `${task.id}.json`), execution);
-      task.state = execution.status === "succeeded" ? "done" : "failed";
-      task.updatedAt = Date.now();
-      await this.tasks.save(task);
-      await this.sendToApprover(
-        execution.status === "succeeded"
-          ? `任务完成：${task.title}\n分支：${execution.branch}\n${execution.diffStat}`
-          : `任务失败：${task.title}\n${execution.error ?? "未知错误"}`,
-      );
-      if (execution.status === "succeeded") {
-        await this.reviewExecution({
-          task,
-          directory: execution.worktree,
-          summary: execution.testResult?.summary ?? execution.diffStat ?? "",
-          ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
-        });
-      }
-      await this.audit.append({
-        actor: { system: true },
-        action: execution.status === "succeeded" ? "execution_succeeded" : "execution_failed",
-        taskId: task.id,
-        details: { branch: execution.branch, repo: execution.repoId },
-      });
-      await this.archiveTaskChildren(task.id);
-    } finally {
-      release();
-    }
-  }
-
   private async latestAnalysis(taskId: string): Promise<TaskAnalysis | undefined> {
     const dir = join(this.stateDir, "analyses", taskId);
     const index = await readJsonFile<{ version: number } | undefined>(
@@ -2446,240 +2418,6 @@ export class ProxyRuntime {
     );
     const version = index?.version ?? 1;
     return readJsonFile<TaskAnalysis | undefined>(join(dir, `${version}.json`), undefined);
-  }
-
-  private async executeInWorktree(
-    task: TaskRecord,
-    analysis: TaskAnalysis,
-    worktree: string,
-    planHash: string,
-  ): Promise<void> {
-    const approved = await this.approvals.latest(task.id, "develop");
-    if (!approved || approved.decision !== "approved" || approved.planHash !== planHash) {
-      throw new Error("approval missing or stale");
-    }
-    const release = await this.executionSlots.acquire();
-    try {
-      task.state = "executing";
-      task.updatedAt = Date.now();
-      await this.tasks.save(task);
-      const prompt = [
-        "你已获得用户批准，执行以下任务。",
-        "只允许在指定工作目录内修改；不要 push，不要合并，不要 force push，不要删除仓库。",
-        "完成后运行测试与 lint（如已配置），并报告 diff 摘要。",
-        `当前项目目录：${worktree}`,
-        JSON.stringify({
-          task: task.title,
-          goal: analysis.goal,
-          scope: analysis.scope,
-          outOfScope: analysis.outOfScope,
-          plan: analysis.plan,
-          commands: analysis.commands,
-          acceptance: analysis.acceptanceCriteria,
-        }),
-      ].join("\n");
-      const executionAgent = this.config.opencode.executionAgent ?? this.config.opencode.agent;
-      const { sessionId, release } = await this.createChildSession({
-        platform: task.platform,
-        chatId: task.chatId,
-        directory: worktree,
-        title: `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
-        role: "execution",
-        permission: EXECUTION_PERMISSION,
-        ...(executionAgent ? { agent: executionAgent } : {}),
-        taskId: task.id,
-      });
-      let output = "";
-      try {
-        output = await this.options.bridge.prompt(sessionId, {
-          directory: worktree,
-          title: `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
-          text: prompt,
-        });
-      } finally {
-        release();
-        await this.finishSession(
-          sessionId,
-          `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
-          worktree,
-          "task_execution",
-        );
-      }
-      const execution: ExecutionRecord = {
-        taskId: task.id,
-        approvalPlanHash: analysis.planHash,
-        repoId: analysis.repos[0] ?? "auto",
-        worktree,
-        branch: `atme/${task.id}`,
-        baseCommit: "",
-        status: "succeeded",
-        commands: analysis.commands,
-        testResult: { passed: true, summary: "executed in resolved project worktree" },
-        diffStat: truncate(output, 1000),
-        startedAt: Date.now(),
-        finishedAt: Date.now(),
-      };
-      await writeJsonAtomic(join(this.stateDir, "executions", `${task.id}.json`), execution);
-      task.state = "done";
-      task.updatedAt = Date.now();
-      await this.tasks.save(task);
-      await this.sendToApprover(`任务完成：${task.title}\n目录：${worktree}\n${execution.diffStat}`);
-      await this.reviewExecution({
-        task,
-        directory: worktree,
-        summary: execution.diffStat ?? "",
-        ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
-      });
-      await this.audit.append({
-        actor: { system: true },
-        action: "execution_succeeded",
-        taskId: task.id,
-        details: { worktree },
-      });
-      await this.archiveTaskChildren(task.id);
-    } catch (error) {
-      task.state = "failed";
-      task.updatedAt = Date.now();
-      await this.tasks.save(task);
-      await this.sendToApprover(`任务失败：${task.title}\n${toErrorMessage(error)}`);
-      throw error;
-    } finally {
-      release();
-    }
-  }
-
-  private async reviewExecution(input: {
-    task: TaskRecord;
-    directory: string;
-    summary: string;
-    diffStat?: string;
-  }): Promise<void> {
-    if (!this.config.subagents.enabled || !this.config.subagents.reviewer) return;
-    const title = `${this.config.opencode.sessionTitlePrefix}:review:${input.task.id}`;
-    try {
-      const { sessionId, release } = await this.createChildSession({
-        platform: input.task.platform,
-        chatId: input.task.chatId,
-        directory: input.directory,
-        title,
-        role: "review",
-        permission: READ_ONLY_PERMISSION,
-        taskId: input.task.id,
-      });
-      try {
-        const review = await this.options.bridge.prompt(sessionId, {
-          directory: input.directory,
-          title,
-          text: [
-            "你是只读评审。不要修改文件，不要执行写操作。",
-            "检查这次改动是否满足任务验收标准，指出风险或遗漏。",
-            "输出最多 5 行，先给结论（通过/需修改），再给发现。",
-            `任务：${input.task.title}`,
-            `执行摘要：${truncate(input.summary, 800)}`,
-            ...(input.diffStat ? [`diff：${truncate(input.diffStat, 1200)}`] : []),
-          ].join("\n"),
-        });
-        await this.sendToOwner(
-          `评审结果：${input.task.title}\n${truncate(review.trim(), 800)}`,
-        );
-      } finally {
-        release();
-        await this.finishSession(sessionId, title, input.directory, "task_review");
-      }
-    } catch (error) {
-      this.logger.warn("execution review failed", {
-        taskId: input.task.id,
-        error: toErrorMessage(error),
-      });
-    }
-  }
-
-  private async runOpenCodeExecution(
-    task: TaskRecord,
-    repo: RepoConfig,
-    analysis: TaskAnalysis,
-  ): Promise<ExecutionRecord> {
-    const startedAt = Date.now();
-    let worktree: { path: string; branch: string; baseCommit: string } | undefined;
-    try {
-      worktree = await this.executor.prepare(repo, task.id);
-      const prompt = [
-        "你已获得用户批准，执行以下任务。",
-        "只允许在指定工作目录内修改；不要 push，不要合并，不要 force push，不要删除仓库，不要修改工作目录外的文件。",
-        "完成后说明改动，并等待测试命令执行结果。",
-        `当前项目目录：${worktree.path}`,
-        JSON.stringify({
-          task: task.title,
-          goal: analysis.goal,
-          scope: analysis.scope,
-          outOfScope: analysis.outOfScope,
-          plan: analysis.plan,
-          commands: analysis.commands,
-          acceptance: analysis.acceptanceCriteria,
-        }),
-      ].join("\n");
-      const executionAgent = this.config.opencode.executionAgent ?? this.config.opencode.agent;
-      const { sessionId, release } = await this.createChildSession({
-        platform: task.platform,
-        chatId: task.chatId,
-        directory: worktree.path,
-        title: `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
-        role: "execution",
-        permission: EXECUTION_PERMISSION,
-        ...(executionAgent ? { agent: executionAgent } : {}),
-        taskId: task.id,
-      });
-      let output = "";
-      try {
-        output = await this.options.bridge.prompt(sessionId, {
-          directory: worktree.path,
-          title: `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
-          text: prompt,
-        });
-      } finally {
-        release();
-        await this.finishSession(
-          sessionId,
-          `${this.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
-          worktree.path,
-          "task_execution",
-        );
-      }
-      const testResult = await this.executor.runConfiguredCommands(repo, worktree);
-      const diffStat = await this.executor.diffStat(worktree);
-      const head = await this.executor.commitState(worktree);
-      return {
-        taskId: task.id,
-        approvalPlanHash: analysis.planHash,
-        repoId: repo.id,
-        worktree: worktree.path,
-        branch: worktree.branch,
-        baseCommit: worktree.baseCommit,
-        status: testResult.passed ? "succeeded" : "failed",
-        commands: [...repo.lintCommand, ...repo.testCommand].map((command) => command.join(" ")),
-        testResult,
-        diffStat,
-        startedAt,
-        finishedAt: Date.now(),
-        ...(testResult.passed ? {} : { error: testResult.summary }),
-        ...(head ? {} : {}),
-        ...(output ? {} : {}),
-      };
-    } catch (error) {
-      return {
-        taskId: task.id,
-        approvalPlanHash: analysis.planHash,
-        repoId: repo.id,
-        worktree: worktree?.path ?? "",
-        branch: worktree?.branch ?? "",
-        baseCommit: worktree?.baseCommit ?? "",
-        status: "failed",
-        commands: [...repo.lintCommand, ...repo.testCommand].map((command) => command.join(" ")),
-        startedAt,
-        finishedAt: Date.now(),
-        error: toErrorMessage(error),
-      };
-    }
   }
 
   private coordinatorSession(
