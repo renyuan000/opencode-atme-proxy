@@ -128,6 +128,24 @@ export class FeishuEventSource {
       },
       "im.chat.access_event.bot_p2p_chat_entered_v1": async () => ({ ok: true }),
       "im.message.message_read_v1": async () => ({ ok: true }),
+      "im.message.recalled_v1": async (data: any) => {
+        if (!this.handlers?.onMessageRecalled) return { ok: true };
+        const event = data?.event ?? data;
+        const messageId = event?.message_id ?? data?.message_id;
+        if (!messageId) return { ok: true };
+        await this.handlers.onMessageRecalled({
+          platform: "feishu",
+          messageId,
+          ...(event?.chat_id ? { chatId: event.chat_id } : {}),
+          at: Number(event?.action_time ?? Date.now()),
+        }).catch((error) =>
+          this.logger.warn("message recall handler failed", {
+            messageId,
+            error: toErrorMessage(error),
+          }),
+        );
+        return { ok: true };
+      },
     });
 
     await this.wsClient.start({ eventDispatcher: dispatcher });

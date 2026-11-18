@@ -6,10 +6,17 @@ export interface ChatMembershipEvent {
     actorId?: string;
     at: number;
 }
+export interface MessageRecalledEvent {
+    platform: string;
+    messageId: string;
+    chatId?: string;
+    at: number;
+}
 export interface AdapterHandlers {
     onMessage(message: IncomingMessage): Promise<void>;
     onAction(action: PlatformAction): Promise<PlatformActionResult>;
     onChatMembership?(event: ChatMembershipEvent): Promise<void>;
+    onMessageRecalled?(event: MessageRecalledEvent): Promise<void>;
 }
 export interface ListMessagesInput {
     chatId: string;

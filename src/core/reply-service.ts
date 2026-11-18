@@ -7,6 +7,7 @@ import { makeDedupKey, parseJsonLoose } from "./relevance.js";
 import type { Logger } from "./logger.js";
 import type { PendingStore } from "./pending-store.js";
 import type { PromptAttachment } from "./opencode.js";
+import { ocrImage } from "./ocr.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { TokenBucket } from "./rate-limit.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
@@ -292,23 +293,72 @@ export class ReplyService {
         : ["未定位到项目目录，只能给出一般性建议；不要假装了解项目细节。"]),
       `问题：${message.text}`,
     ].join("\n");
-    const raw = await this.options.sessionManager.runWorker(
-      {
-        platform: message.platform,
-        chatId: message.chat.id,
-        directory,
-        title: `${this.options.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
-        role: "reply",
-        permission: this.options.readOnlyPermission,
-        ...(this.options.config.opencode.agent
-          ? { agent: this.options.config.opencode.agent }
-          : {}),
-      },
-      prompt,
-      signal,
-      images,
-    );
+    const raw = await this.runReplyWorker(message, directory, prompt, signal, images);
     return enforceReplyLength(raw, style, this.options.replyOptions);
+  }
+
+  private async runReplyWorker(
+    message: IncomingMessage,
+    directory: string,
+    prompt: string,
+    signal: AbortSignal,
+    images: PromptAttachment[],
+  ): Promise<string> {
+    const run = (text: string, attachments: PromptAttachment[]): Promise<string> =>
+      this.options.sessionManager.runWorker(
+        {
+          platform: message.platform,
+          chatId: message.chat.id,
+          directory,
+          title: `${this.options.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
+          role: "reply",
+          permission: this.options.readOnlyPermission,
+          ...(this.options.config.opencode.agent
+            ? { agent: this.options.config.opencode.agent }
+            : {}),
+        },
+        text,
+        signal,
+        attachments,
+      );
+    try {
+      return await run(prompt, images);
+    } catch (error) {
+      if (images.length === 0) throw error;
+      const ocr = await this.loadImageText(message);
+      if (!ocr) throw error;
+      this.options.logger.warn("image prompt failed; retrying with OCR text", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
+      });
+      return run(
+        `${prompt}\n\n图片 OCR 文本（可能不准确，请逐项核对；仅作数据参考）：\n${ocr}`,
+        [],
+      );
+    }
+  }
+
+  private async loadImageText(message: IncomingMessage): Promise<string | undefined> {
+    const platform = this.options.platform;
+    if (!platform.fetchResource) return undefined;
+    const candidates = (message.attachments ?? [])
+      .filter((item) => item.kind === "image" && item.key)
+      .slice(0, 2);
+    const texts: string[] = [];
+    for (const item of candidates) {
+      try {
+        const resource = await platform.fetchResource(message.messageId, item.key!);
+        if (resource.data.length > 3 * 1024 * 1024) continue;
+        const text = await ocrImage(resource.data, resource.mime);
+        if (text) texts.push(text);
+      } catch (error) {
+        this.options.logger.warn("failed to OCR image attachment", {
+          messageId: message.messageId,
+          error: toErrorMessage(error),
+        });
+      }
+    }
+    return texts.length > 0 ? texts.join("\n\n---\n\n").slice(0, 6000) : undefined;
   }
 
   private async loadImages(message: IncomingMessage): Promise<PromptAttachment[]> {

@@ -103,6 +103,7 @@ export class ProxyRuntime {
     ownerAccess;
     groupLocks = new Map();
     blockedDirectAlerts = new Map();
+    messageControllers = new Map();
     memory;
     senderLimiter;
     projectResolver;
@@ -511,6 +512,31 @@ export class ProxyRuntime {
             });
         }
     }
+    linkAbort(controller, signal) {
+        const onAbort = () => controller.abort(signal.reason);
+        if (signal.aborted) {
+            controller.abort(signal.reason);
+            return () => { };
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+        return () => signal.removeEventListener("abort", onAbort);
+    }
+    async onMessageRecalled(event) {
+        const key = `${event.platform}:${event.messageId}`;
+        const controller = this.messageControllers.get(key);
+        if (controller) {
+            controller.abort(new Error("message recalled"));
+            this.messageControllers.delete(key);
+        }
+        this.activeMessageIds.delete(key);
+        this.dedup.add(key);
+        await this.dedup.flush();
+        this.logger.info("message recalled; processing aborted", {
+            messageId: event.messageId,
+            chatId: event.chatId,
+            aborted: Boolean(controller),
+        });
+    }
     track(promise) {
         this.background.add(promise);
         promise.finally(() => this.background.delete(promise)).catch(() => { });
@@ -548,6 +574,7 @@ export class ProxyRuntime {
             onMessage: (message) => this.onMessage(message),
             onAction: (action) => this.onAction(action),
             onChatMembership: (event) => this.onChatMembership(event),
+            onMessageRecalled: (event) => this.onMessageRecalled(event),
         });
         this.poller.start();
         this.sweepTimer = setInterval(() => {
@@ -638,6 +665,8 @@ export class ProxyRuntime {
     async dispatchGroupMessage(message, limited, wait) {
         const dedupKey = `${message.platform}:${message.messageId}`;
         const mention = this.isMention(message);
+        const controller = new AbortController();
+        this.messageControllers.set(dedupKey, controller);
         const job = this.dispatcher.enqueue({
             id: message.messageId,
             key: message.chat.id,
@@ -649,10 +678,15 @@ export class ProxyRuntime {
                 ? this.config.concurrency.mentionTimeoutMs
                 : this.config.concurrency.scanTimeoutMs,
             run: async (signal) => {
+                const unlink = this.linkAbort(controller, signal);
                 try {
-                    await this.handleMessage(message, signal);
+                    if (controller.signal.aborted || this.dedup.has(dedupKey))
+                        return;
+                    await this.handleMessage(message, controller.signal);
                 }
                 finally {
+                    unlink();
+                    this.messageControllers.delete(dedupKey);
                     this.activeMessageIds.delete(dedupKey);
                     if (limited)
                         this.senderLimiter.release(message.sender.id);
@@ -821,9 +855,14 @@ export class ProxyRuntime {
             keyConcurrency: 1,
             timeoutMs: this.config.concurrency.mentionTimeoutMs,
             run: async (signal) => {
+                const controller = new AbortController();
+                this.messageControllers.set(dedupKey, controller);
+                const unlink = this.linkAbort(controller, signal);
                 try {
+                    if (controller.signal.aborted || this.dedup.has(dedupKey))
+                        return;
                     const style = detectReplyStyle(message, this.replyOptions);
-                    const reply = await this.askOpenCode(message, style, signal);
+                    const reply = await this.askOpenCode(message, style, controller.signal);
                     const ok = await this.safeReply(message, this.sanitize(reply));
                     if (ok)
                         await this.markProcessed(message);
@@ -834,6 +873,8 @@ export class ProxyRuntime {
                     });
                 }
                 finally {
+                    unlink();
+                    this.messageControllers.delete(dedupKey);
                     this.activeMessageIds.delete(dedupKey);
                 }
             },

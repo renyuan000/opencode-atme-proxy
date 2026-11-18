@@ -7,7 +7,7 @@ import type {
   TaskAnalysis,
   TaskRecord,
 } from "./types.js";
-import type { ChatMembershipEvent, PlatformAdapter } from "./ports.js";
+import type { ChatMembershipEvent, MessageRecalledEvent, PlatformAdapter } from "./ports.js";
 import type { AppConfig, LoadedConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import { createLogger } from "./logger.js";
@@ -149,6 +149,7 @@ export class ProxyRuntime {
   private readonly ownerAccess: OwnerAccessService;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly blockedDirectAlerts = new Map<string, number>();
+  private readonly messageControllers = new Map<string, AbortController>();
   private readonly memory: MemoryStore;
   private readonly senderLimiter: SenderLimiter;
   private projectResolver?: ProjectResolver;
@@ -592,6 +593,33 @@ export class ProxyRuntime {
     }
   }
 
+  private linkAbort(controller: AbortController, signal: AbortSignal): () => void {
+    const onAbort = (): void => controller.abort(signal.reason);
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      return () => {};
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+    return () => signal.removeEventListener("abort", onAbort);
+  }
+
+  private async onMessageRecalled(event: MessageRecalledEvent): Promise<void> {
+    const key = `${event.platform}:${event.messageId}`;
+    const controller = this.messageControllers.get(key);
+    if (controller) {
+      controller.abort(new Error("message recalled"));
+      this.messageControllers.delete(key);
+    }
+    this.activeMessageIds.delete(key);
+    this.dedup.add(key);
+    await this.dedup.flush();
+    this.logger.info("message recalled; processing aborted", {
+      messageId: event.messageId,
+      chatId: event.chatId,
+      aborted: Boolean(controller),
+    });
+  }
+
   private track<T>(promise: Promise<T>): Promise<T> {
     this.background.add(promise);
     promise.finally(() => this.background.delete(promise)).catch(() => {});
@@ -630,6 +658,7 @@ export class ProxyRuntime {
       onMessage: (message) => this.onMessage(message),
       onAction: (action) => this.onAction(action),
       onChatMembership: (event) => this.onChatMembership(event),
+      onMessageRecalled: (event) => this.onMessageRecalled(event),
     });
     this.poller.start();
     this.sweepTimer = setInterval(() => {
@@ -724,6 +753,8 @@ export class ProxyRuntime {
   ): Promise<void> {
     const dedupKey = `${message.platform}:${message.messageId}`;
     const mention = this.isMention(message);
+    const controller = new AbortController();
+    this.messageControllers.set(dedupKey, controller);
     const job = this.dispatcher.enqueue({
       id: message.messageId,
       key: message.chat.id,
@@ -735,9 +766,13 @@ export class ProxyRuntime {
         ? this.config.concurrency.mentionTimeoutMs
         : this.config.concurrency.scanTimeoutMs,
       run: async (signal) => {
+        const unlink = this.linkAbort(controller, signal);
         try {
-          await this.handleMessage(message, signal);
+          if (controller.signal.aborted || this.dedup.has(dedupKey)) return;
+          await this.handleMessage(message, controller.signal);
         } finally {
+          unlink();
+          this.messageControllers.delete(dedupKey);
           this.activeMessageIds.delete(dedupKey);
           if (limited) this.senderLimiter.release(message.sender.id);
         }
@@ -917,9 +952,13 @@ export class ProxyRuntime {
       keyConcurrency: 1,
       timeoutMs: this.config.concurrency.mentionTimeoutMs,
       run: async (signal) => {
+        const controller = new AbortController();
+        this.messageControllers.set(dedupKey, controller);
+        const unlink = this.linkAbort(controller, signal);
         try {
+          if (controller.signal.aborted || this.dedup.has(dedupKey)) return;
           const style = detectReplyStyle(message, this.replyOptions);
-          const reply = await this.askOpenCode(message, style, signal);
+          const reply = await this.askOpenCode(message, style, controller.signal);
           const ok = await this.safeReply(message, this.sanitize(reply));
           if (ok) await this.markProcessed(message);
           await this.audit.append({
@@ -928,6 +967,8 @@ export class ProxyRuntime {
             details: { messageId: message.messageId },
           });
         } finally {
+          unlink();
+          this.messageControllers.delete(dedupKey);
           this.activeMessageIds.delete(dedupKey);
         }
       },

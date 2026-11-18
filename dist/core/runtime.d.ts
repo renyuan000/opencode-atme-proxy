@@ -61,6 +61,7 @@ export declare class ProxyRuntime {
     private readonly ownerAccess;
     private readonly groupLocks;
     private readonly blockedDirectAlerts;
+    private readonly messageControllers;
     private readonly memory;
     private readonly senderLimiter;
     private projectResolver?;
@@ -72,6 +73,8 @@ export declare class ProxyRuntime {
     private claimOwner;
     private sendToOwner;
     private acknowledge;
+    private linkAbort;
+    private onMessageRecalled;
     private track;
     private drainBackground;
     private sweepTimer?;

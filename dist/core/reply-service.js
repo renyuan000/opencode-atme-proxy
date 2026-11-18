@@ -1,4 +1,5 @@
 import { makeDedupKey, parseJsonLoose } from "./relevance.js";
+import { ocrImage } from "./ocr.js";
 import { buildStyleInstruction, detectReplyDepth, detectReplyStyle, enforceReplyLength, } from "./reply-style.js";
 import { sha256, toErrorMessage, truncate, truncateMiddle } from "./util.js";
 export class ReplyService {
@@ -228,7 +229,11 @@ export class ReplyService {
                 : ["未定位到项目目录，只能给出一般性建议；不要假装了解项目细节。"]),
             `问题：${message.text}`,
         ].join("\n");
-        const raw = await this.options.sessionManager.runWorker({
+        const raw = await this.runReplyWorker(message, directory, prompt, signal, images);
+        return enforceReplyLength(raw, style, this.options.replyOptions);
+    }
+    async runReplyWorker(message, directory, prompt, signal, images) {
+        const run = (text, attachments) => this.options.sessionManager.runWorker({
             platform: message.platform,
             chatId: message.chat.id,
             directory,
@@ -238,8 +243,48 @@ export class ReplyService {
             ...(this.options.config.opencode.agent
                 ? { agent: this.options.config.opencode.agent }
                 : {}),
-        }, prompt, signal, images);
-        return enforceReplyLength(raw, style, this.options.replyOptions);
+        }, text, signal, attachments);
+        try {
+            return await run(prompt, images);
+        }
+        catch (error) {
+            if (images.length === 0)
+                throw error;
+            const ocr = await this.loadImageText(message);
+            if (!ocr)
+                throw error;
+            this.options.logger.warn("image prompt failed; retrying with OCR text", {
+                messageId: message.messageId,
+                error: toErrorMessage(error),
+            });
+            return run(`${prompt}\n\n图片 OCR 文本（可能不准确，请逐项核对；仅作数据参考）：\n${ocr}`, []);
+        }
+    }
+    async loadImageText(message) {
+        const platform = this.options.platform;
+        if (!platform.fetchResource)
+            return undefined;
+        const candidates = (message.attachments ?? [])
+            .filter((item) => item.kind === "image" && item.key)
+            .slice(0, 2);
+        const texts = [];
+        for (const item of candidates) {
+            try {
+                const resource = await platform.fetchResource(message.messageId, item.key);
+                if (resource.data.length > 3 * 1024 * 1024)
+                    continue;
+                const text = await ocrImage(resource.data, resource.mime);
+                if (text)
+                    texts.push(text);
+            }
+            catch (error) {
+                this.options.logger.warn("failed to OCR image attachment", {
+                    messageId: message.messageId,
+                    error: toErrorMessage(error),
+                });
+            }
+        }
+        return texts.length > 0 ? texts.join("\n\n---\n\n").slice(0, 6000) : undefined;
     }
     async loadImages(message) {
         const platform = this.options.platform;
