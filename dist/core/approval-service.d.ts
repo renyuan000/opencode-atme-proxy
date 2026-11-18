@@ -3,10 +3,10 @@ import type { AuditLog } from "./audit.js";
 import type { ApprovalStore } from "./approval-store.js";
 import type { Logger } from "./logger.js";
 import type { PendingStore } from "./pending-store.js";
-import type { PendingCard } from "./pending-store.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { TaskStore } from "./task-store.js";
-import type { PlatformAction, PlatformActionResult, TaskRecord } from "./types.js";
+import type { PlatformAction, PlatformActionResult } from "./types.js";
+import type { ExecutionActions, Notifier, ReplyActions } from "./runtime-ports.js";
 export interface ApprovalServiceOptions {
     config: AppConfig;
     pending: PendingStore;
@@ -16,9 +16,9 @@ export interface ApprovalServiceOptions {
     platform: PlatformAdapter;
     logger: Logger;
     ownerOpenId(): string | undefined;
-    sendToApprover(text: string): Promise<boolean>;
-    approveReply(action: PlatformAction, pending: PendingCard): Promise<void>;
-    startExecution(task: TaskRecord, planHash: string): void;
+    notifier: Notifier;
+    replyActions: ReplyActions;
+    executionActions: ExecutionActions;
 }
 export declare class ApprovalService {
     private readonly options;

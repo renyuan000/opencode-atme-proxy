@@ -12,6 +12,7 @@ import type {
   TaskRecord,
 } from "./types.js";
 import { assertTransition, canTransition } from "./task-state.js";
+import type { ExecutionActions, Notifier, ReplyActions } from "./runtime-ports.js";
 
 export interface ApprovalServiceOptions {
   config: AppConfig;
@@ -22,9 +23,9 @@ export interface ApprovalServiceOptions {
   platform: PlatformAdapter;
   logger: Logger;
   ownerOpenId(): string | undefined;
-  sendToApprover(text: string): Promise<boolean>;
-  approveReply(action: PlatformAction, pending: PendingCard): Promise<void>;
-  startExecution(task: TaskRecord, planHash: string): void;
+  notifier: Notifier;
+  replyActions: ReplyActions;
+  executionActions: ExecutionActions;
 }
 
 export class ApprovalService {
@@ -48,7 +49,7 @@ export class ApprovalService {
         taskId: card.taskId,
         details: { planHash: card.planHash },
       });
-      await this.options.sendToApprover(`审批已超时：${task?.title ?? card.taskId}`);
+      await this.options.notifier.send(`审批已超时：${task?.title ?? card.taskId}`);
     }
     await this.options.pending.flush();
   }
@@ -161,7 +162,7 @@ export class ApprovalService {
       this.options.pending.get(`${action.taskId}:reply`);
     if (!pending) return;
     if (pending.mode === "reply") {
-      await this.options.approveReply(action, pending);
+      await this.options.replyActions.approve(action, pending);
       return;
     }
     const task = await this.options.tasks.get(action.taskId);
@@ -188,7 +189,7 @@ export class ApprovalService {
     });
     this.options.pending.deleteForTask(task.id);
     await this.options.pending.flush();
-    this.options.startExecution(task, pending.planHash);
+    this.options.executionActions.start(task, pending.planHash);
   }
 
   private async rejectTask(action: PlatformAction): Promise<void> {
