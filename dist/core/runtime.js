@@ -34,9 +34,10 @@ import { MessageIngress } from "./message-ingress.js";
 import { MeMentionFlow } from "./me-mention-flow.js";
 import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
+import { NotificationService } from "./notification-service.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
-import { readJsonFile, sha256, stableUuid, toErrorMessage, redactPreview, truncate, truncateMiddle, } from "./util.js";
+import { readJsonFile, sha256, toErrorMessage, redactPreview, truncate, truncateMiddle, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
 const READ_ONLY_PERMISSION = [
     { permission: "edit", pattern: "*", action: "deny" },
@@ -93,6 +94,7 @@ export class ProxyRuntime {
     meMentionFlow;
     botMentionFlow;
     scanService;
+    notificationService;
     groupLocks = new Map();
     memory;
     owners;
@@ -345,6 +347,17 @@ export class ProxyRuntime {
             sendToApprover: (text) => this.sendToApprover(text),
             sendToOwner: (text) => this.sendToOwner(text),
         });
+        this.notificationService = new NotificationService({
+            config: this.config,
+            logger: this.logger.child("notify"),
+            platform: this.options.platform,
+            bridge: this.options.bridge,
+            sendLimiter: this.sendLimiter,
+            evidence: this.evidence,
+            outbound: this.outbound,
+            chatNames: this.chatNames,
+            ownerOpenId: () => this.ownerOpenId(),
+        });
         this.poller = new PollingService({
             enabled: this.config.polling.enabled,
             platform: options.platform,
@@ -548,19 +561,8 @@ export class ProxyRuntime {
         }
         return entry.count > this.config.platforms.feishu.bootstrap.maxClaimAttemptsPer10Min;
     }
-    async sendToOwner(text) {
-        const openId = this.ownerOpenId();
-        if (!openId)
-            return false;
-        try {
-            await this.sendLimiter.take();
-            await this.options.platform.send({ kind: "user", userId: openId }, { kind: "text", text, uuid: stableUuid("owner", openId, sha256(text).slice(0, 16)) });
-            return true;
-        }
-        catch (error) {
-            this.logger.error("failed to send to owner", { error: toErrorMessage(error) });
-            return false;
-        }
+    sendToOwner(text) {
+        return this.notificationService.sendToOwner(text);
     }
     track(promise) {
         this.background.add(promise);
@@ -766,7 +768,7 @@ export class ProxyRuntime {
             return;
         }
         const name = (await this.fetchChatName(event.chatId)) ?? event.chatId;
-        this.chatNames.set(event.chatId, { name, at: Date.now() });
+        this.notificationService.rememberChatName(event.chatId, name);
         this.groupIds.add(event.chatId);
         this.logger.info("bot added to chat", {
             chatId: event.chatId,
@@ -781,60 +783,11 @@ export class ProxyRuntime {
             details: { chatId: event.chatId, chatName: name, actorId: event.actorId },
         });
     }
-    async fetchChatName(chatId) {
-        const client = this.options.bridge.getClient?.();
-        if (!client)
-            return undefined;
-        try {
-            const response = await client.im.v1.chat.get({
-                path: { chat_id: chatId },
-            });
-            if (typeof response?.data?.name === "string" && response.data.name) {
-                return response.data.name;
-            }
-        }
-        catch (error) {
-            this.logger.debug("chat.get failed; trying raw request", {
-                chatId,
-                error: toErrorMessage(error),
-            });
-        }
-        try {
-            const raw = await client.request({
-                method: "GET",
-                url: `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}`,
-            });
-            if (typeof raw?.data?.name === "string" && raw.data.name)
-                return raw.data.name;
-        }
-        catch (error) {
-            this.logger.debug("raw chat lookup failed", {
-                chatId,
-                error: toErrorMessage(error),
-            });
-        }
-        return undefined;
+    fetchChatName(chatId) {
+        return this.notificationService.fetchChatName(chatId);
     }
-    async chatLabel(message) {
-        const chatId = message.chat.id;
-        const cached = this.chatNames.get(chatId);
-        if (cached && Date.now() - cached.at < 6 * 3600_000)
-            return cached.name;
-        if (message.chat.name) {
-            this.chatNames.set(chatId, { name: message.chat.name, at: Date.now() });
-            return message.chat.name;
-        }
-        const configured = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId);
-        if (configured?.name && configured.name !== chatId) {
-            this.chatNames.set(chatId, { name: configured.name, at: Date.now() });
-            return configured.name;
-        }
-        const name = await this.fetchChatName(chatId);
-        if (name) {
-            this.chatNames.set(chatId, { name, at: Date.now() });
-            return name;
-        }
-        return chatId;
+    chatLabel(message) {
+        return this.notificationService.chatLabel(message);
     }
     handleOwnerCommand(message, command) {
         return this.ownerCommandService.handle(message, command);
@@ -1545,39 +1498,11 @@ export class ProxyRuntime {
     askOpenCode(message, style, signal, depth = "answer") {
         return this.replyService.draft(message, style, signal, depth);
     }
-    async safeReply(message, text) {
-        const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;
-        if (this.outbound.has(key)) {
-            this.logger.info("skip duplicate reply", { messageId: message.messageId });
-            return true;
-        }
-        try {
-            await this.sendLimiter.take();
-            await this.options.platform.reply({ chatId: message.chat.id, messageId: message.messageId }, { kind: "text", text, uuid: stableUuid(key) });
-            this.outbound.add(key);
-            await this.outbound.flush();
-            this.evidence.append({
-                ts: Date.now(),
-                platform: message.platform,
-                chatId: message.chat.id,
-                ...(message.chat.name ? { chatName: message.chat.name } : {}),
-                messageId: message.messageId,
-                direction: "outbound",
-                origin: "reply",
-                text,
-            });
-            return true;
-        }
-        catch (error) {
-            this.logger.error("failed to reply", {
-                messageId: message.messageId,
-                error: toErrorMessage(error),
-            });
-            return false;
-        }
+    safeReply(message, text) {
+        return this.notificationService.safeReply(message, text);
     }
-    async sendToApprover(text) {
-        return this.sendToOwner(text);
+    sendToApprover(text) {
+        return this.notificationService.sendToApprover(text);
     }
     async markProcessed(message) {
         this.dedup.add(`${message.platform}:${message.messageId}`);

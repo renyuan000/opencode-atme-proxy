@@ -65,6 +65,7 @@ import { MessageIngress } from "./message-ingress.js";
 import { MeMentionFlow } from "./me-mention-flow.js";
 import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
+import { NotificationService } from "./notification-service.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
@@ -157,6 +158,7 @@ export class ProxyRuntime {
   private readonly meMentionFlow: MeMentionFlow;
   private readonly botMentionFlow: BotMentionFlow;
   private readonly scanService: ScanService;
+  private readonly notificationService: NotificationService;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
@@ -435,6 +437,17 @@ export class ProxyRuntime {
       sendToApprover: (text) => this.sendToApprover(text),
       sendToOwner: (text) => this.sendToOwner(text),
     });
+    this.notificationService = new NotificationService({
+      config: this.config,
+      logger: this.logger.child("notify"),
+      platform: this.options.platform,
+      bridge: this.options.bridge,
+      sendLimiter: this.sendLimiter,
+      evidence: this.evidence,
+      outbound: this.outbound,
+      chatNames: this.chatNames,
+      ownerOpenId: () => this.ownerOpenId(),
+    });
     this.poller = new PollingService({
       enabled: this.config.polling.enabled,
       platform: options.platform,
@@ -649,20 +662,8 @@ export class ProxyRuntime {
     return entry.count > this.config.platforms.feishu.bootstrap.maxClaimAttemptsPer10Min;
   }
 
-  private async sendToOwner(text: string): Promise<boolean> {
-    const openId = this.ownerOpenId();
-    if (!openId) return false;
-    try {
-      await this.sendLimiter.take();
-      await this.options.platform.send(
-        { kind: "user", userId: openId },
-        { kind: "text", text, uuid: stableUuid("owner", openId, sha256(text).slice(0, 16)) },
-      );
-      return true;
-    } catch (error) {
-      this.logger.error("failed to send to owner", { error: toErrorMessage(error) });
-      return false;
-    }
+  private sendToOwner(text: string): Promise<boolean> {
+    return this.notificationService.sendToOwner(text);
   }
 
   private track<T>(promise: Promise<T>): Promise<T> {
@@ -875,7 +876,7 @@ export class ProxyRuntime {
       return;
     }
     const name = (await this.fetchChatName(event.chatId)) ?? event.chatId;
-    this.chatNames.set(event.chatId, { name, at: Date.now() });
+    this.notificationService.rememberChatName(event.chatId, name);
     this.groupIds.add(event.chatId);
     this.logger.info("bot added to chat", {
       chatId: event.chatId,
@@ -893,56 +894,12 @@ export class ProxyRuntime {
     });
   }
 
-  private async fetchChatName(chatId: string): Promise<string | undefined> {
-    const client = this.options.bridge.getClient?.();
-    if (!client) return undefined;
-    try {
-      const response: any = await (client as any).im.v1.chat.get({
-        path: { chat_id: chatId },
-      });
-      if (typeof response?.data?.name === "string" && response.data.name) {
-        return response.data.name;
-      }
-    } catch (error) {
-      this.logger.debug("chat.get failed; trying raw request", {
-        chatId,
-        error: toErrorMessage(error),
-      });
-    }
-    try {
-      const raw: any = await (client as any).request({
-        method: "GET",
-        url: `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}`,
-      });
-      if (typeof raw?.data?.name === "string" && raw.data.name) return raw.data.name;
-    } catch (error) {
-      this.logger.debug("raw chat lookup failed", {
-        chatId,
-        error: toErrorMessage(error),
-      });
-    }
-    return undefined;
+  private fetchChatName(chatId: string): Promise<string | undefined> {
+    return this.notificationService.fetchChatName(chatId);
   }
 
-  private async chatLabel(message: IncomingMessage): Promise<string> {
-    const chatId = message.chat.id;
-    const cached = this.chatNames.get(chatId);
-    if (cached && Date.now() - cached.at < 6 * 3600_000) return cached.name;
-    if (message.chat.name) {
-      this.chatNames.set(chatId, { name: message.chat.name, at: Date.now() });
-      return message.chat.name;
-    }
-    const configured = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId);
-    if (configured?.name && configured.name !== chatId) {
-      this.chatNames.set(chatId, { name: configured.name, at: Date.now() });
-      return configured.name;
-    }
-    const name = await this.fetchChatName(chatId);
-    if (name) {
-      this.chatNames.set(chatId, { name, at: Date.now() });
-      return name;
-    }
-    return chatId;
+  private chatLabel(message: IncomingMessage): Promise<string> {
+    return this.notificationService.chatLabel(message);
   }
 
   private handleOwnerCommand(
@@ -1764,42 +1721,12 @@ export class ProxyRuntime {
     return this.replyService.draft(message, style, signal, depth);
   }
 
-  private async safeReply(message: IncomingMessage, text: string): Promise<boolean> {
-    const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;
-    if (this.outbound.has(key)) {
-      this.logger.info("skip duplicate reply", { messageId: message.messageId });
-      return true;
-    }
-    try {
-      await this.sendLimiter.take();
-      await this.options.platform.reply(
-        { chatId: message.chat.id, messageId: message.messageId },
-        { kind: "text", text, uuid: stableUuid(key) },
-      );
-      this.outbound.add(key);
-      await this.outbound.flush();
-      this.evidence.append({
-        ts: Date.now(),
-        platform: message.platform,
-        chatId: message.chat.id,
-        ...(message.chat.name ? { chatName: message.chat.name } : {}),
-        messageId: message.messageId,
-        direction: "outbound",
-        origin: "reply",
-        text,
-      });
-      return true;
-    } catch (error) {
-      this.logger.error("failed to reply", {
-        messageId: message.messageId,
-        error: toErrorMessage(error),
-      });
-      return false;
-    }
+  private safeReply(message: IncomingMessage, text: string): Promise<boolean> {
+    return this.notificationService.safeReply(message, text);
   }
 
-  private async sendToApprover(text: string): Promise<boolean> {
-    return this.sendToOwner(text);
+  private sendToApprover(text: string): Promise<boolean> {
+    return this.notificationService.sendToApprover(text);
   }
 
   private async markProcessed(message: IncomingMessage): Promise<void> {

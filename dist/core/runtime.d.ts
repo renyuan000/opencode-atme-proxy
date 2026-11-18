@@ -55,6 +55,7 @@ export declare class ProxyRuntime {
     private readonly meMentionFlow;
     private readonly botMentionFlow;
     private readonly scanService;
+    private readonly notificationService;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
