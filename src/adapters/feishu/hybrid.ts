@@ -95,4 +95,8 @@ export class HybridFeishuAdapter implements PlatformAdapter {
   getBotOpenId(): string | undefined {
     return this.adapter.getBotOpenId();
   }
+
+  getBotName(): string | undefined {
+    return this.adapter.getBotName();
+  }
 }

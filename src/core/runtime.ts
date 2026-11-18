@@ -812,12 +812,7 @@ export class ProxyRuntime {
   }
 
   private isMention(message: IncomingMessage): boolean {
-    const me = this.ownerOpenId();
-    const bot = this.options.platform.platform === "feishu"
-      ? (this.options.platform as { getBotOpenId?: () => string | undefined }).getBotOpenId?.() ??
-        this.config.platforms.feishu.botOpenId
-      : this.config.platforms.feishu.botOpenId;
-    return message.mentions.some((mention) => mention.id === me || (bot && mention.id === bot));
+    return this.isMentionMe(message) || this.isMentionBot(message);
   }
 
   private isMentionMe(message: IncomingMessage): boolean {
@@ -826,9 +821,16 @@ export class ProxyRuntime {
   }
 
   private isMentionBot(message: IncomingMessage): boolean {
-    const bot = (this.options.platform as { getBotOpenId?: () => string | undefined })
-      .getBotOpenId?.() ?? this.config.platforms.feishu.botOpenId;
-    return Boolean(bot) && message.mentions.some((mention) => mention.id === bot);
+    const platform = this.options.platform as {
+      getBotOpenId?: () => string | undefined;
+      getBotName?: () => string | undefined;
+    };
+    const bot = platform.getBotOpenId?.() ?? this.config.platforms.feishu.botOpenId;
+    const botName = platform.getBotName?.();
+    return (
+      (Boolean(bot) && message.mentions.some((mention) => mention.id === bot)) ||
+      Boolean(botName && message.text.includes(`@${botName}`))
+    );
   }
 
   private async syncGroups(): Promise<void> {

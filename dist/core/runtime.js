@@ -727,21 +727,18 @@ export class ProxyRuntime {
         await this.handlePolledBatch(messages);
     }
     isMention(message) {
-        const me = this.ownerOpenId();
-        const bot = this.options.platform.platform === "feishu"
-            ? this.options.platform.getBotOpenId?.() ??
-                this.config.platforms.feishu.botOpenId
-            : this.config.platforms.feishu.botOpenId;
-        return message.mentions.some((mention) => mention.id === me || (bot && mention.id === bot));
+        return this.isMentionMe(message) || this.isMentionBot(message);
     }
     isMentionMe(message) {
         const me = this.ownerOpenId();
         return Boolean(me) && message.mentions.some((mention) => mention.id === me);
     }
     isMentionBot(message) {
-        const bot = this.options.platform
-            .getBotOpenId?.() ?? this.config.platforms.feishu.botOpenId;
-        return Boolean(bot) && message.mentions.some((mention) => mention.id === bot);
+        const platform = this.options.platform;
+        const bot = platform.getBotOpenId?.() ?? this.config.platforms.feishu.botOpenId;
+        const botName = platform.getBotName?.();
+        return ((Boolean(bot) && message.mentions.some((mention) => mention.id === bot)) ||
+            Boolean(botName && message.text.includes(`@${botName}`)));
     }
     async syncGroups() {
         const feishu = this.config.platforms.feishu;

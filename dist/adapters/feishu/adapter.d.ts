@@ -46,6 +46,7 @@ export declare class FeishuAdapter implements PlatformAdapter {
     private readonly logger;
     private readonly client;
     private botOpenId?;
+    private botName?;
     private handlers?;
     constructor(options: FeishuAdapterOptions);
     capabilities(): {
@@ -67,6 +68,7 @@ export declare class FeishuAdapter implements PlatformAdapter {
         detail?: string;
     }>;
     getBotOpenId(): string | undefined;
+    getBotName(): string | undefined;
     listGroups(): Promise<Array<{
         chatId: string;
         name?: string;

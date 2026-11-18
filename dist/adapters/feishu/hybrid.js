@@ -56,5 +56,8 @@ export class HybridFeishuAdapter {
     getBotOpenId() {
         return this.adapter.getBotOpenId();
     }
+    getBotName() {
+        return this.adapter.getBotName();
+    }
 }
 //# sourceMappingURL=hybrid.js.map

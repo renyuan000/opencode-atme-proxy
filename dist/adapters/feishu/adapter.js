@@ -165,6 +165,7 @@ export class FeishuAdapter {
     logger;
     client;
     botOpenId;
+    botName;
     handlers;
     constructor(options) {
         this.options = options;
@@ -203,6 +204,9 @@ export class FeishuAdapter {
     }
     getBotOpenId() {
         return this.botOpenId;
+    }
+    getBotName() {
+        return this.botName;
     }
     async listGroups() {
         const groups = [];
@@ -375,17 +379,20 @@ export class FeishuAdapter {
     async resolveBotOpenId() {
         if (this.options.config.botOpenId) {
             this.botOpenId = this.options.config.botOpenId;
-            return;
         }
         try {
             const response = await this.client.request({ method: "GET", url: "/open-apis/bot/v3/info" });
-            const openId = response?.bot?.open_id ?? response?.data?.bot?.open_id;
+            const bot = response?.bot ?? response?.data?.bot;
+            const openId = bot?.open_id;
             if (typeof openId === "string") {
                 this.botOpenId = openId;
             }
-            else {
+            else if (!this.botOpenId) {
                 this.logger.warn("bot open_id not found in /bot/v3/info response");
             }
+            const name = bot?.app_name ?? bot?.name;
+            if (typeof name === "string" && name)
+                this.botName = name;
         }
         catch (error) {
             this.logger.warn("failed to resolve bot open_id", { error: toErrorMessage(error) });

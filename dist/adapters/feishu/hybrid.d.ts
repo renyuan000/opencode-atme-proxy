@@ -47,4 +47,5 @@ export declare class HybridFeishuAdapter implements PlatformAdapter {
         displayName?: string;
     }): Promise<boolean>;
     getBotOpenId(): string | undefined;
+    getBotName(): string | undefined;
 }

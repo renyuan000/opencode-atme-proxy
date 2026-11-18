@@ -76,13 +76,19 @@ export class RecoveryService {
         const mentions = recovery.includeMentions
           ? unprocessed.filter((message) => this.options.isMention(message))
           : [];
+        const plain = unprocessed
+          .filter((message) => !this.options.isMention(message))
+          .slice(-recovery.maxPlainMessagesPerGroup);
+        this.options.logger.info("startup recovery classified", {
+          chatId,
+          unprocessed: unprocessed.length,
+          mentions: mentions.length,
+          plain: plain.length,
+        });
         for (const message of mentions) {
           await this.options.ingest(message);
         }
         if (recovery.includeRelevantPlain) {
-          const plain = unprocessed
-            .filter((message) => !this.options.isMention(message))
-            .slice(-recovery.maxPlainMessagesPerGroup);
           if (plain.length > 0) await this.options.ingestBatch(plain);
         }
       } catch (error) {

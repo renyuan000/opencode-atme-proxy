@@ -206,6 +206,7 @@ export class FeishuAdapter implements PlatformAdapter {
   private readonly logger: Logger;
   private readonly client: LarkClientLike;
   private botOpenId?: string;
+  private botName?: string;
   private handlers?: Parameters<PlatformAdapter["start"]>[0];
 
   constructor(private readonly options: FeishuAdapterOptions) {
@@ -248,6 +249,10 @@ export class FeishuAdapter implements PlatformAdapter {
 
   getBotOpenId(): string | undefined {
     return this.botOpenId;
+  }
+
+  getBotName(): string | undefined {
+    return this.botName;
   }
 
   async listGroups(): Promise<Array<{ chatId: string; name?: string }>> {
@@ -439,16 +444,18 @@ export class FeishuAdapter implements PlatformAdapter {
   private async resolveBotOpenId(): Promise<void> {
     if (this.options.config.botOpenId) {
       this.botOpenId = this.options.config.botOpenId;
-      return;
     }
     try {
       const response = await this.client.request({ method: "GET", url: "/open-apis/bot/v3/info" });
-      const openId = response?.bot?.open_id ?? response?.data?.bot?.open_id;
+      const bot = response?.bot ?? response?.data?.bot;
+      const openId = bot?.open_id;
       if (typeof openId === "string") {
         this.botOpenId = openId;
-      } else {
+      } else if (!this.botOpenId) {
         this.logger.warn("bot open_id not found in /bot/v3/info response");
       }
+      const name = bot?.app_name ?? bot?.name;
+      if (typeof name === "string" && name) this.botName = name;
     } catch (error) {
       this.logger.warn("failed to resolve bot open_id", { error: toErrorMessage(error) });
     }
