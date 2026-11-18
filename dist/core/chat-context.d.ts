@@ -1,4 +1,5 @@
 import type { Logger } from "./logger.js";
+import type { AttachmentRef } from "./types.js";
 export type ContextOrigin = "mention_me" | "mention_bot" | "scan_relevant" | "owner_dm" | "owner_group" | "group_all" | "media_placeholder";
 export interface ContextMessage {
     messageId: string;
@@ -10,6 +11,7 @@ export interface ContextMessage {
     threadId?: string;
     mentionMe: boolean;
     mentionBot: boolean;
+    attachments?: AttachmentRef[];
     origin?: ContextOrigin;
 }
 export interface ChatContext {

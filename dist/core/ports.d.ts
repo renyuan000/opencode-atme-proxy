@@ -50,7 +50,7 @@ export interface PlatformAdapter {
         messageId: string;
     }>;
     renderApproval(view: ApprovalView): OutboundMessage;
-    fetchResource?(messageId: string, key: string): Promise<{
+    fetchResource?(messageId: string, key: string, kind?: "image" | "file"): Promise<{
         data: Buffer;
         mime: string;
         filename?: string;

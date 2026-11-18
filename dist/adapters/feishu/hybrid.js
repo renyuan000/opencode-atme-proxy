@@ -41,8 +41,8 @@ export class HybridFeishuAdapter {
     recallMessage(chatId, messageId) {
         return this.adapter.recallMessage(chatId, messageId);
     }
-    fetchResource(messageId, key) {
-        return this.adapter.fetchResource(messageId, key);
+    fetchResource(messageId, key, kind) {
+        return this.adapter.fetchResource(messageId, key, kind);
     }
     acknowledge(messageId, emojiType) {
         return this.adapter.acknowledge(messageId, emojiType);

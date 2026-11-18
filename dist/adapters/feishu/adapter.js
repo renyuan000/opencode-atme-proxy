@@ -279,7 +279,7 @@ export class FeishuAdapter {
             throw new Error(`Feishu recall failed: ${response?.msg ?? "unknown"}`);
         }
     }
-    async fetchResource(messageId, key) {
+    async fetchResource(messageId, key, kind = "image") {
         const resource = this.client.im?.v1?.messageResource;
         if (!resource || typeof resource.get !== "function") {
             throw new Error("Feishu SDK does not expose messageResource.get");
@@ -287,7 +287,7 @@ export class FeishuAdapter {
         let response;
         try {
             response = await resource.get({
-                params: { type: "image" },
+                params: { type: kind },
                 path: { message_id: messageId, file_key: key },
             });
         }

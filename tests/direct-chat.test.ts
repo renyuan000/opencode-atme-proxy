@@ -66,7 +66,8 @@ class Adapter implements PlatformAdapter {
   async recallMessage(_chatId: string, messageId: string): Promise<void> {
     this.recalled.push(messageId);
   }
-  async fetchResource() {
+  async fetchResource(_messageId: string, _key: string, kind?: "image" | "file") {
+    if (kind === "file") return { data: Buffer.from("任务清单\n1. 完成 A"), mime: "text/plain" };
     return { data: Buffer.from([137, 80, 78, 71]), mime: "image/png" };
   }
   async acknowledge(messageId: string) {
@@ -77,12 +78,14 @@ class Adapter implements PlatformAdapter {
 
 class Bridge implements OpenCodeBridge {
   attachments: unknown[] = [];
+  lastText = "";
   getClient(): any {
     return { project: { list: async () => ({ data: [] }) }, experimental: { session: { list: async () => ({ data: [] }) } } };
   }
   async createSession() { return "s"; }
   async prompt(_sessionId: string, input: any) {
     this.attachments = input.attachments ?? [];
+    this.lastText = input.text ?? "";
     return "私聊回复";
   }
   async deleteSession() {}
@@ -362,6 +365,27 @@ test("owner image is passed to the model as a file attachment", async () => {
     const attachment = bridge.attachments[0] as { mime: string; url: string };
     assert.equal(attachment.mime, "image/png");
     assert.match(attachment.url, /^data:image\/png;base64,/);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("owner file attachment text is passed to the model", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const adapter = new Adapter();
+    const bridge = new Bridge();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge, loaded: config(dir) });
+    await runtime.start();
+    await runtime.ingest({
+      ...dm("m1", "owner", "帮我看这个文件"),
+      rawType: "file",
+      attachments: [{ kind: "file", key: "file_1", name: "plan.txt" }],
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.match(bridge.lastText, /任务清单/);
+    assert.match(bridge.lastText, /完成 A/);
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

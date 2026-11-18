@@ -1,5 +1,6 @@
 import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
+import type { AttachmentRef } from "./types.js";
 import { readJsonFile, writeJsonAtomic, toErrorMessage, truncateMiddle } from "./util.js";
 
 export type ContextOrigin =
@@ -21,6 +22,7 @@ export interface ContextMessage {
   threadId?: string;
   mentionMe: boolean;
   mentionBot: boolean;
+  attachments?: AttachmentRef[];
   origin?: ContextOrigin;
 }
 

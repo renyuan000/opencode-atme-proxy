@@ -44,5 +44,6 @@ export declare class ReplyService {
     draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth): Promise<string>;
     private runReplyWorker;
     private loadImageText;
+    private loadRecentDocuments;
     private loadImages;
 }

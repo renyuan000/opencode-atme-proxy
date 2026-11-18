@@ -91,6 +91,7 @@ export class MessageIngress {
           ...(message.threadId ? { threadId: message.threadId } : {}),
           mentionMe,
           mentionBot,
+          ...(message.attachments ? { attachments: message.attachments } : {}),
           origin,
         },
         {

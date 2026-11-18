@@ -29,6 +29,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **群摘要**：每群一个持久摘要会话，保留决策、被否决方案、假设和未解决问题，注入回复与任务分析。
 - **证据回查**：普通群消息按日期存 `replies/<群名__chatId>/<date>.jsonl`，AI 按需 grep 最近 7 天原文。
 - **图片理解**：@我/@机器人 的图片会下载为视觉附件交给支持图片的 OpenCode 模型；最多 2 张、单张 3MB。模型不支持图片时自动尝试本地 `tesseract` OCR（需安装 `tesseract` 和 `chi_sim` 语言包）。
+- **文件关联**：@消息前 10 分钟内同发送人的最近文件（docx/pdf/txt/md/sql 等）会提取文本一并交给模型；docx 优先用 `pandoc`，失败回退 `unzip`。
 
 - **消息类型识别**：@机器人 先判断是询问、任务、提醒、通知还是闲聊，再决定动作。
 - **发言必要性评估**：@机器人 不必然回复。助手判断 `answer / need_decision / notify_owner / no_reply`；寒暄或无需介入就不回，避免刷屏。
@@ -558,7 +559,7 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 群聊上下文记忆、项目解析与群绑定
 - 去重、游标、任务、分析、审批、执行、审计骨架
 - 简洁/详细回复策略、审批门禁、失败降级
-- 137 个单元/集成测试
+- 138 个单元/集成测试
 
 未完成 / 下一步：
 

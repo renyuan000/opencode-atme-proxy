@@ -337,6 +337,7 @@ export class FeishuAdapter implements PlatformAdapter {
   async fetchResource(
     messageId: string,
     key: string,
+    kind: "image" | "file" = "image",
   ): Promise<{ data: Buffer; mime: string }> {
     const resource = (this.client as any).im?.v1?.messageResource;
     if (!resource || typeof resource.get !== "function") {
@@ -345,7 +346,7 @@ export class FeishuAdapter implements PlatformAdapter {
     let response: any;
     try {
       response = await resource.get({
-        params: { type: "image" },
+        params: { type: kind },
         path: { message_id: messageId, file_key: key },
       });
     } catch (error) {

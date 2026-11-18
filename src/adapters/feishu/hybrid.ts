@@ -75,8 +75,9 @@ export class HybridFeishuAdapter implements PlatformAdapter {
   fetchResource(
     messageId: string,
     key: string,
+    kind?: "image" | "file",
   ): Promise<{ data: Buffer; mime: string; filename?: string }> {
-    return this.adapter.fetchResource(messageId, key);
+    return this.adapter.fetchResource(messageId, key, kind);
   }
 
   acknowledge(messageId: string, emojiType?: string): Promise<void> {

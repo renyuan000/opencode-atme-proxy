@@ -31,7 +31,7 @@ export declare class HybridFeishuAdapter implements PlatformAdapter {
     renderReplyManagement(view: Parameters<NonNullable<PlatformAdapter["renderReplyManagement"]>>[0]): OutboundMessage;
     renderCancelConfirm(input: Parameters<NonNullable<PlatformAdapter["renderCancelConfirm"]>>[0]): OutboundMessage;
     recallMessage(chatId: string, messageId: string): Promise<void>;
-    fetchResource(messageId: string, key: string): Promise<{
+    fetchResource(messageId: string, key: string, kind?: "image" | "file"): Promise<{
         data: Buffer;
         mime: string;
         filename?: string;
