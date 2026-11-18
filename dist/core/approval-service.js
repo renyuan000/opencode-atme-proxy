@@ -74,21 +74,41 @@ export class ApprovalService {
             if (action.planHash && action.planHash !== pending.planHash) {
                 return { ok: false, toast: "草稿已变更，请刷新列表" };
             }
-            this.options.pending.delete(`${action.taskId}:reply`);
-            await this.options.pending.flush();
-            const task = await this.options.tasks.get(action.taskId);
-            if (task && canTransition(task.state, "canceled")) {
-                task.state = "canceled";
-                task.updatedAt = Date.now();
-                await this.options.tasks.save(task);
-            }
-            await this.options.audit.append({
-                actor: action.actor,
-                action: "question_cancelled",
-                taskId: action.taskId,
-                details: { messageId: pending.sourceMessageId },
+            const confirm = this.options.platform.renderCancelConfirm?.({
+                taskId: pending.taskId,
+                planHash: pending.planHash,
+                ...(pending.draft ? { draft: pending.draft } : {}),
             });
-            return this.replyManagementResult("已取消草稿");
+            if (confirm?.kind === "card") {
+                return { ok: true, toast: "请确认取消", card: confirm.card };
+            }
+            return this.cancelPendingNow(action, pending);
+        }
+        if (action.action === "cancel_pending_confirm") {
+            if (!(await this.isAuthorizedActor(action.actor))) {
+                return { ok: false, toast: "无权操作" };
+            }
+            const pending = this.options.pending.get(`${action.taskId}:reply`);
+            if (!pending)
+                return { ok: false, toast: "草稿不存在或已处理" };
+            if (action.planHash && action.planHash !== pending.planHash) {
+                return { ok: false, toast: "草稿已变更，请刷新列表" };
+            }
+            return this.cancelPendingNow(action, pending);
+        }
+        if (action.action === "restore_approval") {
+            if (!(await this.isAuthorizedActor(action.actor))) {
+                return { ok: false, toast: "无权操作" };
+            }
+            const pending = this.options.pending.get(`${action.taskId}:reply`);
+            if (!pending)
+                return { ok: false, toast: "草稿不存在或已处理" };
+            const task = await this.options.tasks.get(action.taskId);
+            return {
+                ok: true,
+                toast: "已返回审批",
+                card: this.pendingApprovalCard(pending, task),
+            };
         }
         if (action.action === "recall_reply") {
             if (!(await this.isAuthorizedActor(action.actor))) {
@@ -203,6 +223,47 @@ export class ApprovalService {
             acceptanceCriteria: [],
             openQuestions: [],
             resolution,
+        };
+        const rendered = this.options.platform.renderApproval(view);
+        return rendered.kind === "card" ? rendered.card : undefined;
+    }
+    async cancelPendingNow(action, pending) {
+        this.options.pending.delete(`${action.taskId}:reply`);
+        await this.options.pending.flush();
+        const task = await this.options.tasks.get(action.taskId);
+        if (task && canTransition(task.state, "canceled")) {
+            task.state = "canceled";
+            task.updatedAt = Date.now();
+            await this.options.tasks.save(task);
+        }
+        await this.options.audit.append({
+            actor: action.actor,
+            action: "question_cancelled",
+            taskId: action.taskId,
+            details: { messageId: pending.sourceMessageId },
+        });
+        return this.replyManagementResult("已取消草稿");
+    }
+    pendingApprovalCard(pending, task) {
+        const view = {
+            taskId: pending.taskId,
+            planHash: pending.planHash,
+            mode: "reply",
+            title: pending.style === "detailed"
+                ? "对方要求详细回答，将给出完整信息"
+                : "将用极简格式代答",
+            summary: task?.title ?? pending.draft ?? "代答草稿",
+            ...(pending.draft ? { draft: pending.draft } : {}),
+            chatId: pending.chatId ?? "",
+            sourceMessageId: pending.sourceMessageId ?? "",
+            senderId: pending.actorId,
+            repo: "—",
+            baseBranch: "—",
+            targetBranch: "—",
+            commands: [],
+            risks: ["代答会以机器人身份发送并标注（助手代答）"],
+            acceptanceCriteria: ["引用原消息", "简洁回复，除非对方要求详细"],
+            openQuestions: [],
         };
         const rendered = this.options.platform.renderApproval(view);
         return rendered.kind === "card" ? rendered.card : undefined;

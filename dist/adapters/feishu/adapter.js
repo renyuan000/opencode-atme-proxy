@@ -265,6 +265,9 @@ export class FeishuAdapter {
     renderReplyManagement(view) {
         return renderReplyManagementCard(view);
     }
+    renderCancelConfirm(input) {
+        return renderCancelConfirmCard(input);
+    }
     async recallMessage(_chatId, messageId) {
         const response = await this.client.request({
             method: "DELETE",
@@ -520,6 +523,12 @@ export function renderReplyManagementCard(view) {
                         type: "danger",
                         value: { a: "cancel_pending", t: item.taskId, h: item.planHash },
                     },
+                    {
+                        tag: "button",
+                        text: { tag: "plain_text", content: "返回审批" },
+                        type: "default",
+                        value: { a: "restore_approval", t: item.taskId, h: item.planHash },
+                    },
                 ],
             });
         }
@@ -581,6 +590,48 @@ export function renderReplyManagementCard(view) {
                 title: { tag: "plain_text", content: "回复管理" },
             },
             elements,
+        },
+    };
+}
+export function renderCancelConfirmCard(input) {
+    return {
+        kind: "card",
+        card: {
+            config: { wide_screen_mode: true },
+            header: {
+                template: "red",
+                title: { tag: "plain_text", content: "确认取消草稿" },
+            },
+            elements: [
+                {
+                    tag: "div",
+                    text: {
+                        tag: "plain_text",
+                        content: [
+                            "取消后这条草稿不会发送。",
+                            ...(input.draft ? [`草稿：${input.draft.slice(0, 160)}`] : []),
+                            `任务：${input.taskId}`,
+                        ].join("\n"),
+                    },
+                },
+                {
+                    tag: "action",
+                    actions: [
+                        {
+                            tag: "button",
+                            text: { tag: "plain_text", content: "确认取消" },
+                            type: "danger",
+                            value: { a: "cancel_pending_confirm", t: input.taskId, h: input.planHash },
+                        },
+                        {
+                            tag: "button",
+                            text: { tag: "plain_text", content: "返回审批" },
+                            type: "default",
+                            value: { a: "restore_approval", t: input.taskId, h: input.planHash },
+                        },
+                    ],
+                },
+            ],
         },
     };
 }

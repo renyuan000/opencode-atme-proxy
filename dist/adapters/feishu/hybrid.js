@@ -35,6 +35,9 @@ export class HybridFeishuAdapter {
     renderReplyManagement(view) {
         return this.adapter.renderReplyManagement(view);
     }
+    renderCancelConfirm(input) {
+        return this.adapter.renderCancelConfirm(input);
+    }
     recallMessage(chatId, messageId) {
         return this.adapter.recallMessage(chatId, messageId);
     }

@@ -62,6 +62,12 @@ export class HybridFeishuAdapter implements PlatformAdapter {
     return this.adapter.renderReplyManagement(view);
   }
 
+  renderCancelConfirm(
+    input: Parameters<NonNullable<PlatformAdapter["renderCancelConfirm"]>>[0],
+  ): OutboundMessage {
+    return this.adapter.renderCancelConfirm(input);
+  }
+
   recallMessage(chatId: string, messageId: string): Promise<void> {
     return this.adapter.recallMessage(chatId, messageId);
   }

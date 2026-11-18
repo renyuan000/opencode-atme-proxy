@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderApprovalCard, renderReplyManagementCard } from "../src/adapters/feishu/adapter.js";
+import { renderApprovalCard, renderCancelConfirmCard, renderReplyManagementCard } from "../src/adapters/feishu/adapter.js";
 import type { ApprovalView } from "../src/core/types.js";
 
 function view(overrides: Partial<ApprovalView> = {}): ApprovalView {
@@ -46,7 +46,17 @@ test("develop card also exposes reply management", () => {
 
 test("reply management card shows recallable reply data", () => {
   const out = renderReplyManagementCard({
-    pending: [],
+    pending: [
+      {
+        taskId: "task_1",
+        planHash: "h1",
+        chatLabel: "产品群",
+        senderLabel: "李四",
+        draft: "草稿",
+        excerpt: "原消息",
+        createdAt: Date.now(),
+      },
+    ],
     sent: [
       {
         id: "sent_1",
@@ -66,6 +76,19 @@ test("reply management card shows recallable reply data", () => {
   assert.match(text, /今天先放 5%/);
   assert.match(text, /撤回此回复/);
   assert.match(text, /recall_reply/);
+  assert.match(text, /返回审批/);
+});
+
+test("cancel confirmation can return to approval", () => {
+  const out = renderCancelConfirmCard({
+    taskId: "task_1",
+    planHash: "h1",
+    draft: "旧草稿",
+  });
+  const text = JSON.stringify((out as { card: unknown }).card);
+  assert.match(text, /cancel_pending_confirm/);
+  assert.match(text, /restore_approval/);
+  assert.match(text, /旧草稿/);
 });
 
 test("resolved card disables buttons and shows the result", () => {

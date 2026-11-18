@@ -82,6 +82,11 @@ export declare class FeishuAdapter implements PlatformAdapter {
     }>;
     renderApproval(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage;
     renderReplyManagement(view: ReplyManagementView): OutboundMessage;
+    renderCancelConfirm(input: {
+        taskId: string;
+        planHash: string;
+        draft?: string;
+    }): OutboundMessage;
     recallMessage(_chatId: string, messageId: string): Promise<void>;
     verifyActor(actor: ActorRef): Promise<boolean>;
     private requireMessageId;
@@ -89,5 +94,10 @@ export declare class FeishuAdapter implements PlatformAdapter {
 }
 export declare function renderApprovalCard(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage;
 export declare function renderReplyManagementCard(view: ReplyManagementView): OutboundMessage;
+export declare function renderCancelConfirmCard(input: {
+    taskId: string;
+    planHash: string;
+    draft?: string;
+}): OutboundMessage;
 export declare function parseCardAction(raw: any): PlatformAction | undefined;
 export type { PlatformActionResult };

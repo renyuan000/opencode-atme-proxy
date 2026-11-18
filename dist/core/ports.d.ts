@@ -44,6 +44,11 @@ export interface PlatformAdapter {
     }>;
     renderApproval(view: ApprovalView): OutboundMessage;
     renderReplyManagement?(view: ReplyManagementView): OutboundMessage;
+    renderCancelConfirm?(input: {
+        taskId: string;
+        planHash: string;
+        draft?: string;
+    }): OutboundMessage;
     recallMessage?(chatId: string, messageId: string): Promise<void>;
     verifyActor(actor: ActorRef): Promise<boolean>;
 }
