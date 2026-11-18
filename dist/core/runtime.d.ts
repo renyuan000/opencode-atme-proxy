@@ -48,6 +48,7 @@ export declare class ProxyRuntime {
     private readonly approvalService;
     private readonly executionService;
     private readonly ownerCommandService;
+    private readonly replyService;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
