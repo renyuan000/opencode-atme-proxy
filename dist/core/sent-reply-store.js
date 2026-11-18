@@ -14,20 +14,28 @@ export class SentReplyStore {
         this.logger = logger ?? createLogger({ scope: "sent-replies" });
     }
     async load() {
-        const data = await readJsonFile(this.file, {
-            version: 1,
-            replies: [],
-        });
-        const cutoff = Date.now() - this.ttlMs;
-        this.replies = (Array.isArray(data.replies) ? data.replies : [])
-            .filter((item) => Boolean(item) &&
-            typeof item.id === "string" &&
-            typeof item.chatId === "string" &&
-            typeof item.sentMessageId === "string" &&
-            typeof item.text === "string" &&
-            typeof item.sentAt === "number" &&
-            item.sentAt >= cutoff)
-            .slice(0, this.maxEntries);
+        try {
+            const data = await readJsonFile(this.file, {
+                version: 1,
+                replies: [],
+            });
+            const cutoff = Date.now() - this.ttlMs;
+            this.replies = (Array.isArray(data.replies) ? data.replies : [])
+                .filter((item) => Boolean(item) &&
+                typeof item.id === "string" &&
+                typeof item.chatId === "string" &&
+                typeof item.sentMessageId === "string" &&
+                typeof item.text === "string" &&
+                typeof item.sentAt === "number" &&
+                item.sentAt >= cutoff)
+                .slice(0, this.maxEntries);
+        }
+        catch (error) {
+            this.replies = [];
+            this.logger.error("failed to load sent replies; starting empty", {
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
     }
     list(limit = 5) {
         return this.replies.slice(0, Math.max(0, limit));
@@ -58,21 +66,20 @@ export class SentReplyStore {
         return true;
     }
     async flush() {
-        this.chain = this.chain.then(async () => {
+        this.chain = this.chain
+            .catch(() => { })
+            .then(async () => {
             await writeJsonAtomic(this.file, {
                 version: 1,
                 replies: this.replies,
             });
-        });
-        try {
-            await this.chain;
-        }
-        catch (error) {
+        })
+            .catch((error) => {
             this.logger.error("failed to persist sent replies", {
                 error: error instanceof Error ? error.message : String(error),
             });
-            throw error;
-        }
+        });
+        await this.chain;
     }
 }
 //# sourceMappingURL=sent-reply-store.js.map

@@ -579,7 +579,7 @@ export function renderReplyManagementCard(view: ReplyManagementView): OutboundMe
     }
   }
   if (view.sent.length > 0) {
-    section("最近已发送", `共 ${view.sent.length} 条，可直接撤回误发回复。`);
+    section("最近已发送", "最近 5 条，可直接撤回误发回复；受企业撤回时限限制（默认 24 小时）。");
     for (const item of view.sent.slice(0, 5)) {
       const time = new Date(item.sentAt).toLocaleString("zh-CN", { hour12: false });
       elements.push({

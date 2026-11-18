@@ -37,23 +37,30 @@ export class SentReplyStore {
   }
 
   async load(): Promise<void> {
-    const data = await readJsonFile<SentReplyFile>(this.file, {
-      version: 1,
-      replies: [],
-    });
-    const cutoff = Date.now() - this.ttlMs;
-    this.replies = (Array.isArray(data.replies) ? data.replies : [])
-      .filter(
-        (item): item is SentReplyRecord =>
-          Boolean(item) &&
-          typeof item.id === "string" &&
-          typeof item.chatId === "string" &&
-          typeof item.sentMessageId === "string" &&
-          typeof item.text === "string" &&
-          typeof item.sentAt === "number" &&
-          item.sentAt >= cutoff,
-      )
-      .slice(0, this.maxEntries);
+    try {
+      const data = await readJsonFile<SentReplyFile>(this.file, {
+        version: 1,
+        replies: [],
+      });
+      const cutoff = Date.now() - this.ttlMs;
+      this.replies = (Array.isArray(data.replies) ? data.replies : [])
+        .filter(
+          (item): item is SentReplyRecord =>
+            Boolean(item) &&
+            typeof item.id === "string" &&
+            typeof item.chatId === "string" &&
+            typeof item.sentMessageId === "string" &&
+            typeof item.text === "string" &&
+            typeof item.sentAt === "number" &&
+            item.sentAt >= cutoff,
+        )
+        .slice(0, this.maxEntries);
+    } catch (error) {
+      this.replies = [];
+      this.logger.error("failed to load sent replies; starting empty", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   list(limit = 5): SentReplyRecord[] {
@@ -88,19 +95,19 @@ export class SentReplyStore {
   }
 
   async flush(): Promise<void> {
-    this.chain = this.chain.then(async () => {
-      await writeJsonAtomic(this.file, {
-        version: 1,
-        replies: this.replies,
-      } satisfies SentReplyFile);
-    });
-    try {
-      await this.chain;
-    } catch (error) {
-      this.logger.error("failed to persist sent replies", {
-        error: error instanceof Error ? error.message : String(error),
+    this.chain = this.chain
+      .catch(() => {})
+      .then(async () => {
+        await writeJsonAtomic(this.file, {
+          version: 1,
+          replies: this.replies,
+        } satisfies SentReplyFile);
+      })
+      .catch((error) => {
+        this.logger.error("failed to persist sent replies", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-      throw error;
-    }
+    await this.chain;
   }
 }
