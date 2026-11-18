@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenCode headless server
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/renyuan/opencode-atme-proxy.git
+Environment=HOME=/root
+Environment=PATH=/root/.nvm/versions/node/v24.22.1/bin:/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/root/.opencode/bin/opencode serve --hostname 127.0.0.1 --port 19876
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

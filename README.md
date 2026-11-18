@@ -257,6 +257,43 @@ npm start
 nohup npm start >> ~/.local/state/opencode-atme-proxy/daemon.log 2>&1 &
 ```
 
+### 3.1 开机自启（WSL2 + systemd）
+
+WSL2 已启用 systemd 时，用仓库自带 unit：
+
+```bash
+sudo bash deploy/systemd/install.sh
+```
+
+会安装并启用两个服务：
+
+- `opencode-serve.service`：`opencode serve --port 19876`
+- `atme-proxy.service`：`atme-proxy start`，依赖前者
+
+日志用 journald：
+
+```bash
+journalctl -u opencode-serve -f
+journalctl -u atme-proxy -f
+```
+
+如果 WSL 没启用 systemd，先在 `/etc/wsl.conf` 加：
+
+```ini
+[boot]
+systemd=true
+```
+
+然后在 Windows PowerShell 执行 `wsl --shutdown`，重开 WSL。
+
+Windows 登录时自动拉起 WSL：任务计划程序 → 创建任务 → 触发器“登录时” → 操作 `C:\Windows\System32\wsl.exe`，参数：
+
+```text
+-d <发行版名> -u root --exec /bin/true
+```
+
+发行版名用 `wsl.exe -l -v` 查看。unit 默认按 `root` 和当前仓库路径写；换用户或路径时改 `deploy/systemd/*.service`。
+
 开发模式：
 
 ```bash
