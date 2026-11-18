@@ -48,7 +48,7 @@ import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
 import { selectBurstExtensions, mergeBurst } from "./burst.js";
 import { ProjectStore } from "./project-store.js";
-import { ChatContextStore, type ContextOrigin } from "./chat-context.js";
+import { ChatContextStore } from "./chat-context.js";
 import { EvidenceStore } from "./evidence-store.js";
 import { GroupContextStore, type GroupSummary } from "./group-context.js";
 import { MemoryStore, type MemoryKind } from "./memory-store.js";
@@ -61,6 +61,7 @@ import { OwnerCommandService } from "./owner-command-service.js";
 import { ReplyService } from "./reply-service.js";
 import { TaskService } from "./task-service.js";
 import { IntentService } from "./intent-service.js";
+import { MessageIngress } from "./message-ingress.js";
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
@@ -78,7 +79,6 @@ import {
   stableUuid,
   toErrorMessage,
   redactPreview,
-  isLowValueMessage,
   truncate,
   truncateMiddle,
   writeJsonAtomic,
@@ -150,6 +150,7 @@ export class ProxyRuntime {
   private readonly replyService: ReplyService;
   private readonly taskService: TaskService;
   private readonly intentService: IntentService;
+  private readonly messageIngress: MessageIngress;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly memory: MemoryStore;
   private readonly owners: OwnerStore;
@@ -288,6 +289,26 @@ export class ProxyRuntime {
         .filter((group) => group.enabled)
         .map((group) => group.chatId),
     );
+    this.messageIngress = new MessageIngress({
+      config: this.config,
+      logger: this.logger.child("ingress"),
+      dedup: this.dedup,
+      chatContext: this.chatContext,
+      evidence: this.evidence,
+      senderLimiter: this.senderLimiter,
+      activeMessageIds: this.activeMessageIds,
+      ownerOpenId: () => this.ownerOpenId(),
+      botOpenId: () =>
+        (this.options.platform as { getBotOpenId?: () => string | undefined }).getBotOpenId?.() ??
+        this.config.platforms.feishu.botOpenId,
+      rememberRecent: (message) => this.rememberRecent(message),
+      updateGroupSummary: (platform, chatId) => {
+        void this.updateGroupSummary(platform, chatId);
+      },
+      safeReply: (message, text) => this.safeReply(message, text),
+      dispatch: (message, limited, wait) =>
+        this.dispatchGroupMessage(message, limited, wait),
+    });
     const filterNeedsExternal = this.config.filter.mode === "external";
     this.filterEnabled =
       this.config.filter.enabled &&
@@ -702,79 +723,16 @@ export class ProxyRuntime {
       });
       return;
     }
+    await this.messageIngress.handle(message, chatName, wait);
+  }
+
+  private async dispatchGroupMessage(
+    message: IncomingMessage,
+    limited: boolean,
+    wait: boolean,
+  ): Promise<void> {
     const dedupKey = `${message.platform}:${message.messageId}`;
-    if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey)) return;
-    this.activeMessageIds.add(dedupKey);
-    this.rememberRecent(message);
     const mention = this.isMention(message);
-    const mentionBot = this.isMentionBot(message);
-    const ownerId = this.ownerOpenId();
-    const fromOwner = Boolean(ownerId) && message.sender.id === ownerId;
-    const limited = mentionBot && !(this.config.botReply.ownerBypass && fromOwner);
-    if (limited && !this.senderLimiter.tryAcquire(message.sender.id)) {
-      if (this.senderLimiter.shouldWarn(message.sender.id)) {
-        this.logger.warn("sender rate limited; sending one warning", {
-          senderId: message.sender.id,
-          messageId: message.messageId,
-        });
-        await this.safeReply(message, this.config.botReply.overloadReply);
-      }
-      this.dedup.add(dedupKey);
-      await this.dedup.flush();
-      return;
-    }
-    const mentionMe2 = this.isMentionMe(message);
-    const storeOwnerGroup =
-      fromOwner && this.config.context.enabled && this.config.context.storeOwnerGroup !== false;
-    const storeAllGroup =
-      this.config.context.storeAllGroupMessages !== false && !isLowValueMessage(message.text);
-    if (this.shouldStoreContext(message, mentionMe2, mentionBot) || storeOwnerGroup || storeAllGroup) {
-      const origin: ContextOrigin = mentionBot
-        ? "mention_bot"
-        : mentionMe2
-          ? "mention_me"
-          : fromOwner
-            ? "owner_group"
-            : this.isMediaMessage(message)
-              ? "media_placeholder"
-              : "group_all";
-      this.chatContext.append(
-        `${message.platform}:${message.chat.id}`,
-        {
-          messageId: message.messageId,
-          senderId: message.sender.id,
-          ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
-          text: message.text,
-          at: message.createdAt,
-          ...(message.replyToMessageId ? { replyToMessageId: message.replyToMessageId } : {}),
-          ...(message.threadId ? { threadId: message.threadId } : {}),
-          mentionMe: mentionMe2,
-          mentionBot,
-          origin,
-        },
-        {
-          platform: message.platform,
-          chatId: message.chat.id,
-          ...(message.chat.name ? { chatName: message.chat.name } : {}),
-        },
-      );
-      this.evidence.append({
-        ts: message.createdAt,
-        platform: message.platform,
-        chatId: message.chat.id,
-        ...(message.chat.name ? { chatName: message.chat.name } : {}),
-        messageId: message.messageId,
-        direction: "inbound",
-        senderId: message.sender.id,
-        ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
-        origin,
-        text: message.text,
-        ...(message.attachments ? { attachments: message.attachments } : {}),
-      });
-    }
-    if (this.config.groupSession?.enabled !== false) {
-      void this.updateGroupSummary(message.platform, message.chat.id);
-    }
     const job = this.dispatcher.enqueue({
       id: message.messageId,
       key: message.chat.id,
@@ -1987,24 +1945,6 @@ export class ProxyRuntime {
       }
     }
     void this.memory.flush();
-  }
-
-  private shouldStoreContext(
-    message: IncomingMessage,
-    mentionMe: boolean,
-    mentionBot: boolean,
-  ): boolean {
-    if (!this.config.context.enabled) return false;
-    if (mentionMe || mentionBot) return this.config.context.storeMentions;
-    if (this.config.context.storeMediaPlaceholders !== false && this.isMediaMessage(message)) {
-      return true;
-    }
-    return false;
-  }
-
-  private isMediaMessage(message: IncomingMessage): boolean {
-    if ((message.attachments?.length ?? 0) > 0) return true;
-    return /\[(图片|文件|视频|音频)[^\]]*未解析\]/.test(message.text);
   }
 
   private appendContextForScan(message: IncomingMessage): void {

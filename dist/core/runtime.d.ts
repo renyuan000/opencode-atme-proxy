@@ -51,6 +51,7 @@ export declare class ProxyRuntime {
     private readonly replyService;
     private readonly taskService;
     private readonly intentService;
+    private readonly messageIngress;
     private readonly groupLocks;
     private readonly memory;
     private readonly owners;
@@ -75,6 +76,7 @@ export declare class ProxyRuntime {
     start(): Promise<void>;
     stop(): Promise<void>;
     private onMessage;
+    private dispatchGroupMessage;
     ingest(message: IncomingMessage): Promise<void>;
     ingestBatch(messages: IncomingMessage[]): Promise<void>;
     private isMention;
@@ -125,8 +127,6 @@ export declare class ProxyRuntime {
     private finishSession;
     private memoryBlock;
     private rememberFromMention;
-    private shouldStoreContext;
-    private isMediaMessage;
     private appendContextForScan;
     private createGroupSession;
     private summaryText;
