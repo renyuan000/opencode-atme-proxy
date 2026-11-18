@@ -11,7 +11,10 @@ const COMMANDS = {
     help: "help",
 };
 export function parseOwnerCommand(text) {
-    const match = text.trim().match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|帮助|help)\s*([\s\S]*)$/i);
+    const bare = text.trim();
+    if (bare === "/" || bare === "／")
+        return { command: "help", arg: "" };
+    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|帮助|help)\s*([\s\S]*)$/i);
     if (!match)
         return undefined;
     const token = match[1] ?? "";
