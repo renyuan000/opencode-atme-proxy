@@ -38,6 +38,7 @@ import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
+import { OwnerAccessService } from "./owner-access-service.js";
 import { readJsonFile, sha256, toErrorMessage, redactPreview, truncate, truncateMiddle, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
 const READ_ONLY_PERMISSION = [
@@ -97,11 +98,9 @@ export class ProxyRuntime {
     scanService;
     notificationService;
     recoveryService;
+    ownerAccess;
     groupLocks = new Map();
     memory;
-    owners;
-    resolvedOwner;
-    claimAttempts = new Map();
     senderLimiter;
     projectResolver;
     background = new Set();
@@ -165,8 +164,15 @@ export class ProxyRuntime {
             maxConcurrent: this.config.botReply.perSenderConcurrent,
             cooldownMs: this.config.botReply.cooldownSeconds * 1000,
         });
-        this.owners = new OwnerStore(join(this.stateDir, "owner.json"), this.logger.child("owner"));
-        this.initOwner();
+        this.ownerAccess = new OwnerAccessService({
+            config: this.config,
+            loaded: this.options.loaded,
+            owners: new OwnerStore(join(this.stateDir, "owner.json"), this.logger.child("owner")),
+            audit: this.audit,
+            logger: this.logger.child("owner"),
+            sendToOwner: (text) => this.sendToOwner(text),
+        });
+        this.ownerAccess.init();
         this.chatContext = new ChatContextStore({
             file: join(this.stateDir, "chat-context.json"),
             maxMessagesPerChat: this.config.context.maxMessagesPerChat,
@@ -469,114 +475,14 @@ export class ProxyRuntime {
             sendToOwner: (text) => this.sendToOwner(text),
         });
     }
-    initOwner() {
-        const feishu = this.config.platforms.feishu;
-        const openId = feishu.me.openId ?? feishu.approvers[0]?.openId;
-        if (!openId)
-            return;
-        this.resolvedOwner = {
-            platform: "feishu",
-            openId,
-            ...(feishu.me.name ?? feishu.approvers[0]?.name
-                ? { displayName: feishu.me.name ?? feishu.approvers[0]?.name }
-                : {}),
-            boundAt: Date.now(),
-            method: "config",
-        };
-    }
-    reconcileOwner() {
-        const stored = this.owners.get("feishu");
-        if (!this.resolvedOwner && stored) {
-            this.resolvedOwner = stored;
-            return;
-        }
-        if (!stored && this.resolvedOwner) {
-            this.owners.set(this.resolvedOwner);
-            return;
-        }
-        if (stored && this.resolvedOwner && stored.openId !== this.resolvedOwner.openId) {
-            this.logger.warn("configured owner differs from persisted owner; using config", {
-                configured: this.resolvedOwner.openId,
-                persisted: stored.openId,
-            });
-            this.owners.set(this.resolvedOwner);
-        }
-    }
     ownerOpenId() {
-        return this.resolvedOwner?.openId ?? this.config.platforms.feishu.me.openId ?? this.config.platforms.feishu.approvers[0]?.openId;
+        return this.ownerAccess.openId();
     }
     ownerName() {
-        return (this.resolvedOwner?.displayName ??
-            this.config.platforms.feishu.me.name ??
-            this.config.filter.profile.name ??
-            "我");
+        return this.ownerAccess.name();
     }
-    async claimOwner(message) {
-        const bootstrap = this.config.platforms.feishu.bootstrap;
-        if (!bootstrap.allowPrivateClaim)
-            return false;
-        const claimCode = this.options.loaded.secrets.claimCode;
-        if (!claimCode)
-            return false;
-        if (message.chat.kind !== "direct")
-            return false;
-        const expected = claimCode.trim();
-        const provided = message.text.trim();
-        if (!expected || provided !== expected) {
-            this.recordClaimAttempt(message.sender.id);
-            return false;
-        }
-        if (this.tooManyClaimAttempts(message.sender.id)) {
-            await this.sendToOwner("claim 尝试过于频繁，已暂时拒绝。");
-            return false;
-        }
-        const existing = this.resolvedOwner ?? this.owners.get(message.platform);
-        if (existing && existing.openId !== message.sender.id) {
-            await this.audit.append({
-                actor: message.sender,
-                action: "owner_claim_rejected",
-                details: { reason: "owner already bound", existing: existing.openId },
-            });
-            await this.sendToOwner("owner 已绑定，不能通过 claim 覆盖；如需更换请重新生成 claim code 并清空 owner.json。");
-            return false;
-        }
-        const binding = {
-            platform: message.platform,
-            openId: message.sender.id,
-            ...(message.sender.displayName ? { displayName: message.sender.displayName } : {}),
-            boundAt: Date.now(),
-            method: "claim",
-        };
-        this.owners.set(binding);
-        await this.owners.flush();
-        this.resolvedOwner = binding;
-        this.claimAttempts.delete(message.sender.id);
-        await this.audit.append({
-            actor: message.sender,
-            action: "owner_claimed",
-            details: { method: "claim" },
-        });
-        await this.sendToOwner(`已绑定你为 owner：${message.sender.displayName ?? message.sender.id}。后续 @、升级、审批都发给你。`);
-        return true;
-    }
-    recordClaimAttempt(senderId) {
-        const now = Date.now();
-        const entry = this.claimAttempts.get(senderId);
-        if (!entry || now - entry.firstAt > 600_000) {
-            this.claimAttempts.set(senderId, { count: 1, firstAt: now });
-            return;
-        }
-        entry.count += 1;
-    }
-    tooManyClaimAttempts(senderId) {
-        const entry = this.claimAttempts.get(senderId);
-        if (!entry)
-            return false;
-        if (Date.now() - entry.firstAt > 600_000) {
-            this.claimAttempts.delete(senderId);
-            return false;
-        }
-        return entry.count > this.config.platforms.feishu.bootstrap.maxClaimAttemptsPer10Min;
+    claimOwner(message) {
+        return this.ownerAccess.claim(message);
     }
     sendToOwner(text) {
         return this.notificationService.sendToOwner(text);
@@ -611,8 +517,8 @@ export class ProxyRuntime {
         await this.memory.migrateShards();
         await this.groupContext.load();
         this.evidence.prune();
-        await this.owners.load();
-        this.reconcileOwner();
+        await this.ownerAccess.load();
+        this.ownerAccess.reconcile();
         await this.options.platform.start({
             onMessage: (message) => this.onMessage(message),
             onAction: (action) => this.onAction(action),
@@ -664,7 +570,7 @@ export class ProxyRuntime {
             this.chatContext.flush(),
             this.memory.flush(),
             this.groupContext.flush(),
-            this.owners.flush(),
+            this.ownerAccess.flush(),
         ]);
         this.logger.info("runtime stopped");
     }
