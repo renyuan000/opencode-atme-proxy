@@ -28,6 +28,7 @@ interface FeishuRawMessage {
             union_id?: string;
         };
         sender_type?: string;
+        sender_name?: string;
     };
 }
 export declare function mapFeishuMessage(raw: FeishuRawMessage): IncomingMessage | undefined;

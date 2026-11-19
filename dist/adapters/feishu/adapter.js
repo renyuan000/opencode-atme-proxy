@@ -25,6 +25,7 @@ export function mapFeishuMessage(raw) {
         sender: {
             platform: "feishu",
             id: senderId,
+            ...(raw.sender?.sender_name ? { displayName: raw.sender.sender_name } : {}),
         },
         senderType,
         text,
@@ -35,6 +36,35 @@ export function mapFeishuMessage(raw) {
         rawType: raw.message_type ?? "unknown",
         ...(attachments.length > 0 ? { attachments } : {}),
     };
+}
+function mapHistoryItem(item) {
+    return mapFeishuMessage({
+        message_id: item?.message_id,
+        chat_id: item?.chat_id,
+        chat_type: item?.chat_type,
+        message_type: item?.msg_type ?? item?.message_type,
+        content: item?.body?.content ?? item?.content,
+        create_time: item?.create_time,
+        parent_id: item?.parent_id,
+        root_id: item?.root_id,
+        thread_id: item?.thread_id,
+        sender: item?.sender
+            ? {
+                sender_id: {
+                    open_id: item.sender.sender_id?.open_id ?? item.sender.id,
+                },
+                sender_type: item.sender.sender_type,
+                sender_name: item.sender.sender_name ?? item.sender.name,
+            }
+            : undefined,
+        mentions: Array.isArray(item?.mentions)
+            ? item.mentions.map((mention) => ({
+                key: mention.key,
+                id: { open_id: mention.id },
+                name: mention.name,
+            }))
+            : undefined,
+    });
 }
 function normalizeSenderType(value) {
     if (value === "bot" || value === "app")
@@ -256,27 +286,7 @@ export class FeishuAdapter {
         const item = response?.data?.items?.[0];
         if (!item)
             return undefined;
-        return mapFeishuMessage({
-            message_id: item.message_id,
-            chat_id: item.chat_id,
-            message_type: item.msg_type,
-            content: item.body?.content,
-            create_time: item.create_time,
-            parent_id: item.parent_id,
-            root_id: item.root_id,
-            thread_id: item.thread_id,
-            sender: {
-                sender_id: { open_id: item.sender?.id },
-                sender_type: item.sender?.sender_type,
-            },
-            mentions: Array.isArray(item.mentions)
-                ? item.mentions.map((mention) => ({
-                    key: mention.key,
-                    id: { open_id: mention.id },
-                    name: mention.name,
-                }))
-                : undefined,
-        });
+        return mapHistoryItem(item);
     }
     async listMessages(input) {
         const messages = [];
@@ -300,7 +310,7 @@ export class FeishuAdapter {
             }
             const items = Array.isArray(response?.data?.items) ? response.data.items : [];
             for (const item of items) {
-                const mapped = mapFeishuMessage(item);
+                const mapped = mapHistoryItem(item);
                 if (mapped)
                     messages.push(mapped);
                 if (messages.length >= input.maxMessages)
