@@ -6,6 +6,7 @@ import { toErrorMessage, writeJsonAtomic } from "./util.js";
 export class GroupWorkspaceManager {
     root;
     logger;
+    dirs = new Map();
     constructor(root, logger) {
         this.root = root;
         this.logger = logger ?? createLogger({ scope: "group-workspace" });
@@ -20,6 +21,8 @@ export class GroupWorkspaceManager {
                 mkdir(join(dir, "session"), { recursive: true }),
                 mkdir(join(dir, "files"), { recursive: true }),
                 mkdir(join(dir, "worktrees"), { recursive: true }),
+                mkdir(join(dir, "analysis"), { recursive: true }),
+                mkdir(join(dir, "execution"), { recursive: true }),
             ]);
             const path = join(dir, "group.json");
             const previous = await readFile(path, "utf8")
@@ -39,6 +42,8 @@ export class GroupWorkspaceManager {
                     session: "session",
                     files: "files",
                     worktrees: "worktrees",
+                    analysis: "analysis",
+                    execution: "execution",
                 },
                 stateGroupDir: input.stateGroupDir,
             };
@@ -48,6 +53,7 @@ export class GroupWorkspaceManager {
                 previous.stateGroupDir !== next.stateGroupDir;
             if (changed)
                 await writeJsonAtomic(path, next);
+            this.dirs.set(input.chatId, dir);
             await this.writeAlias(input, dirName);
             return dir;
         }
@@ -59,6 +65,9 @@ export class GroupWorkspaceManager {
             });
             return undefined;
         }
+    }
+    dirFor(chatId) {
+        return this.dirs.get(chatId);
     }
     async writeAlias(input, canonicalDirName) {
         const aliasesDir = join(this.root, "aliases");

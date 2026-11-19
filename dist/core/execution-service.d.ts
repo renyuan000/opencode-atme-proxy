@@ -11,6 +11,7 @@ export interface ExecutionServiceOptions {
     config: AppConfig;
     stateDir: string;
     stateDirFor?(chatId: string): string;
+    workspaceDirFor?(chatId: string): string | undefined;
     tasks: TaskStore;
     approvals: ApprovalStore;
     audit: AuditLog;

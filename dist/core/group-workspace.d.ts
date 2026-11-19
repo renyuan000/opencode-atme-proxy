@@ -14,7 +14,9 @@ export interface GroupWorkspaceInput {
 export declare class GroupWorkspaceManager {
     private readonly root;
     private readonly logger;
+    private readonly dirs;
     constructor(root: string, logger?: Logger);
     ensure(input: GroupWorkspaceInput): Promise<string | undefined>;
+    dirFor(chatId: string): string | undefined;
     private writeAlias;
 }

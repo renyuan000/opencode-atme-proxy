@@ -89,6 +89,10 @@ export async function extractDocumentText(
       const text = await run("pdftotext", [file, "-"]);
       return text?.slice(0, 20_000);
     }
+    if (ext === "doc") {
+      const text = await run("antiword", [file]);
+      return text?.slice(0, 20_000);
+    }
     if (ext === "docx") {
       const text = await run("pandoc", [file, "-t", "plain"]);
       if (text) return text.slice(0, 20_000);

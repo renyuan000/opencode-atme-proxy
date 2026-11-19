@@ -27,6 +27,7 @@ export interface TaskServiceOptions {
   config: AppConfig;
   stateDir: string;
   stateDirFor?(chatId: string): string;
+  workspaceDirFor?(chatId: string): string | undefined;
   tasks: TaskStore;
   audit: AuditLog;
   contextService: ContextService;
@@ -75,6 +76,17 @@ export class TaskService {
       join(stateDir, "analyses", task.id, "index.json"),
       { version: analysis.version },
     );
+    const workspaceDir = this.options.workspaceDirFor?.(task.chatId);
+    if (workspaceDir) {
+      await writeJsonAtomic(
+        join(workspaceDir, "analysis", task.id, `${analysis.version}.json`),
+        analysis,
+      );
+      await writeJsonAtomic(
+        join(workspaceDir, "analysis", task.id, "index.json"),
+        { version: analysis.version },
+      );
+    }
     this.rememberTaskOutcome(task, analysis);
     task.state = analysis.needsInfo ? "needs_info" : "awaiting_approval";
     task.updatedAt = Date.now();

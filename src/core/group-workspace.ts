@@ -21,6 +21,7 @@ export interface GroupWorkspaceInput {
 
 export class GroupWorkspaceManager {
   private readonly logger: Logger;
+  private readonly dirs = new Map<string, string>();
 
   constructor(
     private readonly root: string,
@@ -39,6 +40,8 @@ export class GroupWorkspaceManager {
         mkdir(join(dir, "session"), { recursive: true }),
         mkdir(join(dir, "files"), { recursive: true }),
         mkdir(join(dir, "worktrees"), { recursive: true }),
+        mkdir(join(dir, "analysis"), { recursive: true }),
+        mkdir(join(dir, "execution"), { recursive: true }),
       ]);
       const path = join(dir, "group.json");
       const previous = await readFile(path, "utf8")
@@ -58,6 +61,8 @@ export class GroupWorkspaceManager {
           session: "session",
           files: "files",
           worktrees: "worktrees",
+          analysis: "analysis",
+          execution: "execution",
         },
         stateGroupDir: input.stateGroupDir,
       };
@@ -67,6 +72,7 @@ export class GroupWorkspaceManager {
         previous.name !== next.name ||
         previous.stateGroupDir !== next.stateGroupDir;
       if (changed) await writeJsonAtomic(path, next);
+      this.dirs.set(input.chatId, dir);
       await this.writeAlias(input, dirName);
       return dir;
     } catch (error) {
@@ -77,6 +83,10 @@ export class GroupWorkspaceManager {
       });
       return undefined;
     }
+  }
+
+  dirFor(chatId: string): string | undefined {
+    return this.dirs.get(chatId);
   }
 
   private async writeAlias(input: GroupWorkspaceInput, canonicalDirName: string): Promise<void> {

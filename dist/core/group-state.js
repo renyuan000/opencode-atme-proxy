@@ -453,8 +453,9 @@ export class ScopedSessions {
         return undefined;
     }
     set(key, sessionId, directory, meta) {
-        const chatId = meta?.chatId ?? (key.includes("feishu:") ? chatIdOf(key) : "");
-        this.store(chatId).set(key, sessionId, directory, meta);
+        const existingChatId = this.get(key)?.chatId;
+        const chatId = meta?.chatId ?? existingChatId ?? (key.includes("feishu:") ? chatIdOf(key) : "");
+        this.store(chatId).set(key, sessionId, directory, { ...meta, ...(chatId ? { chatId } : {}) });
     }
     list(kind) {
         return [...this.stores.values()].flatMap((store) => store.list(kind));

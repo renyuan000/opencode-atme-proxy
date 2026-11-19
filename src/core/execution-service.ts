@@ -16,6 +16,7 @@ export interface ExecutionServiceOptions {
   config: AppConfig;
   stateDir: string;
   stateDirFor?(chatId: string): string;
+  workspaceDirFor?(chatId: string): string | undefined;
   tasks: TaskStore;
   approvals: ApprovalStore;
   audit: AuditLog;
@@ -61,6 +62,13 @@ export class ExecutionService {
         join(this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir, "executions", `${task.id}.json`),
         execution,
       );
+      const workspaceDir = this.options.workspaceDirFor?.(task.chatId);
+      if (workspaceDir) {
+        await writeJsonAtomic(
+          join(workspaceDir, "execution", `${task.id}.json`),
+          execution,
+        );
+      }
       task.state = execution.status === "succeeded" ? "done" : "failed";
       task.updatedAt = Date.now();
       await this.options.tasks.save(task);

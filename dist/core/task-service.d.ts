@@ -10,6 +10,7 @@ export interface TaskServiceOptions {
     config: AppConfig;
     stateDir: string;
     stateDirFor?(chatId: string): string;
+    workspaceDirFor?(chatId: string): string | undefined;
     tasks: TaskStore;
     audit: AuditLog;
     contextService: ContextService;

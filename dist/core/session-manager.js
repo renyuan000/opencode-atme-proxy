@@ -38,6 +38,7 @@ export class SessionManager {
             });
             this.options.sessions.set(key, sessionId, directory, {
                 kind: "coordinator",
+                chatId,
                 createdAt: Date.now(),
             });
             await this.options.sessions.flush();
@@ -77,6 +78,7 @@ export class SessionManager {
         });
         this.options.sessions.set(key, sessionId, directory, {
             kind: "group",
+            chatId,
             createdAt: Date.now(),
         });
         await this.options.sessions.flush();
@@ -111,6 +113,7 @@ export class SessionManager {
         });
         this.options.sessions.set(key, sessionId, input.directory, {
             kind: "worker",
+            chatId: input.chatId,
             createdAt: Date.now(),
         });
         await this.options.sessions.flush();
@@ -213,6 +216,7 @@ export class SessionManager {
             });
             this.options.sessions.set(`child:${sessionId}`, sessionId, input.directory, {
                 kind: "child",
+                chatId: input.chatId,
                 createdAt: Date.now(),
                 ...(input.taskId ? { taskId: input.taskId } : {}),
             });
@@ -234,6 +238,7 @@ export class SessionManager {
                 await this.options.bridge.archiveSession?.(record.sessionId, record.directory);
                 this.options.sessions.set(key, record.sessionId, record.directory, {
                     ...(record.taskId ? { taskId: record.taskId } : {}),
+                    ...(record.chatId ? { chatId: record.chatId } : {}),
                     kind: "child",
                     createdAt: record.createdAt,
                     archivedAt: Date.now(),
@@ -269,6 +274,7 @@ export class SessionManager {
                     await this.options.bridge.archiveSession?.(record.sessionId, record.directory);
                     this.options.sessions.set(key, record.sessionId, record.directory, {
                         ...(record.taskId ? { taskId: record.taskId } : {}),
+                        ...(record.chatId ? { chatId: record.chatId } : {}),
                         kind: "child",
                         createdAt: record.createdAt,
                         archivedAt: now,

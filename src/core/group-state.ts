@@ -523,8 +523,10 @@ export class ScopedSessions {
     directory: string,
     meta?: { kind?: SessionKind; taskId?: string; createdAt?: number; archivedAt?: number; chatId?: string },
   ): void {
-    const chatId = meta?.chatId ?? (key.includes("feishu:") ? chatIdOf(key) : "");
-    this.store(chatId).set(key, sessionId, directory, meta);
+    const existingChatId = this.get(key)?.chatId;
+    const chatId =
+      meta?.chatId ?? existingChatId ?? (key.includes("feishu:") ? chatIdOf(key) : "");
+    this.store(chatId).set(key, sessionId, directory, { ...meta, ...(chatId ? { chatId } : {}) });
   }
 
   list(kind?: SessionKind): Array<[string, SessionRecord]> {
