@@ -102,7 +102,7 @@ const READ_ONLY_PERMISSION: Array<{
   { permission: "edit", pattern: "*", action: "deny" },
   { permission: "bash", pattern: "*", action: "deny" },
   { permission: "webfetch", pattern: "*", action: "deny" },
-  { permission: "websearch", pattern: "*", action: "deny" },
+  { permission: "websearch", pattern: "*", action: "allow" },
   { permission: "external_directory", pattern: "*", action: "deny" },
 ];
 
