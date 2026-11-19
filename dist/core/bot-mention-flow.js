@@ -45,20 +45,21 @@ export class BotMentionFlow {
             reason: decision.reason,
         });
         const wantsPrivate = /(私聊|只发我|不要发群|不要群里|私发我|分析给我)/.test(message.text);
-        if (wantsPrivate && decision.action !== "answer") {
+        if (wantsPrivate) {
             const privateText = decision.analysis?.trim() || decision.reply?.trim();
-            if (privateText) {
-                const sent = await this.options.sendToOwner(`分析结果：\n${this.sanitize(privateText)}`, message.messageId);
-                if (sent)
-                    this.options.markProcessed(message);
-                this.options.rememberOwnerTarget(message);
-                await this.options.audit.append({
-                    actor: { system: true },
-                    action: "bot_mention_private_answered",
-                    details: { messageId: message.messageId, reason: decision.reason },
-                });
-                return;
-            }
+            const text = privateText
+                ? `分析结果：\n${this.sanitize(privateText)}`
+                : `分析结果生成失败：\n消息：${message.text.slice(0, 300)}\n原因：${decision.reason}`;
+            const sent = await this.options.sendToOwner(text, message.messageId);
+            if (sent)
+                await this.options.markProcessed(message);
+            this.options.rememberOwnerTarget(message);
+            await this.options.audit.append({
+                actor: { system: true },
+                action: "bot_mention_private_answered",
+                details: { messageId: message.messageId, reason: decision.reason, ok: Boolean(privateText) },
+            });
+            return;
         }
         if (decision.action === "no_reply") {
             this.options.logger.info("bot mention skipped by unified decision", {
@@ -103,17 +104,6 @@ export class BotMentionFlow {
                 actor: { system: true },
                 action: "bot_mention_skipped",
                 details: { messageId: message.messageId, reason: "empty unified reply" },
-            });
-            return;
-        }
-        if (wantsPrivate) {
-            const sent = await this.options.sendToOwner(`分析结果：\n${this.sanitize(reply)}`, message.messageId);
-            if (sent)
-                await this.options.markProcessed(message);
-            await this.options.audit.append({
-                actor: { system: true },
-                action: "bot_mention_private_answered",
-                details: { messageId: message.messageId, reason: decision.reason },
             });
             return;
         }
