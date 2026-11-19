@@ -261,7 +261,7 @@ export class ReplyService {
         messageId: message.messageId,
         error: toErrorMessage(error),
       });
-      return { action: "no_reply", reason: "unified decision failed" };
+      throw error;
     }
     try {
       const parsed = parseJsonLoose(raw) as Record<string, unknown>;
@@ -432,6 +432,7 @@ export class ReplyService {
             "不需要回复时 action=no_reply，reply 必须为空，不要输出任何给群的解释。",
             "需要主人决策或知会时 action=need_decision/notify_owner，reply 必须为空。",
             "action=answer 时，reply 必须是可直接发群的最终答案；发送前自检：是否直接回答了原话、是否包含未核实的承诺、是否跑题。",
+            "如果用户明确要求私聊/私发/不要发群，仍然 action=answer，reply 写完整分析结果；系统会自动走私聊，不要声称没有私聊通道，也不要因此升级为 need_decision。",
             "群聊默认不能联网；没有明确依据时不要编造。",
           ]
         : []),

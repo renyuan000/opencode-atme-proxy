@@ -61,7 +61,14 @@ export class BotMentionFlow {
         messageId: message.messageId,
         error: toErrorMessage(error),
       });
-      await this.options.safeReply(message, "处理失败，请稍后重试或直接联系我。");
+      if (message.chat.kind === "direct") {
+        await this.options.safeReply(message, "处理失败，请稍后重试或直接联系我。");
+      } else {
+        await this.options.sendToOwner(
+          `群 @机器人 处理失败：\n群：${message.chat.name ?? message.chat.id}\n消息：${message.text.slice(0, 300)}\n原因：${toErrorMessage(error)}`,
+          message.messageId,
+        );
+      }
       return;
     }
     const intent: BotIntent = {
@@ -78,6 +85,25 @@ export class BotMentionFlow {
       kind: intent.kind,
       reason: decision.reason,
     });
+
+    const wantsPrivate = /(私聊|只发我|不要发群|不要群里|私发我|分析给我)/.test(message.text);
+    if (wantsPrivate && decision.action !== "answer") {
+      const privateText = decision.analysis?.trim() || decision.reply?.trim();
+      if (privateText) {
+        const sent = await this.options.sendToOwner(
+          `分析结果：\n${this.sanitize(privateText)}`,
+          message.messageId,
+        );
+        if (sent) this.options.markProcessed(message);
+        this.options.rememberOwnerTarget(message);
+        await this.options.audit.append({
+          actor: { system: true },
+          action: "bot_mention_private_answered",
+          details: { messageId: message.messageId, reason: decision.reason },
+        });
+        return;
+      }
+    }
 
     if (decision.action === "no_reply") {
       this.options.logger.info("bot mention skipped by unified decision", {
@@ -131,6 +157,17 @@ export class BotMentionFlow {
       });
       return;
     }
+    if (wantsPrivate) {
+      const sent = await this.options.sendToOwner(`分析结果：\n${this.sanitize(reply)}`, message.messageId);
+      if (sent) await this.options.markProcessed(message);
+      await this.options.audit.append({
+        actor: { system: true },
+        action: "bot_mention_private_answered",
+        details: { messageId: message.messageId, reason: decision.reason },
+      });
+      return;
+    }
+
     try {
       const replied = await this.options.safeReply(message, this.sanitize(reply));
       this.options.rememberFromMention(message, intent, reply);
