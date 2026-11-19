@@ -38,6 +38,7 @@ export declare class BotMentionFlow {
     private readonly missingContextNotified;
     handle(message: IncomingMessage, signal: AbortSignal): Promise<void>;
     private expectsAttachment;
+    private withTimeout;
     private analyzeBotRequest;
     private sendOwnerDecisionCard;
     private sanitize;

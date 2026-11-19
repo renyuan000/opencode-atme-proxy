@@ -780,6 +780,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         perChat: z.ZodDefault<z.ZodNumber>;
         maxQueue: z.ZodDefault<z.ZodNumber>;
         mentionTimeoutMs: z.ZodDefault<z.ZodNumber>;
+        intentTimeoutMs: z.ZodOptional<z.ZodNumber>;
+        replyTimeoutMs: z.ZodOptional<z.ZodNumber>;
         scanTimeoutMs: z.ZodDefault<z.ZodNumber>;
         analysisTimeoutMs: z.ZodDefault<z.ZodNumber>;
         maxRetries: z.ZodDefault<z.ZodNumber>;
@@ -795,6 +797,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         analysisTimeoutMs: number;
         maxRetries: number;
         retryDelayMs: number;
+        intentTimeoutMs?: number | undefined;
+        replyTimeoutMs?: number | undefined;
     }, {
         global?: number | undefined;
         mentionConcurrency?: number | undefined;
@@ -802,6 +806,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         perChat?: number | undefined;
         maxQueue?: number | undefined;
         mentionTimeoutMs?: number | undefined;
+        intentTimeoutMs?: number | undefined;
+        replyTimeoutMs?: number | undefined;
         scanTimeoutMs?: number | undefined;
         analysisTimeoutMs?: number | undefined;
         maxRetries?: number | undefined;
@@ -1091,6 +1097,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         analysisTimeoutMs: number;
         maxRetries: number;
         retryDelayMs: number;
+        intentTimeoutMs?: number | undefined;
+        replyTimeoutMs?: number | undefined;
     };
     repos: {
         path: string;
@@ -1354,6 +1362,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         perChat?: number | undefined;
         maxQueue?: number | undefined;
         mentionTimeoutMs?: number | undefined;
+        intentTimeoutMs?: number | undefined;
+        replyTimeoutMs?: number | undefined;
         scanTimeoutMs?: number | undefined;
         analysisTimeoutMs?: number | undefined;
         maxRetries?: number | undefined;

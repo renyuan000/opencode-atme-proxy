@@ -818,7 +818,9 @@ export class ProxyRuntime {
                 ? Math.max(this.config.concurrency.perChat, this.config.concurrency.mentionConcurrency)
                 : this.config.concurrency.scanConcurrency,
             timeoutMs: mention
-                ? this.config.concurrency.mentionTimeoutMs
+                ? Math.max(this.config.concurrency.mentionTimeoutMs, (this.config.concurrency.intentTimeoutMs ?? 60_000) +
+                    (this.config.concurrency.replyTimeoutMs ?? 120_000) +
+                    5_000)
                 : this.config.concurrency.scanTimeoutMs,
             run: async (signal) => {
                 const unlink = this.linkAbort(controller, signal);

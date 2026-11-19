@@ -48,7 +48,22 @@ export class BotMentionFlow {
         message.messageId,
       );
     }
-    const intent = await this.options.intentService.decideBotIntent(enriched, signal);
+    let intent: BotIntent;
+    try {
+      intent = await this.withTimeout(
+        signal,
+        this.options.config.concurrency.intentTimeoutMs ?? 60_000,
+        "intent",
+        (child) => this.options.intentService.decideBotIntent(enriched, child),
+      );
+    } catch (error) {
+      this.options.logger.error("bot intent failed", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
+      });
+      await this.options.safeReply(message, "意图判断超时或失败，请稍后重试。");
+      return;
+    }
     this.options.logger.info("bot intent decided", {
       messageId: message.messageId,
       action: intent.action,
@@ -85,7 +100,12 @@ export class BotMentionFlow {
     }
 
     if (intent.action === "need_decision") {
-      const analysis = await this.analyzeBotRequest(message, intent, signal);
+      const analysis = await this.withTimeout(
+        signal,
+        this.options.config.concurrency.replyTimeoutMs ?? 120_000,
+        "analysis",
+        (child) => this.analyzeBotRequest(message, intent, child),
+      );
       const notified = await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
       if (notified) this.options.rememberOwnerTarget(message);
       this.options.rememberFromMention(message, intent, analysis);
@@ -112,7 +132,12 @@ export class BotMentionFlow {
     if (ackTimer) ackTimer.unref?.();
     let replied = false;
     try {
-      const reply = await this.options.replyService.draft(enriched, style, signal);
+      const reply = await this.withTimeout(
+        signal,
+        this.options.config.concurrency.replyTimeoutMs ?? 120_000,
+        "reply",
+        (child) => this.options.replyService.draft(enriched, style, child),
+      );
       if (ackTimer) clearTimeout(ackTimer);
       replied = await this.options.safeReply(message, this.sanitize(reply));
       this.options.rememberFromMention(message, intent, reply);
@@ -136,6 +161,29 @@ export class BotMentionFlow {
   private expectsAttachment(message: IncomingMessage): boolean {
     if (message.replyToMessageId) return true;
     return /(原型|文件|附件|文档|截图|表格|html|pdf|docx?|\/(wiki|docx|docs|sheets)\/)/i.test(message.text);
+  }
+
+  private async withTimeout<T>(
+    parent: AbortSignal,
+    timeoutMs: number,
+    label: string,
+    run: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    if (parent.aborted) throw parent.reason;
+    const controller = new AbortController();
+    const onAbort = (): void => controller.abort(parent.reason);
+    parent.addEventListener("abort", onAbort, { once: true });
+    const timer = setTimeout(
+      () => controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    timer.unref?.();
+    try {
+      return await run(controller.signal);
+    } finally {
+      clearTimeout(timer);
+      parent.removeEventListener("abort", onAbort);
+    }
   }
 
   private async analyzeBotRequest(
