@@ -58,6 +58,7 @@ export interface RelevanceOptions {
     maxCharsPerMessage: number;
     minTaskConfidence: number;
     minReviewConfidence: number;
+    projectNames?(chatId: string): string[];
     logger?: Logger;
 }
 export interface BotIntentInput {

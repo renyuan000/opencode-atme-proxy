@@ -3,6 +3,7 @@ import type { ChatContextStore } from "./chat-context.js";
 import type { ConcurrentDispatcher } from "./dispatcher.js";
 import type { IntentService } from "./intent-service.js";
 import type { Logger } from "./logger.js";
+import type { PlatformAdapter } from "./ports.js";
 import type { RelevanceService } from "./relevance.js";
 import type { TaskService } from "./task-service.js";
 import type { IncomingMessage } from "./types.js";
@@ -10,6 +11,7 @@ export interface ScanServiceOptions {
     config: AppConfig;
     logger: Logger;
     relevance(): RelevanceService;
+    platform: PlatformAdapter;
     dispatcher: ConcurrentDispatcher;
     chatContext: ChatContextStore;
     intentService: IntentService;
@@ -30,6 +32,8 @@ export declare class ScanService {
     private readonly options;
     constructor(options: ScanServiceOptions);
     handlePolledBatch(messages: IncomingMessage[]): Promise<void>;
+    private enrichFile;
+    private enrichFiles;
     handleGroupScan(message: IncomingMessage, signal: AbortSignal): Promise<void>;
     private handlePolledBatchJob;
     private digestWithoutFilter;

@@ -1,3 +1,4 @@
+import { extractDocumentText } from "./document.js";
 import { formatLocalTime, toErrorMessage, truncate } from "./util.js";
 export class ScanService {
     options;
@@ -99,23 +100,50 @@ export class ScanService {
             throw new Error("polled batch had failed messages; cursor not advanced");
         }
     }
+    async enrichFile(message) {
+        const files = (message.attachments ?? []).filter((item) => item.kind === "file" && item.key);
+        if (files.length === 0 || !this.options.platform.fetchResource)
+            return message;
+        const parts = [];
+        for (const file of files.slice(0, 2)) {
+            try {
+                const resource = await this.options.platform.fetchResource(message.messageId, file.key, "file");
+                if (resource.data.length > 8 * 1024 * 1024)
+                    continue;
+                const text = await extractDocumentText(resource.data, resource.mime, file.name);
+                if (text)
+                    parts.push(`[文件 ${file.name ?? ""}]\n${text.slice(0, 8000)}`);
+            }
+            catch (error) {
+                this.options.logger.warn("failed to analyze scanned file", {
+                    messageId: message.messageId,
+                    error: toErrorMessage(error),
+                });
+            }
+        }
+        return parts.length > 0 ? { ...message, text: `${message.text}\n\n${parts.join("\n\n")}` } : message;
+    }
+    async enrichFiles(messages) {
+        return Promise.all(messages.map((message) => this.enrichFile(message)));
+    }
     async handleGroupScan(message, signal) {
-        const classification = await this.options.intentService.classifyOne(message, signal);
+        const enriched = await this.enrichFile(message);
+        const classification = await this.options.intentService.classifyOne(enriched, signal);
         if (!classification?.relevant)
             return;
         let handled = false;
         if (classification.actionability === "task" &&
             classification.confidence >= this.options.config.filter.minTaskConfidence) {
-            const task = await this.options.taskService.ensureTask(message, classification, "group_scan");
+            const task = await this.options.taskService.ensureTask(enriched, classification, "group_scan");
             if (task)
                 handled = true;
         }
         else {
             handled = await this.options.sendToApprover([
                 "群消息可能与你相关",
-                `群：${message.chat.name ?? message.chat.id}`,
-                `发送人：${message.sender.displayName ?? message.sender.id}`,
-                `内容：${truncate(message.text, 200)}`,
+                `群：${enriched.chat.name ?? enriched.chat.id}`,
+                `发送人：${enriched.sender.displayName ?? enriched.sender.id}`,
+                `内容：${truncate(enriched.text, 200)}`,
                 `判断：${classification.reason}`,
                 `建议：${suggestedActionLabel(classification.actionability)}`,
             ].join("\n"));
@@ -128,7 +156,8 @@ export class ScanService {
             await this.digestWithoutFilter(messages);
             return;
         }
-        const first = messages[0];
+        const enriched = await this.enrichFiles(messages);
+        const first = enriched[0];
         const history = first
             ? this.options.chatContext
                 .recent(`${first.platform}:${first.chat.id}`, 12)
@@ -138,7 +167,7 @@ export class ScanService {
                 time: item.at,
             }))
             : [];
-        const { items, stats } = await this.options.relevance().classify(messages, signal, history);
+        const { items, stats } = await this.options.relevance().classify(enriched, signal, history);
         if (stats.totalTokens > this.options.config.budget.maxTokensPerRun) {
             await this.options.sendToApprover(`本轮筛选 token 超预算：${stats.totalTokens}/${this.options.config.budget.maxTokensPerRun}，已停止后续批次。`);
         }
@@ -148,7 +177,7 @@ export class ScanService {
         }
         const byId = new Map(items.map((item) => [item.messageId, item]));
         const failed = new Set(stats.failedMessageIds);
-        for (const message of messages) {
+        for (const message of enriched) {
             if (failed.has(message.messageId))
                 continue;
             const item = byId.get(message.messageId);
@@ -164,10 +193,10 @@ export class ScanService {
             await this.options.markProcessed(message);
         }
         if (items.some((item) => item.relevant)) {
-            await this.sendOwnerDigest(messages, items);
+            await this.sendOwnerDigest(enriched, items);
         }
         this.options.logger.info("polled batch classified", {
-            chatId: messages[0]?.chat.id,
+            chatId: enriched[0]?.chat.id,
             messages: stats.messages,
             batches: stats.batches,
             tokens: stats.totalTokens,

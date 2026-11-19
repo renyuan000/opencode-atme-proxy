@@ -517,6 +517,16 @@ export class ProxyRuntime {
       maxCharsPerMessage: this.config.filter.maxCharsPerMessage,
       minTaskConfidence: this.config.filter.minTaskConfidence,
       minReviewConfidence: this.config.filter.minReviewConfidence,
+      projectNames: (chatId) => {
+        const project = this.config.platforms.feishu.groups.find(
+          (group) => group.chatId === chatId,
+        )?.project;
+        return project
+          ? [project.primary, ...(project.secondary ?? [])].filter(
+              (value): value is string => Boolean(value),
+            )
+          : [];
+      },
       logger: this.logger.child("relevance"),
     });
     this.intentService = new IntentService({
@@ -570,6 +580,7 @@ export class ProxyRuntime {
       config: this.config,
       logger: this.logger.child("scan"),
       relevance: () => this.relevance,
+      platform: this.options.platform,
       dispatcher: this.dispatcher,
       chatContext: this.chatContext,
       intentService: this.intentService,
