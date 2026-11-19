@@ -102,6 +102,7 @@ export declare class FeishuAdapter implements PlatformAdapter {
         text: string;
         url: string;
     } | undefined>;
+    private readSpreadsheet;
     private readDocx;
     private readLegacyDoc;
     fetchResource(messageId: string, key: string, kind?: "image" | "file"): Promise<{

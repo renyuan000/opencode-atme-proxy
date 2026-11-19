@@ -132,7 +132,7 @@ export class BotMentionFlow {
 
   private expectsAttachment(message: IncomingMessage): boolean {
     if (message.replyToMessageId) return true;
-    return /(原型|文件|附件|文档|截图|表格|html|pdf|docx?|\/(wiki|docx|docs)\/)/i.test(message.text);
+    return /(原型|文件|附件|文档|截图|表格|html|pdf|docx?|\/(wiki|docx|docs|sheets)\/)/i.test(message.text);
   }
 
   private async analyzeBotRequest(

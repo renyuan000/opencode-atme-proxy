@@ -364,10 +364,16 @@ export class FeishuAdapter {
         }
     }
     async fetchDocumentText(url) {
-        const match = url.match(/(?:\/wiki\/|\/docx\/|\/docs\/)([A-Za-z0-9_-]+)/);
+        const match = url.match(/(?:\/wiki\/|\/docx\/|\/docs\/|\/sheets\/)([A-Za-z0-9_-]+)/);
         if (!match?.[1])
             return undefined;
-        const kind = url.includes("/wiki/") ? "wiki" : url.includes("/docx/") ? "docx" : "docs";
+        const kind = url.includes("/wiki/")
+            ? "wiki"
+            : url.includes("/docx/")
+                ? "docx"
+                : url.includes("/sheets/")
+                    ? "sheets"
+                    : "docs";
         const token = match[1];
         try {
             if (kind === "wiki") {
@@ -395,6 +401,9 @@ export class FeishuAdapter {
                 this.logger.info("unsupported Feishu wiki object", { url, objType });
                 return undefined;
             }
+            if (kind === "sheets") {
+                return await this.readSpreadsheet(token, url);
+            }
             if (kind === "docx") {
                 const result = await this.readDocx(token);
                 return result ? { ...result, url } : undefined;
@@ -404,6 +413,57 @@ export class FeishuAdapter {
         }
         catch (error) {
             this.logger.warn("Feishu document read failed", { url, error: toErrorMessage(error) });
+            return undefined;
+        }
+    }
+    async readSpreadsheet(token, url) {
+        try {
+            const meta = await this.client.request({
+                method: "GET",
+                url: `/open-apis/sheets/v2/spreadsheets/${encodeURIComponent(token)}/metainfo`,
+            });
+            if (meta?.code !== 0) {
+                this.logger.warn("Feishu spreadsheet metainfo failed", { url, code: meta?.code, msg: meta?.msg });
+                return undefined;
+            }
+            const sheets = meta?.data?.sheets ?? meta?.data?.spreadsheet?.sheets ?? [];
+            if (!Array.isArray(sheets) || sheets.length === 0)
+                return undefined;
+            const lines = [];
+            for (const sheet of sheets.slice(0, 5)) {
+                const sheetId = sheet.sheet_id ?? sheet.sheetId ?? sheet.id;
+                if (!sheetId)
+                    continue;
+                const range = `${sheetId}!A1:Z300`;
+                const response = await this.client.request({
+                    method: "GET",
+                    url: `/open-apis/sheets/v2/spreadsheets/${encodeURIComponent(token)}/values/${encodeURIComponent(range)}`,
+                    params: { valueRenderOption: "ToString", dateTimeRenderOption: "FormattedString" },
+                });
+                if (response?.code !== 0)
+                    continue;
+                const values = response?.data?.valueRange?.values ?? response?.data?.values ?? [];
+                if (!Array.isArray(values) || values.length === 0)
+                    continue;
+                lines.push(`### Sheet: ${sheet.title ?? sheetId}`);
+                for (const row of values) {
+                    if (!Array.isArray(row))
+                        continue;
+                    const cells = row.map((cell) => (cell === null || cell === undefined ? "" : String(cell)));
+                    if (cells.some((cell) => cell !== ""))
+                        lines.push(cells.join("\t"));
+                }
+            }
+            if (lines.length === 0)
+                return undefined;
+            return {
+                ...(typeof sheets[0]?.title === "string" ? { title: sheets[0].title } : {}),
+                text: lines.join("\n"),
+                url,
+            };
+        }
+        catch (error) {
+            this.logger.warn("Feishu spreadsheet read failed", { url, error: toErrorMessage(error) });
             return undefined;
         }
     }

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import * as XLSX from "xlsx";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,6 +62,22 @@ export async function extractDocumentText(
       .replace(/\s{2,}/g, " ")
       .trim()
       .slice(0, 20_000) || undefined;
+  }
+  if (["xlsx", "xls"].includes(ext)) {
+    try {
+      const workbook = XLSX.read(data, { type: "buffer", cellDates: true });
+      const lines: string[] = [];
+      for (const name of workbook.SheetNames.slice(0, 20)) {
+        const sheet = workbook.Sheets[name];
+        if (!sheet) continue;
+        const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+        if (!csv.trim()) continue;
+        lines.push(`### Sheet: ${name}`, csv);
+      }
+      return lines.join("\n").trim().slice(0, 20_000) || undefined;
+    } catch {
+      return undefined;
+    }
   }
   if (!["docx", "pdf", "doc"].includes(ext)) return undefined;
 

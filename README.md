@@ -149,7 +149,7 @@ atme-proxy setup
 扫码会预填：
 
 - 机器人能力（`preset: false` 的最小机器人模板）
-- scopes：`im:message.group_at_msg:readonly`、`im:message.group_msg`、`im:message.p2p_msg:readonly`、`im:message:readonly`、`im:message:send_as_bot`、`im:chat:readonly`、`docx:document:readonly`、`wiki:wiki:readonly`、`im:resource`、`contact:user.base:readonly`
+- scopes：`im:message.group_at_msg:readonly`、`im:message.group_msg`、`im:message.p2p_msg:readonly`、`im:message:readonly`、`im:message:send_as_bot`、`im:chat:readonly`、`im:chat.members:bot_access`、`sheets:spreadsheet:readonly`、`docx:document:readonly`、`wiki:wiki:readonly`、`im:resource`、`contact:user.base:readonly`
 - 事件：`im.message.receive_v1`、`im.chat.member.bot.added_v1`、`im.chat.member.bot.deleted_v1`、`im.chat.updated_v1`
 - 回调：`card.action.trigger`
 
@@ -730,7 +730,7 @@ Two modes:
 1. **QR device flow (recommended)**: calls Feishu `registerApp` to create a bot app with bot capability, scopes, events and card callback, then returns App ID / App Secret / your open_id.
 2. **Manual input**: when the app already exists.
 
-The QR flow prefills bot capability (minimal `preset: false` template), eight scopes, `im.message.receive_v1`, and `card.action.trigger`.
+The QR flow prefills bot capability (minimal `preset: false` template), the message/chat/contact scopes, docx/wiki/sheets read scopes, `im.message.receive_v1`, bot membership events, `im.chat.updated_v1`, and `card.action.trigger`.
 
 You still must approve the sensitive `im:message.group_msg` scope, publish the app, and add the bot to groups.
 

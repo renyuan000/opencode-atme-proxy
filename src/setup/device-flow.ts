@@ -23,6 +23,8 @@ export const ATME_ADDONS = {
       "im:message:readonly",
       "im:message:send_as_bot",
       "im:chat:readonly",
+      "im:chat.members:bot_access",
+      "sheets:spreadsheet:readonly",
       "docx:document:readonly",
       "wiki:wiki:readonly",
       "im:resource",

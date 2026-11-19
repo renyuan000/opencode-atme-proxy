@@ -514,7 +514,7 @@ export class ReplyService {
         const text = [message.text, ...extra].join("\n");
         const urls = [...text.matchAll(/https?:\/\/[^\s<>"'）)，。；]+/g)]
             .map((match) => match[0].replace(/[),.;，。；]+$/, ""))
-            .filter((url) => /\/(wiki|docx|docs)\//.test(url));
+            .filter((url) => /\/(wiki|docx|docs|sheets)\//.test(url));
         const unique = [...new Set(urls)].slice(0, 3);
         const docs = [];
         for (const url of unique) {
