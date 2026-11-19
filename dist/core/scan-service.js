@@ -141,15 +141,18 @@ export class ScanService {
             if (task)
                 handled = true;
         }
-        else {
+        else if (classification.ownerAttention) {
             handled = await this.options.sendToApprover([
-                "群消息可能与你相关",
+                "群消息需要你关注",
                 `群：${enriched.chat.name ?? enriched.chat.id}`,
                 `发送人：${enriched.sender.displayName ?? enriched.sender.id}`,
                 `内容：${truncate(enriched.text, 200)}`,
                 `判断：${classification.reason}`,
                 `建议：${suggestedActionLabel(classification.actionability)}`,
             ].join("\n"));
+        }
+        else {
+            handled = true;
         }
         if (handled)
             await this.options.markProcessed(message);
@@ -195,7 +198,7 @@ export class ScanService {
             }
             await this.options.markProcessed(message);
         }
-        if (items.some((item) => item.relevant)) {
+        if (items.some((item) => item.relevant && item.ownerAttention)) {
             await this.sendOwnerDigest(enriched, items);
         }
         this.options.logger.info("polled batch classified", {

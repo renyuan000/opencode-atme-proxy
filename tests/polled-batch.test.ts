@@ -286,6 +286,7 @@ test("polled batch only sends one digest for relevant messages", async () => {
           messageId: message.messageId,
           relevant: message.text.includes("支付"),
           actionability: "fyi",
+          ownerAttention: true,
           reason: "keyword",
           confidence: 0.8,
           keywordHit: true,

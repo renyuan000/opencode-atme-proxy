@@ -59,6 +59,7 @@ export interface Classification {
     reason: string;
     confidence: number;
     keywordHit: boolean;
+    ownerAttention?: boolean;
     task?: TaskHint;
 }
 export interface FilterStats {
