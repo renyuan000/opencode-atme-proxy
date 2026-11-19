@@ -25,6 +25,7 @@ import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
+import { GroupWorkspaceManager } from "./group-workspace.js";
 import { GroupStateLayout, ScopedApprovals, ScopedAudit, ScopedChatContext, ScopedDedup, ScopedCursors, ScopedEvidence, ScopedGroupContext, ScopedMemory, ScopedPending, ScopedProjects, ScopedSentReplies, ScopedSessions, ScopedTasks, } from "./group-state.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
@@ -52,6 +53,7 @@ export class ProxyRuntime {
     historyMentions;
     outbound;
     groupState;
+    groupWorkspace;
     cursors;
     sessions;
     sessionManager;
@@ -108,6 +110,8 @@ export class ProxyRuntime {
         this.config = options.loaded.config;
         this.stateDir = requireStateDir(this.config);
         this.groupState = new GroupStateLayout(join(this.stateDir, "groups"), this.logger.child("group-state"));
+        this.groupWorkspace = new GroupWorkspaceManager(this.config.workspace?.root ??
+            (this.stateDir.startsWith("/tmp/") ? join(this.stateDir, "atme-groups") : "/mnt/d/Work/atme-groups"), this.logger.child("group-workspace"));
         this.dedup = new ScopedDedup(this.groupState, "dedup.json", 7 * 24 * 3600 * 1000, 100_000, this.logger.child("dedup"));
         this.historyMentions = new ScopedDedup(this.groupState, "history-mentions.json", 90 * 24 * 3600 * 1000, 20_000, this.logger.child("history-mentions"));
         this.outbound = new ScopedDedup(this.groupState, "outbound.json", 7 * 24 * 3600 * 1000, 50_000, this.logger.child("outbound"));
@@ -509,6 +513,24 @@ export class ProxyRuntime {
             sendToOwner: (text) => this.sendToOwner(text),
         });
     }
+    async ensureGroupWorkspace(chatId, name, project) {
+        const info = await this.groupState.ensure(chatId, name);
+        await this.groupWorkspace.ensure({
+            chatId,
+            name: info.name,
+            stateGroupDir: info.dir,
+            ...(project
+                ? {
+                    project: {
+                        primary: project.primary ?? null,
+                        core: project.core ?? [],
+                        reference: project.reference ?? [],
+                        secondary: project.secondary ?? [],
+                    },
+                }
+                : {}),
+        });
+    }
     ownerOpenId() {
         return this.ownerAccess.openId();
     }
@@ -608,7 +630,7 @@ export class ProxyRuntime {
         await mkdir(join(this.stateDir, "scratch"), { recursive: true });
         await this.groupState.load();
         for (const group of this.config.platforms.feishu.groups) {
-            await this.groupState.ensure(group.chatId, group.name);
+            await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
         }
         await this.dedup.load();
         await this.historyMentions.load();
@@ -690,7 +712,7 @@ export class ProxyRuntime {
         if (message.senderType !== "user")
             return;
         const chatName = await this.chatLabel(message);
-        await this.groupState.ensure(message.chat.id, message.chat.kind === "direct" ? "私聊" : chatName);
+        await this.ensureGroupWorkspace(message.chat.id, message.chat.kind === "direct" ? "私聊" : chatName, this.config.platforms.feishu.groups.find((group) => group.chatId === message.chat.id)?.project);
         this.logger.info("inbound routing", {
             messageId: message.messageId,
             chatId: message.chat.id,
@@ -824,7 +846,7 @@ export class ProxyRuntime {
             const added = groups.filter((group) => !this.groupIds.has(group.chatId));
             for (const group of groups) {
                 this.groupIds.add(group.chatId);
-                await this.groupState.ensure(group.chatId, group.name);
+                await this.ensureGroupWorkspace(group.chatId, group.name, this.config.platforms.feishu.groups.find((item) => item.chatId === group.chatId)?.project);
                 if (group.name)
                     this.notificationService.rememberChatName(group.chatId, group.name);
             }

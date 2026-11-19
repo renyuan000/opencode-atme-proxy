@@ -61,6 +61,7 @@ import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
+import { GroupWorkspaceManager } from "./group-workspace.js";
 import { SentReplyStore } from "./sent-reply-store.js";
 import {
   GroupStateLayout,
@@ -127,6 +128,7 @@ export class ProxyRuntime {
   private readonly historyMentions: ScopedDedup;
   private readonly outbound: ScopedDedup;
   private readonly groupState: GroupStateLayout;
+  private readonly groupWorkspace: GroupWorkspaceManager;
   private readonly cursors: ScopedCursors;
   private readonly sessions: ScopedSessions;
   private readonly sessionManager: SessionManager;
@@ -197,6 +199,11 @@ export class ProxyRuntime {
     this.groupState = new GroupStateLayout(
       join(this.stateDir, "groups"),
       this.logger.child("group-state"),
+    );
+    this.groupWorkspace = new GroupWorkspaceManager(
+      this.config.workspace?.root ??
+        (this.stateDir.startsWith("/tmp/") ? join(this.stateDir, "atme-groups") : "/mnt/d/Work/atme-groups"),
+      this.logger.child("group-workspace"),
     );
     this.dedup = new ScopedDedup(
       this.groupState,
@@ -639,6 +646,34 @@ export class ProxyRuntime {
     });
   }
 
+  private async ensureGroupWorkspace(
+    chatId: string,
+    name?: string,
+    project?: {
+      primary?: string;
+      core?: string[];
+      reference?: string[];
+      secondary?: string[];
+    },
+  ): Promise<void> {
+    const info = await this.groupState.ensure(chatId, name);
+    await this.groupWorkspace.ensure({
+      chatId,
+      name: info.name,
+      stateGroupDir: info.dir,
+      ...(project
+        ? {
+            project: {
+              primary: project.primary ?? null,
+              core: project.core ?? [],
+              reference: project.reference ?? [],
+              secondary: project.secondary ?? [],
+            },
+          }
+        : {}),
+    });
+  }
+
   private ownerOpenId(): string | undefined {
     return this.ownerAccess.openId();
   }
@@ -742,7 +777,7 @@ export class ProxyRuntime {
     await mkdir(join(this.stateDir, "scratch"), { recursive: true });
     await this.groupState.load();
     for (const group of this.config.platforms.feishu.groups) {
-      await this.groupState.ensure(group.chatId, group.name);
+      await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
     }
     await this.dedup.load();
     await this.historyMentions.load();
@@ -827,9 +862,10 @@ export class ProxyRuntime {
   ): Promise<void> {
     if (message.senderType !== "user") return;
     const chatName = await this.chatLabel(message);
-    await this.groupState.ensure(
+    await this.ensureGroupWorkspace(
       message.chat.id,
       message.chat.kind === "direct" ? "私聊" : chatName,
+      this.config.platforms.feishu.groups.find((group) => group.chatId === message.chat.id)?.project,
     );
     this.logger.info("inbound routing", {
       messageId: message.messageId,
@@ -976,7 +1012,11 @@ export class ProxyRuntime {
       const added = groups.filter((group) => !this.groupIds.has(group.chatId));
       for (const group of groups) {
         this.groupIds.add(group.chatId);
-        await this.groupState.ensure(group.chatId, group.name);
+        await this.ensureGroupWorkspace(
+          group.chatId,
+          group.name,
+          this.config.platforms.feishu.groups.find((item) => item.chatId === group.chatId)?.project,
+        );
         if (group.name) this.notificationService.rememberChatName(group.chatId, group.name);
       }
       if (added.length > 0) {

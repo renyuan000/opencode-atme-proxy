@@ -16,6 +16,10 @@ import { DedupStore } from "./dedup.js";
 import { AuditLog } from "./audit.js";
 import { readJsonFile } from "./util.js";
 const UNSAFE = /[/\\:*?"<>|]/g;
+export function groupDirName(chatId, name) {
+    const display = name || (chatId.startsWith("oc_b0143a44") ? "私聊" : `群_${shortId(chatId)}`);
+    return `${sanitize(display)}__${shortId(chatId)}`;
+}
 function sanitize(value) {
     return (value.replace(UNSAFE, "_").trim() || "群").slice(0, 40);
 }

@@ -1,4 +1,11 @@
 import { z } from "zod";
+export declare const WorkspaceSchema: z.ZodDefault<z.ZodObject<{
+    root: z.ZodDefault<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    root: string;
+}, {
+    root?: string | undefined;
+}>>;
 export declare const AppConfigSchema: z.ZodObject<{
     version: z.ZodDefault<z.ZodNumber>;
     app: z.ZodDefault<z.ZodObject<{
@@ -17,6 +24,13 @@ export declare const AppConfigSchema: z.ZodObject<{
         logFile?: string | undefined;
         logToFile?: boolean | undefined;
     }>>;
+    workspace: z.ZodOptional<z.ZodDefault<z.ZodObject<{
+        root: z.ZodDefault<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        root: string;
+    }, {
+        root?: string | undefined;
+    }>>>;
     platforms: z.ZodObject<{
         feishu: z.ZodObject<{
             enabled: z.ZodDefault<z.ZodBoolean>;
@@ -1104,6 +1118,9 @@ export declare const AppConfigSchema: z.ZodObject<{
         maxMessagesPerRun: number;
         maxExecutionsPerDay: number;
     };
+    workspace?: {
+        root: string;
+    } | undefined;
     evidence?: {
         enabled: boolean;
         retentionDays: number;
@@ -1212,6 +1229,9 @@ export declare const AppConfigSchema: z.ZodObject<{
         logLevel?: "debug" | "info" | "warn" | "error" | undefined;
         logFile?: string | undefined;
         logToFile?: boolean | undefined;
+    } | undefined;
+    workspace?: {
+        root?: string | undefined;
     } | undefined;
     polling?: {
         enabled?: boolean | undefined;

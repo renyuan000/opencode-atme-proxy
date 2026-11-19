@@ -21,6 +21,7 @@ export declare class ProxyRuntime {
     private readonly historyMentions;
     private readonly outbound;
     private readonly groupState;
+    private readonly groupWorkspace;
     private readonly cursors;
     private readonly sessions;
     private readonly sessionManager;
@@ -72,6 +73,7 @@ export declare class ProxyRuntime {
     private readonly background;
     private readonly projectCache;
     constructor(options: RuntimeOptions);
+    private ensureGroupWorkspace;
     private ownerOpenId;
     private ownerName;
     private claimOwner;

@@ -19,6 +19,11 @@ import { readJsonFile } from "./util.js";
 
 const UNSAFE = /[/\\:*?"<>|]/g;
 
+export function groupDirName(chatId: string, name?: string): string {
+  const display = name || (chatId.startsWith("oc_b0143a44") ? "私聊" : `群_${shortId(chatId)}`);
+  return `${sanitize(display)}__${shortId(chatId)}`;
+}
+
 function sanitize(value: string): string {
   return (value.replace(UNSAFE, "_").trim() || "群").slice(0, 40);
 }

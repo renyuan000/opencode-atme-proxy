@@ -290,6 +290,11 @@ const BudgetSchema = z.object({
     maxTokensPerRun: z.number().int().min(1000).default(50_000),
     maxExecutionsPerDay: z.number().int().min(1).default(10),
 });
+export const WorkspaceSchema = z
+    .object({
+    root: z.string().default("/mnt/d/Work/atme-groups"),
+})
+    .default({});
 export const AppConfigSchema = z.object({
     version: z.number().int().default(1),
     app: z
@@ -300,6 +305,7 @@ export const AppConfigSchema = z.object({
         logToFile: z.boolean().default(true),
     })
         .default({}),
+    workspace: WorkspaceSchema.optional(),
     platforms: z.object({ feishu: FeishuSchema }),
     polling: PollingSchema.default({}),
     recovery: RecoverySchema,
