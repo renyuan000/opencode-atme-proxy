@@ -59,6 +59,13 @@ export class TaskStore {
     return this.index.get(dedupKey);
   }
 
+  async findByMessageId(messageId: string): Promise<TaskRecord | undefined> {
+    const tasks = await this.list();
+    return tasks.find(
+      (task) => task.id === messageId || task.messageIds?.includes(messageId),
+    );
+  }
+
   async list(): Promise<TaskRecord[]> {
     try {
       const files = await readdir(join(this.dir, "tasks"));

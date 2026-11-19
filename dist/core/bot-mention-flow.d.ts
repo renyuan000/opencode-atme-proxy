@@ -37,6 +37,5 @@ export declare class BotMentionFlow {
     handle(message: IncomingMessage, signal: AbortSignal): Promise<void>;
     private analyzeBotRequest;
     private sendOwnerDecisionCard;
-    private escalateToOwner;
     private sanitize;
 }

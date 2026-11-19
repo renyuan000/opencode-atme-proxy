@@ -138,10 +138,24 @@ export class ApprovalService {
                 };
             }
             await this.options.sentReplies.markRecalled(record.id);
+            const task = await this.options.tasks.findByMessageId(record.sourceMessageId);
+            if (task && task.state === "done") {
+                task.state = "awaiting_approval";
+                task.updatedAt = Date.now();
+                await this.options.tasks.save(task);
+                await this.options.sendToApprover(`已撤回机器人回复，原任务已重新打开：
+群：${task.chatName ?? task.chatId}
+${task.title}
+可以重新回复、只分析，或等我重新请示后再回复。`);
+            }
             await this.options.audit.append({
                 actor: action.actor,
                 action: "reply_recalled",
-                details: { messageId: record.sentMessageId, chatId: record.chatId },
+                details: {
+                    messageId: record.sentMessageId,
+                    chatId: record.chatId,
+                    ...(task ? { taskId: task.id } : {}),
+                },
             });
             return this.replyManagementResult("已撤回回复");
         }

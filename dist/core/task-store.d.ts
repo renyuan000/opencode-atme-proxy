@@ -11,6 +11,7 @@ export declare class TaskStore {
     load(): Promise<void>;
     get(taskId: string): Promise<TaskRecord | undefined>;
     findByDedupKey(dedupKey: string): string | undefined;
+    findByMessageId(messageId: string): Promise<TaskRecord | undefined>;
     list(): Promise<TaskRecord[]>;
     save(task: TaskRecord): Promise<void>;
     flush(): Promise<void>;

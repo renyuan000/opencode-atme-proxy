@@ -1,4 +1,4 @@
-import { sha256, stableUuid, toErrorMessage, truncate } from "./util.js";
+import { sha256, toErrorMessage, truncate } from "./util.js";
 export class BotMentionFlow {
     options;
     constructor(options) {
@@ -35,10 +35,9 @@ export class BotMentionFlow {
         }
         if (intent.action === "need_decision") {
             const analysis = await this.analyzeBotRequest(message, intent, signal);
-            const escalated = await this.escalateToOwner(message, intent);
             const notified = await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
             this.options.rememberFromMention(message, intent, analysis);
-            if (escalated || notified)
+            if (notified)
                 await this.options.markProcessed(message);
             await this.options.audit.append({
                 actor: { system: true },
@@ -146,41 +145,6 @@ export class BotMentionFlow {
             ...(analysis ? [`分析：\n${analysis}`] : []),
         ].join("\n");
         return this.options.sendToOwner(text);
-    }
-    async escalateToOwner(message, intent) {
-        const question = intent.question
-            ? truncate(intent.question, this.options.config.botReply.maxQuestionChars)
-            : truncate(message.text, this.options.config.botReply.maxQuestionChars);
-        const text = [
-            this.options.config.botReply.decisionMentionText,
-            `类型：${intent.kind}`,
-            `问题：${question}`,
-            `来源：${message.sender.displayName ?? message.sender.id}`,
-            `原因：${intent.reason || "需要你本人决策"}`,
-            ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),
-        ].join("\n");
-        try {
-            await this.options.sendLimiter.take();
-            await this.options.platform.reply({ chatId: message.chat.id, messageId: message.messageId }, {
-                kind: "text",
-                text,
-                uuid: stableUuid("escalate", message.messageId),
-                mentions: [
-                    {
-                        id: this.options.ownerOpenId() ?? "",
-                        name: this.options.ownerName(),
-                    },
-                ].filter((mention) => mention.id),
-            });
-            return true;
-        }
-        catch (error) {
-            this.options.logger.error("failed to escalate to owner in group", {
-                messageId: message.messageId,
-                error: toErrorMessage(error),
-            });
-            return this.options.sendToApprover(text);
-        }
     }
     sanitize(text) {
         return text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim();
