@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { mkdir } from "node:fs/promises";
 import type {
   BotIntent,
   IncomingMessage,
@@ -698,6 +699,7 @@ export class ProxyRuntime {
 
   async start(): Promise<void> {
     if (this.started) return;
+    await mkdir(join(this.stateDir, "scratch"), { recursive: true });
     await this.dedup.load();
     await this.historyMentions.load();
     await this.outbound.load();

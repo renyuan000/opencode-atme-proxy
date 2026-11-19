@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { createLogger } from "./logger.js";
 import { OpenAiCompatibleClient, RelevanceService, parseJsonLoose, } from "./relevance.js";
 import { detectReplyStyle, enforceReplyLength, } from "./reply-style.js";
@@ -600,6 +601,7 @@ export class ProxyRuntime {
     async start() {
         if (this.started)
             return;
+        await mkdir(join(this.stateDir, "scratch"), { recursive: true });
         await this.dedup.load();
         await this.historyMentions.load();
         await this.outbound.load();

@@ -110,9 +110,14 @@ export class RecoveryService {
           const key = `${message.platform}:${message.messageId}`;
           try {
             await this.options.ingest(message, true);
-          } finally {
             this.options.historyMentions.add(key);
             await this.options.historyMentions.flush();
+          } catch (error) {
+            this.options.logger.error("historical mention processing failed; will retry", {
+              messageId: message.messageId,
+              chatId,
+              error: toErrorMessage(error),
+            });
           }
         }
         if (recovery.includeRelevantPlain) {
