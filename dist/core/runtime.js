@@ -393,6 +393,10 @@ export class ProxyRuntime {
             sentReplies: this.sentReplies,
             groupIds: this.groupIds,
             lastCursor: (_platform, chatId) => this.cursors.get(chatId),
+            recordCursor: async (chatId, endTime) => {
+                this.cursors.set(chatId, endTime);
+                await this.cursors.flush();
+            },
             isMention: (message) => this.isMention(message),
             ingest: (message, force) => this.ingest(message, force),
             ingestBatch: (messages) => this.ingestBatch(messages),

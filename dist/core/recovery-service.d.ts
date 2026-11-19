@@ -24,6 +24,7 @@ export interface RecoveryServiceOptions {
     };
     groupIds: Set<string>;
     lastCursor?(platform: string, chatId: string): number | undefined;
+    recordCursor(chatId: string, endTime: number): Promise<void>;
     isMention(message: IncomingMessage): boolean;
     ingest(message: IncomingMessage, force?: boolean): Promise<void>;
     ingestBatch(messages: IncomingMessage[]): Promise<void>;

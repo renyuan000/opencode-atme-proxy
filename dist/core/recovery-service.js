@@ -98,6 +98,7 @@ export class RecoveryService {
                     if (plain.length > 0)
                         await this.options.ingestBatch(plain);
                 }
+                await this.options.recordCursor(chatId, endTime);
             }
             catch (error) {
                 this.options.logger.error("startup recovery failed for group; continuing", {

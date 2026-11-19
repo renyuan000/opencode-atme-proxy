@@ -21,6 +21,7 @@ export interface RecoveryServiceOptions {
   sentReplies: { hasSource(messageId: string): boolean };
   groupIds: Set<string>;
   lastCursor?(platform: string, chatId: string): number | undefined;
+  recordCursor(chatId: string, endTime: number): Promise<void>;
   isMention(message: IncomingMessage): boolean;
   ingest(message: IncomingMessage, force?: boolean): Promise<void>;
   ingestBatch(messages: IncomingMessage[]): Promise<void>;
@@ -128,6 +129,7 @@ export class RecoveryService {
         if (recovery.includeRelevantPlain) {
           if (plain.length > 0) await this.options.ingestBatch(plain);
         }
+        await this.options.recordCursor(chatId, endTime);
       } catch (error) {
         this.options.logger.error("startup recovery failed for group; continuing", {
           chatId,
