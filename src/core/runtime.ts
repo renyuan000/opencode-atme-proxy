@@ -1437,7 +1437,8 @@ export class ProxyRuntime {
 
   private async onReconnected(): Promise<void> {
     if (!this.started) return;
-    this.logger.info("network restored; recovering missed messages");
+    this.logger.info("network restored; syncing groups and recovering missed messages");
+    await this.syncGroups();
     await this.recoverOnStartup();
   }
 

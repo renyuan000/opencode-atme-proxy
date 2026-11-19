@@ -1244,7 +1244,8 @@ export class ProxyRuntime {
     async onReconnected() {
         if (!this.started)
             return;
-        this.logger.info("network restored; recovering missed messages");
+        this.logger.info("network restored; syncing groups and recovering missed messages");
+        await this.syncGroups();
         await this.recoverOnStartup();
     }
     sweepExpiredApprovals() {
