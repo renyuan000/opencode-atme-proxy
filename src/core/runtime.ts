@@ -83,6 +83,7 @@ import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerTargetStore } from "./owner-target.js";
 import { ScopedDocumentCache } from "./document-cache.js";
+import { ScopedDocumentRefs } from "./document-ref-store.js";
 import { OwnerAccessService } from "./owner-access-service.js";
 import {
   readJsonFile,
@@ -189,6 +190,7 @@ export class ProxyRuntime {
   private readonly ownerAccess: OwnerAccessService;
   private readonly ownerTargets: OwnerTargetStore;
   private readonly documentCache: ScopedDocumentCache;
+  private readonly documentRefs: ScopedDocumentRefs;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly blockedDirectAlerts = new Map<string, number>();
   private readonly messageControllers = new Map<string, AbortController>();
@@ -301,6 +303,10 @@ export class ProxyRuntime {
     this.documentCache = new ScopedDocumentCache(
       this.groupState,
       this.logger.child("document-cache"),
+    );
+    this.documentRefs = new ScopedDocumentRefs(
+      this.groupState,
+      this.logger.child("document-refs"),
     );
     this.ownerTargets = new OwnerTargetStore(
       join(this.stateDir, "owner-target.json"),
@@ -472,6 +478,7 @@ export class ProxyRuntime {
       refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
       ownerOverview: (message) => this.contextService.ownerOverview(message),
       documentCache: this.documentCache,
+      documentRefs: this.documentRefs,
       documentRelevance: (chatId, doc) => {
         const responsibility = this.config.platforms.feishu.groups.find(
           (group) => group.chatId === chatId,
@@ -879,6 +886,7 @@ export class ProxyRuntime {
     await this.ownerAccess.load();
     await this.ownerTargets.load();
     await this.documentCache.load();
+    await this.documentRefs.load();
     this.ownerAccess.reconcile();
     await this.options.platform.start({
       onMessage: (message) => this.onMessage(message),
@@ -939,6 +947,7 @@ export class ProxyRuntime {
       this.ownerAccess.flush(),
       this.ownerTargets.flush(),
       this.documentCache.flush(),
+      this.documentRefs.flush(),
     ]);
     this.logger.info("runtime stopped");
   }

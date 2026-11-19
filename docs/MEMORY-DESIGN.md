@@ -101,6 +101,8 @@ A 解决“同一句话被拆成几条发”，B 解决“隔很久补充同一�
       chat-context.json           本群聊天上下文 / 7 天
       group-context.json          本群摘要
       memory.json                 本群记忆兼容文件
+      document-cache.json         在线文档正文缓存（7 天）
+      document-refs.json          在线文档 URL/来源记录（90 天）
       memory/records.json         本群当前有效记忆
       memory/history/             本群记忆变更历史（720 天）
       replies/                    本群原文与回复（720 天）

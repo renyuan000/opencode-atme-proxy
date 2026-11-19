@@ -64,6 +64,7 @@ export declare class ProxyRuntime {
     private readonly ownerAccess;
     private readonly ownerTargets;
     private readonly documentCache;
+    private readonly documentRefs;
     private readonly groupLocks;
     private readonly blockedDirectAlerts;
     private readonly messageControllers;

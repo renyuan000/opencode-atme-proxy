@@ -474,6 +474,8 @@ groups/<群名__短ID>/
   chat-context.json   本群最近上下文（默认 50 条 / 7 天）
   group-context.json  本群摘要
   memory.json         本群记忆兼容文件
+  document-cache.json 在线文档正文缓存（7 天）
+  document-refs.json  在线文档 URL/来源记录（90 天）
   memory/             本群记忆分片 + history/
   replies/            本群证据
   evidence/           本群历史聊天证据

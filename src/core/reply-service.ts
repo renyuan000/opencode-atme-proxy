@@ -57,6 +57,9 @@ export interface ReplyServiceOptions {
   };
   documentRelevance?(chatId: string, doc: { title?: string; text: string }): boolean | undefined;
   notifyOwner?(text: string): Promise<boolean>;
+  documentRefs?: {
+    record(chatId: string, input: { url: string; title?: string; messageId?: string; senderId?: string; status?: "indexed" | "fetched" | "failed" | "skipped"; cached?: boolean }): void;
+  };
 }
 
 export interface UnifiedReply {
@@ -723,9 +726,23 @@ export class ReplyService {
     const docs: string[] = [];
     for (const url of unique) {
       try {
+        this.options.documentRefs?.record(message.chat.id, {
+          url,
+          ...(message.messageId ? { messageId: message.messageId } : {}),
+          ...(message.sender.id ? { senderId: message.sender.id } : {}),
+          status: "indexed",
+        });
         const cached = this.options.documentCache?.get(message.chat.id, url);
         const doc = cached ?? (await platform.fetchDocumentText(url));
         if (doc?.text) {
+          this.options.documentRefs?.record(message.chat.id, {
+            url,
+            ...(doc.title ? { title: doc.title } : {}),
+            ...(message.messageId ? { messageId: message.messageId } : {}),
+            ...(message.sender.id ? { senderId: message.sender.id } : {}),
+            status: "fetched",
+            cached: Boolean(cached),
+          });
           const relevant = this.options.documentRelevance?.(message.chat.id, doc);
           if (relevant === undefined && !cached) {
             await this.options.notifyOwner?.(

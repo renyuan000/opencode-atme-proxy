@@ -58,6 +58,16 @@ export interface ReplyServiceOptions {
         text: string;
     }): boolean | undefined;
     notifyOwner?(text: string): Promise<boolean>;
+    documentRefs?: {
+        record(chatId: string, input: {
+            url: string;
+            title?: string;
+            messageId?: string;
+            senderId?: string;
+            status?: "indexed" | "fetched" | "failed" | "skipped";
+            cached?: boolean;
+        }): void;
+    };
 }
 export interface UnifiedReply {
     action: "answer" | "no_reply" | "need_decision" | "notify_owner";
