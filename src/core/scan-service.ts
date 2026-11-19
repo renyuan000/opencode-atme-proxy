@@ -23,6 +23,7 @@ export interface ScanServiceOptions {
   groupIds: Set<string>;
   dedup: { has(key: string): boolean };
   activeMessageIds: Set<string>;
+  ownerOpenId(): string | undefined;
   isMention(message: IncomingMessage): boolean;
   onMessage(message: IncomingMessage, wait: boolean): Promise<void>;
   markProcessed(message: IncomingMessage): Promise<void>;
@@ -57,7 +58,10 @@ export class ScanService {
         });
       }
     }
-    const plain = candidates.filter((message) => !this.options.isMention(message));
+    const ownerId = this.options.ownerOpenId();
+    const plain = candidates.filter(
+      (message) => !this.options.isMention(message) && message.sender.id !== ownerId,
+    );
     if (plain.length === 0) return;
 
     const fresh = plain.filter((message) => {
@@ -154,6 +158,7 @@ export class ScanService {
   }
 
   async handleGroupScan(message: IncomingMessage, signal: AbortSignal): Promise<void> {
+    if (message.sender.id === this.options.ownerOpenId()) return;
     const enriched = await this.enrichFile(message);
     const classification = await this.options.intentService.classifyOne(enriched, signal);
     if (!classification?.relevant) return;

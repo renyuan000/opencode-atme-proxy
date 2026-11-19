@@ -22,6 +22,7 @@ export interface ScanServiceOptions {
         has(key: string): boolean;
     };
     activeMessageIds: Set<string>;
+    ownerOpenId(): string | undefined;
     isMention(message: IncomingMessage): boolean;
     onMessage(message: IncomingMessage, wait: boolean): Promise<void>;
     markProcessed(message: IncomingMessage): Promise<void>;

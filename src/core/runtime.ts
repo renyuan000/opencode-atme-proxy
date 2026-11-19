@@ -582,6 +582,7 @@ export class ProxyRuntime {
       logger: this.logger.child("scan"),
       relevance: () => this.relevance,
       platform: this.options.platform,
+      ownerOpenId: () => this.ownerOpenId(),
       dispatcher: this.dispatcher,
       chatContext: this.chatContext,
       intentService: this.intentService,
