@@ -97,6 +97,13 @@ export class IntentService {
         profile,
         allowNoReply: config.botReply.allowNoReply,
       });
+      if (intent.action === "need_decision" && isLearningOnlyRequest(message.text)) {
+        return {
+          ...intent,
+          action: "answer",
+          reason: `${intent.reason}（仅学习/阅读/分析，不涉及承诺或变更，直接回答）`,
+        };
+      }
       if (
         intent.action === "answer" &&
         intent.confidence < config.botReply.minAnswerConfidence
@@ -122,4 +129,9 @@ export class IntentService {
       };
     }
   }
+}
+function isLearningOnlyRequest(text: string): boolean {
+  const learning = /(先学习|学习下|学习一下|先看看|看一下|理解一下|阅读|熟悉|分析一下|总结一下|看看.{0,6}原型|读一下)/;
+  const committing = /(实现|开发|修改|提交|部署|上线|排期|承诺|合并|发版|执行)/;
+  return learning.test(text) && !committing.test(text);
 }
