@@ -20,7 +20,9 @@ const COMMANDS: Record<string, OwnerCommandName> = {
 
 export function parseOwnerCommand(text: string): OwnerCommand | undefined {
   const bare = text.trim();
-  if (bare === "/" || bare === "／") return { command: "help", arg: "" };
+  if (["/", "／", "?", "？", "/?", "／?", "/？", "／？"].includes(bare)) {
+    return { command: "help", arg: "" };
+  }
   const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|帮助|help)\s*([\s\S]*)$/i);
   if (!match) return undefined;
   const token = match[1] ?? "";
