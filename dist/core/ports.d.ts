@@ -45,6 +45,7 @@ export interface PlatformAdapter {
         name?: string;
     }>>;
     fetchMessage?(messageId: string): Promise<IncomingMessage | undefined>;
+    fetchUserName?(openId: string): Promise<string | undefined>;
     getBotName?(): string | undefined;
     send(target: OutboundTarget, message: OutboundMessage): Promise<{
         messageId: string;

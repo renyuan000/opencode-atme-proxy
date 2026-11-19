@@ -5,6 +5,7 @@ export class ApprovalService {
         this.options = options;
     }
     inflight = new Set();
+    nameCache = new Map();
     async sweepExpiredApprovals() {
         const ttlMs = this.options.config.policy.approvalTimeoutHours * 3600_000;
         const now = Date.now();
@@ -304,6 +305,24 @@ export class ApprovalService {
             ...(message?.kind === "card" ? { card: message.card } : {}),
         };
     }
+    async resolveSenderLabel(value) {
+        if (!/^ou_/.test(value))
+            return value;
+        const cached = this.nameCache.get(value);
+        if (cached)
+            return cached;
+        try {
+            const name = await this.options.platform.fetchUserName?.(value);
+            if (name) {
+                this.nameCache.set(value, name);
+                return name;
+            }
+        }
+        catch {
+            // Fall back to the open_id when contact lookup is unavailable.
+        }
+        return value;
+    }
     async replyManagementView() {
         const pending = [];
         const cards = this.options.pending
@@ -312,28 +331,30 @@ export class ApprovalService {
             .sort((a, b) => b[1].createdAt - a[1].createdAt);
         for (const [, card] of cards) {
             const task = await this.options.tasks.get(card.taskId);
+            const sender = task?.requester.displayName ?? task?.requester.id ?? card.actorId;
             pending.push({
                 taskId: card.taskId,
                 planHash: card.planHash,
                 chatLabel: task?.chatName ?? this.groupLabel(card.chatId),
-                senderLabel: task?.requester.displayName ?? task?.requester.id ?? card.actorId,
+                senderLabel: await this.resolveSenderLabel(sender),
                 draft: card.draft ?? "（无草稿）",
                 excerpt: task?.excerpt ?? "",
                 createdAt: card.createdAt,
             });
         }
-        return {
-            pending,
-            sent: this.options.sentReplies.listRecallable(8).map((item) => ({
+        const sent = [];
+        for (const item of this.options.sentReplies.listRecallable(8)) {
+            sent.push({
                 id: item.id,
                 chatLabel: item.chatName ?? this.groupLabel(item.chatId),
-                senderLabel: item.senderLabel,
+                senderLabel: await this.resolveSenderLabel(item.senderLabel),
                 text: item.text,
                 sourceText: item.sourceText,
                 sentAt: item.sentAt,
                 status: item.status,
-            })),
-        };
+            });
+        }
+        return { pending, sent };
     }
     async approveTask(action) {
         const pending = this.options.pending.get(`${action.taskId}:develop`) ??

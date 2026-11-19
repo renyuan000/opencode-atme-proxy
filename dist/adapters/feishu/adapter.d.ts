@@ -73,6 +73,7 @@ export declare class FeishuAdapter implements PlatformAdapter {
         chatId: string;
         name?: string;
     }>>;
+    fetchUserName(openId: string): Promise<string | undefined>;
     fetchMessage(messageId: string): Promise<IncomingMessage | undefined>;
     listMessages(input: Parameters<PlatformAdapter["listMessages"]>[0]): Promise<{
         nextCursor?: string | undefined;

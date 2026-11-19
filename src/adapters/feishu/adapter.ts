@@ -281,6 +281,17 @@ export class FeishuAdapter implements PlatformAdapter {
     return groups;
   }
 
+  async fetchUserName(openId: string): Promise<string | undefined> {
+    const response = await this.client.request({
+      method: "GET",
+      url: `/open-apis/contact/v3/users/${encodeURIComponent(openId)}`,
+      params: { user_id_type: "open_id" },
+    });
+    if (response?.code !== 0) return undefined;
+    const name = response?.data?.user?.name;
+    return typeof name === "string" && name ? name : undefined;
+  }
+
   async fetchMessage(messageId: string): Promise<IncomingMessage | undefined> {
     const response = await this.client.request({
       method: "GET",

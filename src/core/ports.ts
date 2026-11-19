@@ -55,6 +55,7 @@ export interface PlatformAdapter {
   listMessages(input: ListMessagesInput): Promise<ListMessagesResult>;
   listGroups?(): Promise<Array<{ chatId: string; name?: string }>>;
   fetchMessage?(messageId: string): Promise<IncomingMessage | undefined>;
+  fetchUserName?(openId: string): Promise<string | undefined>;
   getBotName?(): string | undefined;
   send(target: OutboundTarget, message: OutboundMessage): Promise<{ messageId: string }>;
   reply(

@@ -26,6 +26,7 @@ export declare class ApprovalService {
     private readonly options;
     constructor(options: ApprovalServiceOptions);
     private readonly inflight;
+    private readonly nameCache;
     sweepExpiredApprovals(): Promise<void>;
     isAuthorizedActor(actor: {
         platform: string;
@@ -39,6 +40,7 @@ export declare class ApprovalService {
     sendReplyManagementCard(): Promise<boolean>;
     private groupLabel;
     private replyManagementResult;
+    private resolveSenderLabel;
     private replyManagementView;
     private approveTask;
     private rejectTask;

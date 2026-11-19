@@ -49,6 +49,10 @@ export class HybridFeishuAdapter implements PlatformAdapter {
     return this.adapter.fetchMessage(messageId);
   }
 
+  fetchUserName(openId: string): Promise<string | undefined> {
+    return this.adapter.fetchUserName(openId);
+  }
+
   send(target: OutboundTarget, message: OutboundMessage): Promise<{ messageId: string }> {
     return this.adapter.send(target, message);
   }
