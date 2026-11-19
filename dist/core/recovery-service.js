@@ -81,6 +81,7 @@ export class RecoveryService {
                 for (const message of mentions) {
                     const key = `${message.platform}:${message.messageId}`;
                     try {
+                        this.options.dedup.delete(key);
                         await this.options.ingest(message, true);
                         this.options.historyMentions.add(key);
                         await this.options.historyMentions.flush();

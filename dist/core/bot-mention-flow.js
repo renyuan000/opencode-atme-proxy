@@ -5,8 +5,16 @@ export class BotMentionFlow {
         this.options = options;
     }
     async handle(message, signal) {
-        const enriched = message;
+        const enriched = await this.options.replyService.enrichWithQuoted(message);
+        this.options.logger.info("bot mention handling", { messageId: message.messageId });
         const intent = await this.options.intentService.decideBotIntent(enriched, signal);
+        this.options.logger.info("bot intent decided", {
+            messageId: message.messageId,
+            action: intent.action,
+            kind: intent.kind,
+            confidence: intent.confidence,
+            reason: intent.reason,
+        });
         if (intent.action === "no_reply") {
             this.options.logger.info("bot mention skipped by necessity check", {
                 messageId: message.messageId,

@@ -73,16 +73,24 @@ export class IntentService {
       projects: config.filter.profile.projects,
       tasks: config.filter.profile.tasks,
     };
+    const intentText = message.replyToMessageId
+      ? `${message.text}\n（这条消息引用了上一条消息/文件；请认为引用内容可读取，不要仅因正文没有文件就判定信息不足。）`
+      : message.text;
     try {
+      this.options.logger.info("bot intent llm start", { messageId: message.messageId });
       const completion = await this.options.llm.complete(
         buildBotIntentPrompt({
-          text: message.text,
+          text: intentText,
           history: recent,
           profile,
           allowNoReply: config.botReply.allowNoReply,
         }),
         signal,
       );
+      this.options.logger.info("bot intent llm done", {
+        messageId: message.messageId,
+        chars: completion.text.length,
+      });
       const intent = parseBotIntent(completion.text, {
         text: message.text,
         history: recent,

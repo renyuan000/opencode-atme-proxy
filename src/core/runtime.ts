@@ -827,6 +827,13 @@ export class ProxyRuntime {
     force = false,
   ): Promise<void> {
     const dedupKey = `${message.platform}:${message.messageId}`;
+    this.logger.info("dispatch group message", {
+      messageId: message.messageId,
+      mention: this.isMention(message),
+      wait,
+      force,
+      limited,
+    });
     const mention = this.isMention(message);
     const controller = new AbortController();
     this.messageControllers.set(dedupKey, controller);
@@ -843,8 +850,10 @@ export class ProxyRuntime {
       run: async (signal) => {
         const unlink = this.linkAbort(controller, signal);
         try {
+          this.logger.info("dispatch job started", { messageId: message.messageId, force });
           if (controller.signal.aborted || (!force && this.dedup.has(dedupKey))) return;
           await this.handleMessage(message, controller.signal);
+          this.logger.info("dispatch job finished", { messageId: message.messageId });
         } finally {
           unlink();
           this.messageControllers.delete(dedupKey);
@@ -1589,7 +1598,7 @@ export class ProxyRuntime {
       if (!primary) {
         void this.notifyMissingProject(chatId);
         return {
-          worktree: join(this.stateDir, "scratch"),
+          worktree: this.config.project.worktree ?? join(this.stateDir, "scratch"),
           secondaryWorktrees: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
           coreProjects: groupProject.core ?? [],
           referenceProjects: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
@@ -1673,9 +1682,11 @@ export class ProxyRuntime {
       });
     } else {
       resolution = {
-        worktree: join(this.stateDir, "scratch"),
+        worktree: this.config.project.worktree ?? join(this.stateDir, "scratch"),
         resolved: false,
-        reason: "no project resolved; refusing to use home/cwd",
+        reason: this.config.project.worktree
+          ? "no group project; using global project for analysis"
+          : "no project resolved; refusing to use home/cwd",
       };
       this.logger.error("no project resolved; task work will require manual configuration");
     }

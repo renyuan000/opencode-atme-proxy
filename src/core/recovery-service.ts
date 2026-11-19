@@ -12,7 +12,7 @@ export interface RecoveryServiceOptions {
   platform: PlatformAdapter;
   pending: PendingStore;
   tasks: TaskStore;
-  dedup: { has(key: string): boolean };
+  dedup: { has(key: string): boolean; delete(key: string): void };
   historyMentions: { has(key: string): boolean; add(key: string): void; flush(): Promise<void> };
   sentReplies: { hasSource(messageId: string): boolean };
   groupIds: Set<string>;
@@ -109,6 +109,7 @@ export class RecoveryService {
         for (const message of mentions) {
           const key = `${message.platform}:${message.messageId}`;
           try {
+            this.options.dedup.delete(key);
             await this.options.ingest(message, true);
             this.options.historyMentions.add(key);
             await this.options.historyMentions.flush();

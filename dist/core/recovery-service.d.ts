@@ -12,6 +12,7 @@ export interface RecoveryServiceOptions {
     tasks: TaskStore;
     dedup: {
         has(key: string): boolean;
+        delete(key: string): void;
     };
     historyMentions: {
         has(key: string): boolean;

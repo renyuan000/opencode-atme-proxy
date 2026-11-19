@@ -48,6 +48,7 @@ export declare class ReplyService {
     }>;
     createReplyTask(message: IncomingMessage, classification: Classification | undefined): Promise<TaskRecord>;
     sendReplyApproval(task: TaskRecord, message: IncomingMessage, draftSource?: IncomingMessage, depth?: ReplyDepth): Promise<void>;
+    enrichWithQuoted(message: IncomingMessage): Promise<IncomingMessage>;
     draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth): Promise<string>;
     private runReplyWorker;
     private loadImageText;
