@@ -44,7 +44,9 @@ export class MessageIngress {
     const ownerId = this.options.ownerOpenId();
     const fromOwner = Boolean(ownerId) && message.sender.id === ownerId;
     const limited =
-      mentionBot && !(this.options.config.botReply.ownerBypass && fromOwner);
+      mentionBot &&
+      !force &&
+      !(this.options.config.botReply.ownerBypass && fromOwner);
     if (limited && !this.options.senderLimiter.tryAcquire(message.sender.id)) {
       if (this.options.senderLimiter.shouldWarn(message.sender.id)) {
         this.options.logger.warn("sender rate limited; sending one warning", {

@@ -34,10 +34,10 @@ export async function extractDocumentText(data, mime, name) {
         return data.toString("utf8").trim().slice(0, 20_000) || undefined;
     }
     if (ext === "html" || ext === "htm") {
-        return data
-            .toString("utf8")
-            .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        const raw = data.toString("utf8");
+        const visible = raw
             .replace(/<style[\s\S]*?<\/style>/gi, " ")
+            .replace(/<script[\s\S]*?<\/script>/gi, " ")
             .replace(/<[^>]+>/g, " ")
             .replace(/&nbsp;/g, " ")
             .replace(/&amp;/g, "&")
@@ -45,6 +45,16 @@ export async function extractDocumentText(data, mime, name) {
             .replace(/&gt;/g, ">")
             .replace(/&quot;/g, '"')
             .replace(/&#39;/g, "'")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+        const scripts = [...raw.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)]
+            .map((match) => match[1] ?? "")
+            .join("\n");
+        const labels = [...scripts.matchAll(/[\u4e00-\u9fff][\u4e00-\u9fffA-Za-z0-9_（）()：:·/\-、，。！？ ]{0,120}/g)]
+            .map((match) => match[0].trim())
+            .filter((value) => value.length >= 2);
+        const useful = [...new Set(labels)].join("\n");
+        return `${visible}${useful ? `\n${useful}` : ""}`
             .replace(/\s{2,}/g, " ")
             .trim()
             .slice(0, 20_000) || undefined;
