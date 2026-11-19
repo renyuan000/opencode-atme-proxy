@@ -19,12 +19,12 @@ export interface MessageIngressOptions {
     updateGroupSummary(platform: string, chatId: string): void;
     acknowledge?(message: IncomingMessage): Promise<void>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
-    dispatch(message: IncomingMessage, limited: boolean, wait: boolean): Promise<void>;
+    dispatch(message: IncomingMessage, limited: boolean, wait: boolean, force: boolean): Promise<void>;
 }
 export declare class MessageIngress {
     private readonly options;
     constructor(options: MessageIngressOptions);
-    handle(message: IncomingMessage, _chatName: string, wait?: boolean): Promise<void>;
+    handle(message: IncomingMessage, _chatName: string, wait?: boolean, force?: boolean): Promise<void>;
     private shouldStoreContext;
     private isMediaMessage;
     private isMentionMe;

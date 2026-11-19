@@ -18,6 +18,7 @@ export declare class ProxyRuntime {
     private readonly config;
     private readonly stateDir;
     private readonly dedup;
+    private readonly historyMentions;
     private readonly outbound;
     private readonly cursors;
     private readonly sessions;
@@ -84,7 +85,7 @@ export declare class ProxyRuntime {
     stop(): Promise<void>;
     private onMessage;
     private dispatchGroupMessage;
-    ingest(message: IncomingMessage): Promise<void>;
+    ingest(message: IncomingMessage, force?: boolean): Promise<void>;
     ingestBatch(messages: IncomingMessage[]): Promise<void>;
     private isMention;
     private isMentionMe;

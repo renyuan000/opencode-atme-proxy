@@ -4,9 +4,9 @@ export class MessageIngress {
     constructor(options) {
         this.options = options;
     }
-    async handle(message, _chatName, wait = false) {
+    async handle(message, _chatName, wait = false, force = false) {
         const dedupKey = `${message.platform}:${message.messageId}`;
-        if (this.options.dedup.has(dedupKey) || this.options.activeMessageIds.has(dedupKey)) {
+        if ((!force && this.options.dedup.has(dedupKey)) || this.options.activeMessageIds.has(dedupKey)) {
             return;
         }
         this.options.activeMessageIds.add(dedupKey);
@@ -86,7 +86,7 @@ export class MessageIngress {
         if (this.options.config.groupSession?.enabled !== false) {
             this.options.updateGroupSummary(message.platform, message.chat.id);
         }
-        await this.options.dispatch(message, limited, wait);
+        await this.options.dispatch(message, limited, wait, force);
     }
     shouldStoreContext(message, mentionMe, mentionBot) {
         if (!this.options.config.context.enabled)

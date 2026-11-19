@@ -60,6 +60,7 @@ export class ProxyRuntime {
     config;
     stateDir;
     dedup;
+    historyMentions;
     outbound;
     cursors;
     sessions;
@@ -121,6 +122,12 @@ export class ProxyRuntime {
             ttlMs: 7 * 24 * 3600 * 1000,
             maxEntries: 100_000,
             logger: this.logger.child("dedup"),
+        });
+        this.historyMentions = new DedupStore({
+            file: join(this.stateDir, "history-mentions.json"),
+            ttlMs: 90 * 24 * 3600 * 1000,
+            maxEntries: 20_000,
+            logger: this.logger.child("history-mentions"),
         });
         this.outbound = new DedupStore({
             file: join(this.stateDir, "outbound.json"),
@@ -405,10 +412,12 @@ export class ProxyRuntime {
             pending: this.pending,
             tasks: this.tasks,
             dedup: this.dedup,
+            historyMentions: this.historyMentions,
+            sentReplies: this.sentReplies,
             groupIds: this.groupIds,
             lastCursor: (_platform, chatId) => this.cursors.get(chatId),
             isMention: (message) => this.isMention(message),
-            ingest: (message) => this.ingest(message),
+            ingest: (message, force) => this.ingest(message, force),
             ingestBatch: (messages) => this.ingestBatch(messages),
             analyzeTask: (task) => this.analyzeTask(task),
             track: (promise) => this.track(promise),
@@ -592,6 +601,7 @@ export class ProxyRuntime {
         if (this.started)
             return;
         await this.dedup.load();
+        await this.historyMentions.load();
         await this.outbound.load();
         await this.sentReplies.load();
         await this.cursors.load();
@@ -651,6 +661,7 @@ export class ProxyRuntime {
         await this.options.platform.stop();
         await Promise.all([
             this.dedup.close(),
+            this.historyMentions.close(),
             this.outbound.close(),
             this.sentReplies.flush(),
             this.cursors.flush(),
@@ -665,7 +676,7 @@ export class ProxyRuntime {
         ]);
         this.logger.info("runtime stopped");
     }
-    async onMessage(message, wait = false) {
+    async onMessage(message, wait = false, force = false) {
         if (message.senderType !== "user")
             return;
         const chatName = await this.chatLabel(message);
@@ -698,9 +709,14 @@ export class ProxyRuntime {
             });
             return;
         }
-        await this.messageIngress.handle(message, chatName, wait);
+        const dedupKey = `${message.platform}:${message.messageId}`;
+        const wasSeen = this.dedup.has(dedupKey);
+        await this.messageIngress.handle(message, chatName, wait, force);
+        if (!wasSeen && this.isMention(message)) {
+            this.historyMentions.add(dedupKey);
+        }
     }
-    async dispatchGroupMessage(message, limited, wait) {
+    async dispatchGroupMessage(message, limited, wait, force = false) {
         const dedupKey = `${message.platform}:${message.messageId}`;
         const mention = this.isMention(message);
         const controller = new AbortController();
@@ -718,7 +734,7 @@ export class ProxyRuntime {
             run: async (signal) => {
                 const unlink = this.linkAbort(controller, signal);
                 try {
-                    if (controller.signal.aborted || this.dedup.has(dedupKey))
+                    if (controller.signal.aborted || (!force && this.dedup.has(dedupKey)))
                         return;
                     await this.handleMessage(message, controller.signal);
                 }
@@ -757,8 +773,8 @@ export class ProxyRuntime {
             });
         });
     }
-    async ingest(message) {
-        await this.onMessage(message, true);
+    async ingest(message, force = false) {
+        await this.onMessage(message, true, force);
     }
     async ingestBatch(messages) {
         await this.handlePolledBatch(messages);

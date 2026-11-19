@@ -13,10 +13,12 @@ export interface RecoveryServiceOptions {
   pending: PendingStore;
   tasks: TaskStore;
   dedup: { has(key: string): boolean };
+  historyMentions: { has(key: string): boolean; add(key: string): void; flush(): Promise<void> };
+  sentReplies: { hasSource(messageId: string): boolean };
   groupIds: Set<string>;
   lastCursor?(platform: string, chatId: string): number | undefined;
   isMention(message: IncomingMessage): boolean;
-  ingest(message: IncomingMessage): Promise<void>;
+  ingest(message: IncomingMessage, force?: boolean): Promise<void>;
   ingestBatch(messages: IncomingMessage[]): Promise<void>;
   analyzeTask(task: TaskRecord): Promise<void>;
   track<T>(promise: Promise<T>): Promise<T>;
@@ -81,10 +83,20 @@ export class RecoveryService {
           unprocessed: unprocessed.length,
           unique: new Set(messageIds).size,
         });
-        if (unprocessed.length === 0) continue;
-        const mentions = recovery.includeMentions
-          ? unprocessed.filter((message) => this.options.isMention(message))
+        const allMentions = recovery.includeMentions
+          ? result.messages.filter((message) => this.options.isMention(message))
           : [];
+        const mentions: IncomingMessage[] = [];
+        for (const message of allMentions) {
+          const key = `${message.platform}:${message.messageId}`;
+          if (this.options.historyMentions.has(key)) continue;
+          if (this.options.sentReplies.hasSource(message.messageId)) {
+            this.options.historyMentions.add(key);
+            continue;
+          }
+          mentions.push(message);
+        }
+        await this.options.historyMentions.flush();
         const plain = unprocessed
           .filter((message) => !this.options.isMention(message))
           .slice(-recovery.maxPlainMessagesPerGroup);
@@ -95,7 +107,13 @@ export class RecoveryService {
           plain: plain.length,
         });
         for (const message of mentions) {
-          await this.options.ingest(message);
+          const key = `${message.platform}:${message.messageId}`;
+          try {
+            await this.options.ingest(message, true);
+          } finally {
+            this.options.historyMentions.add(key);
+            await this.options.historyMentions.flush();
+          }
         }
         if (recovery.includeRelevantPlain) {
           if (plain.length > 0) await this.options.ingestBatch(plain);

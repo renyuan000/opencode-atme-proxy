@@ -13,10 +13,18 @@ export interface RecoveryServiceOptions {
     dedup: {
         has(key: string): boolean;
     };
+    historyMentions: {
+        has(key: string): boolean;
+        add(key: string): void;
+        flush(): Promise<void>;
+    };
+    sentReplies: {
+        hasSource(messageId: string): boolean;
+    };
     groupIds: Set<string>;
     lastCursor?(platform: string, chatId: string): number | undefined;
     isMention(message: IncomingMessage): boolean;
-    ingest(message: IncomingMessage): Promise<void>;
+    ingest(message: IncomingMessage, force?: boolean): Promise<void>;
     ingestBatch(messages: IncomingMessage[]): Promise<void>;
     analyzeTask(task: TaskRecord): Promise<void>;
     track<T>(promise: Promise<T>): Promise<T>;

@@ -54,11 +54,21 @@ export class RecoveryService {
                     unprocessed: unprocessed.length,
                     unique: new Set(messageIds).size,
                 });
-                if (unprocessed.length === 0)
-                    continue;
-                const mentions = recovery.includeMentions
-                    ? unprocessed.filter((message) => this.options.isMention(message))
+                const allMentions = recovery.includeMentions
+                    ? result.messages.filter((message) => this.options.isMention(message))
                     : [];
+                const mentions = [];
+                for (const message of allMentions) {
+                    const key = `${message.platform}:${message.messageId}`;
+                    if (this.options.historyMentions.has(key))
+                        continue;
+                    if (this.options.sentReplies.hasSource(message.messageId)) {
+                        this.options.historyMentions.add(key);
+                        continue;
+                    }
+                    mentions.push(message);
+                }
+                await this.options.historyMentions.flush();
                 const plain = unprocessed
                     .filter((message) => !this.options.isMention(message))
                     .slice(-recovery.maxPlainMessagesPerGroup);
@@ -69,7 +79,14 @@ export class RecoveryService {
                     plain: plain.length,
                 });
                 for (const message of mentions) {
-                    await this.options.ingest(message);
+                    const key = `${message.platform}:${message.messageId}`;
+                    try {
+                        await this.options.ingest(message, true);
+                    }
+                    finally {
+                        this.options.historyMentions.add(key);
+                        await this.options.historyMentions.flush();
+                    }
                 }
                 if (recovery.includeRelevantPlain) {
                     if (plain.length > 0)

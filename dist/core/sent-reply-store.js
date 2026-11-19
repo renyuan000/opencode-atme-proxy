@@ -49,6 +49,9 @@ export class SentReplyStore {
     get(id) {
         return this.replies.find((item) => item.id === id);
     }
+    hasSource(sourceMessageId) {
+        return this.replies.some((item) => item.status === "sent" && item.sourceMessageId === sourceMessageId);
+    }
     async add(input) {
         const record = {
             ...input,

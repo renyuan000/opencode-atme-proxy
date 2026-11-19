@@ -22,15 +22,20 @@ export interface MessageIngressOptions {
   updateGroupSummary(platform: string, chatId: string): void;
   acknowledge?(message: IncomingMessage): Promise<void>;
   safeReply(message: IncomingMessage, text: string): Promise<boolean>;
-  dispatch(message: IncomingMessage, limited: boolean, wait: boolean): Promise<void>;
+  dispatch(message: IncomingMessage, limited: boolean, wait: boolean, force: boolean): Promise<void>;
 }
 
 export class MessageIngress {
   constructor(private readonly options: MessageIngressOptions) {}
 
-  async handle(message: IncomingMessage, _chatName: string, wait = false): Promise<void> {
+  async handle(
+    message: IncomingMessage,
+    _chatName: string,
+    wait = false,
+    force = false,
+  ): Promise<void> {
     const dedupKey = `${message.platform}:${message.messageId}`;
-    if (this.options.dedup.has(dedupKey) || this.options.activeMessageIds.has(dedupKey)) {
+    if ((!force && this.options.dedup.has(dedupKey)) || this.options.activeMessageIds.has(dedupKey)) {
       return;
     }
     this.options.activeMessageIds.add(dedupKey);
@@ -117,7 +122,7 @@ export class MessageIngress {
     if (this.options.config.groupSession?.enabled !== false) {
       this.options.updateGroupSummary(message.platform, message.chat.id);
     }
-    await this.options.dispatch(message, limited, wait);
+    await this.options.dispatch(message, limited, wait, force);
   }
 
   private shouldStoreContext(

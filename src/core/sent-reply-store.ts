@@ -78,6 +78,12 @@ export class SentReplyStore {
     return this.replies.find((item) => item.id === id);
   }
 
+  hasSource(sourceMessageId: string): boolean {
+    return this.replies.some(
+      (item) => item.status === "sent" && item.sourceMessageId === sourceMessageId,
+    );
+  }
+
   async add(input: Omit<SentReplyRecord, "id" | "status">): Promise<SentReplyRecord> {
     const record: SentReplyRecord = {
       ...input,
