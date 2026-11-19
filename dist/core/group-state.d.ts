@@ -58,6 +58,7 @@ export declare class ScopedGroupContext {
     get(chatId: string): GroupSummary | undefined;
     set(chatId: string, summary: GroupSummary): void;
     size(): number;
+    list(): GroupSummary[];
     flush(): Promise<void>;
 }
 export declare class ScopedMemory {

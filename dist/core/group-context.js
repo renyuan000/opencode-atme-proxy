@@ -43,5 +43,8 @@ export class GroupContextStore {
     size() {
         return this.chats.size;
     }
+    list() {
+        return [...this.chats.values()];
+    }
 }
 //# sourceMappingURL=group-context.js.map

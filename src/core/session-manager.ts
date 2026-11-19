@@ -24,6 +24,7 @@ export interface WorkerInput {
   permission?: SessionPermission[];
   model?: { providerID: string; modelID: string };
   web?: boolean;
+  webFetch?: boolean;
 }
 
 export interface ChildInput {
@@ -145,7 +146,7 @@ export class SessionManager {
   }
 
   async createWorkerSession(input: WorkerInput): Promise<string> {
-    const key = `worker:${input.role}:${input.platform}:${input.chatId}${input.web ? ":web" : ""}`;
+    const key = `worker:${input.role}:${input.platform}:${input.chatId}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
     const existing = this.options.sessions.get(key);
     if (existing && existing.directory === input.directory) {
       const probe = this.options.bridge.getSession;

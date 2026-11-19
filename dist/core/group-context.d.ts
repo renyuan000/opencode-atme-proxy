@@ -19,4 +19,5 @@ export declare class GroupContextStore {
     set(chatId: string, summary: GroupSummary): void;
     flush(): Promise<void>;
     size(): number;
+    list(): GroupSummary[];
 }

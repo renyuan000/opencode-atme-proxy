@@ -133,6 +133,36 @@ export class ContextService {
       );
   }
 
+  async ownerOverview(message: IncomingMessage): Promise<string> {
+    const { config, memory, tasks, groupContext } = this.options;
+    const groups = config.platforms.feishu.groups;
+    const names = new Map(groups.map((group) => [group.chatId, group.name ?? group.chatId]));
+    const summaries = (groupContext.list?.() ?? [])
+      .filter((item) => item.summary.trim())
+      .slice(0, 6)
+      .map((item) => {
+        const chatId = item.chatId.split(":").pop() ?? item.chatId;
+        return `【${names.get(chatId) ?? chatId}】${item.summary}`;
+      });
+    const allTasks = tasks.list ? await tasks.list() : [];
+    const openTasks = allTasks
+      .filter((task) => ["candidate", "analyzing", "needs_info", "awaiting_approval"].includes(task.state))
+      .slice(0, 10)
+      .map((task) => `- ${names.get(task.chatId) ?? task.chatName ?? task.chatId}: ${task.title} [${task.state}]`);
+    const records = config.memory.enabled
+      ? memory.query({ platform: message.platform, text: message.text, limit: config.memory.injectLimit })
+      : [];
+    const memoryItems = records.slice(0, 8).map(
+      (record) => `- [${record.kind}${record.pinned ? ",pin" : ""}] ${record.key}: ${record.value}`,
+    );
+    const blocks = [
+      ...(summaries.length > 0 ? ["群摘要（跨群，仅供主人参考）：", ...summaries] : []),
+      ...(openTasks.length > 0 ? ["未关闭任务（跨群）：", ...openTasks] : []),
+      ...(memoryItems.length > 0 ? ["相关群记忆：", ...memoryItems] : []),
+    ];
+    return truncate(blocks.join("\n"), 6000);
+  }
+
   async analysisContext(task: TaskRecord): Promise<AnalysisContext> {
     const { config, chatContext, memory, tasks } = this.options;
     const chatKey = `${task.platform}:${task.chatId}`;

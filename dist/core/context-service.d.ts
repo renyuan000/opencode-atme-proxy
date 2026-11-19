@@ -29,5 +29,6 @@ export declare class ContextService {
     summaryText(platform: string, chatId: string): string;
     quotedContext(message: IncomingMessage): string[];
     evidenceRecall(message: IncomingMessage): string[];
+    ownerOverview(message: IncomingMessage): Promise<string>;
     analysisContext(task: TaskRecord): Promise<AnalysisContext>;
 }

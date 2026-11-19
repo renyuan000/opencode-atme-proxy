@@ -85,7 +85,7 @@ export class SessionManager {
         return sessionId;
     }
     async createWorkerSession(input) {
-        const key = `worker:${input.role}:${input.platform}:${input.chatId}${input.web ? ":web" : ""}`;
+        const key = `worker:${input.role}:${input.platform}:${input.chatId}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
         const existing = this.options.sessions.get(key);
         if (existing && existing.directory === input.directory) {
             const probe = this.options.bridge.getSession;

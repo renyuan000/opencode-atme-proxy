@@ -215,6 +215,9 @@ export class ScopedGroupContext {
     size() {
         return [...this.stores.values()].reduce((sum, store) => sum + store.size(), 0);
     }
+    list() {
+        return [...this.stores.values()].flatMap((store) => store.list());
+    }
     async flush() {
         await Promise.all([...this.stores.values()].map((store) => store.flush()));
     }

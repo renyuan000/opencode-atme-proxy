@@ -38,7 +38,8 @@ export interface ReplyServiceOptions {
   replyOptions: ReplyStyleOptions;
   model?: { providerID: string; modelID: string };
   readOnlyPermission: SessionPermission[];
-  webPermission?: SessionPermission[];
+  webSearchPermission?: SessionPermission[];
+  webFetchPermission?: SessionPermission[];
   ownerOpenId(): string | undefined;
   resolveProject(chatId: string): Promise<{
     worktree: string;
@@ -48,6 +49,7 @@ export interface ReplyServiceOptions {
     referenceProjects?: string[];
   }>;
   refreshSummary(platform: string, chatId: string): Promise<void>;
+  ownerOverview?(message: IncomingMessage): string | Promise<string>;
 }
 
 export class ReplyService {
@@ -341,11 +343,17 @@ export class ReplyService {
     const images = await this.loadImages(message);
     const ocrText = images.length > 0 ? await this.loadImageText(message) : undefined;
     const documentText = await this.loadRecentDocuments(message);
+    const ownerContext =
+      message.chat.kind === "direct" &&
+      message.sender.id === this.options.ownerOpenId()
+        ? (await this.options.ownerOverview?.(message) ?? "")
+        : "";
     const linkedDocuments = await this.loadLinkedDocuments(message, quoteBlock);
     const prompt = [
       styleInstruction,
       "你的角色：资深软件架构师与研发负责人，熟悉当前主项目。",
       ...(memoryBlock ? [memoryBlock] : []),
+      ...(ownerContext ? ["跨群上下文（仅供主人）：", ownerContext] : []),
       ...(summaryBlock ? ["群摘要（长期，优先参考）：", summaryBlock] : []),
       ...(quoteBlock.length > 0
         ? ["被回复的消息（优先参考）：", ...quoteBlock]
@@ -402,6 +410,15 @@ export class ReplyService {
     return enforceReplyLength(raw, style, this.options.replyOptions);
   }
 
+  private webMode(message: IncomingMessage): "none" | "search" | "fetch" {
+    if (message.chat.kind !== "direct") return "none";
+    if (message.sender.id !== this.options.ownerOpenId()) return "none";
+    if (/(允许|可以|批准).{0,8}(联网|抓取|打开.*链接|抓取.*链接)|\/允许抓取/.test(message.text)) {
+      return "fetch";
+    }
+    return "search";
+  }
+
   private async runReplyWorker(
     message: IncomingMessage,
     directory: string,
@@ -410,6 +427,7 @@ export class ReplyService {
     images: PromptAttachment[],
     ocrText?: string,
   ): Promise<string> {
+    const mode = this.webMode(message);
     const run = (text: string, attachments: PromptAttachment[]): Promise<string> =>
       this.options.sessionManager.runWorker(
         {
@@ -418,15 +436,15 @@ export class ReplyService {
           directory,
           title: `${this.options.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
           role: "reply",
-          web:
-            message.chat.kind === "direct" &&
-            message.sender.id === this.options.ownerOpenId(),
+          web: mode !== "none",
+          webFetch: mode === "fetch",
           ...(this.options.model ? { model: this.options.model } : {}),
           permission:
-            message.chat.kind === "direct" &&
-            message.sender.id === this.options.ownerOpenId()
-              ? (this.options.webPermission ?? this.options.readOnlyPermission)
-              : this.options.readOnlyPermission,
+            mode === "fetch"
+              ? (this.options.webFetchPermission ?? this.options.readOnlyPermission)
+              : mode === "search"
+                ? (this.options.webSearchPermission ?? this.options.readOnlyPermission)
+                : this.options.readOnlyPermission,
           ...(this.options.config.opencode.agent
             ? { agent: this.options.config.opencode.agent }
             : {}),

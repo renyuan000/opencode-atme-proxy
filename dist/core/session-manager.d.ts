@@ -22,6 +22,7 @@ export interface WorkerInput {
         modelID: string;
     };
     web?: boolean;
+    webFetch?: boolean;
 }
 export interface ChildInput {
     platform: string;

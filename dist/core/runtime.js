@@ -39,7 +39,14 @@ const READ_ONLY_PERMISSION = [
     { permission: "websearch", pattern: "*", action: "deny" },
     { permission: "external_directory", pattern: "*", action: "deny" },
 ];
-const WEB_PERMISSION = [
+const WEB_SEARCH_PERMISSION = [
+    { permission: "edit", pattern: "*", action: "deny" },
+    { permission: "bash", pattern: "*", action: "deny" },
+    { permission: "webfetch", pattern: "*", action: "deny" },
+    { permission: "websearch", pattern: "*", action: "allow" },
+    { permission: "external_directory", pattern: "*", action: "deny" },
+];
+const WEB_FETCH_PERMISSION = [
     { permission: "edit", pattern: "*", action: "deny" },
     { permission: "bash", pattern: "*", action: "deny" },
     { permission: "webfetch", pattern: "*", action: "allow" },
@@ -301,7 +308,8 @@ export class ProxyRuntime {
             replyOptions: this.replyOptions,
             ...(this.config.opencode.replyModel ? { model: this.config.opencode.replyModel } : {}),
             readOnlyPermission: READ_ONLY_PERMISSION,
-            webPermission: WEB_PERMISSION,
+            webSearchPermission: WEB_SEARCH_PERMISSION,
+            webFetchPermission: WEB_FETCH_PERMISSION,
             ownerOpenId: () => this.ownerOpenId(),
             resolveProject: async (chatId) => {
                 const project = await this.resolveProject(chatId);
@@ -318,6 +326,7 @@ export class ProxyRuntime {
                 };
             },
             refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
+            ownerOverview: (message) => this.contextService.ownerOverview(message),
         });
         this.taskService = new TaskService({
             config: this.config,

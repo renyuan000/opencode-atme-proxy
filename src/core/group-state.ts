@@ -255,6 +255,10 @@ export class ScopedGroupContext {
     return [...this.stores.values()].reduce((sum, store) => sum + store.size(), 0);
   }
 
+  list(): GroupSummary[] {
+    return [...this.stores.values()].flatMap((store) => store.list());
+  }
+
   async flush(): Promise<void> {
     await Promise.all([...this.stores.values()].map((store) => store.flush()));
   }

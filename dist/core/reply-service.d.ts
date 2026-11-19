@@ -29,7 +29,8 @@ export interface ReplyServiceOptions {
         modelID: string;
     };
     readOnlyPermission: SessionPermission[];
-    webPermission?: SessionPermission[];
+    webSearchPermission?: SessionPermission[];
+    webFetchPermission?: SessionPermission[];
     ownerOpenId(): string | undefined;
     resolveProject(chatId: string): Promise<{
         worktree: string;
@@ -39,6 +40,7 @@ export interface ReplyServiceOptions {
         referenceProjects?: string[];
     }>;
     refreshSummary(platform: string, chatId: string): Promise<void>;
+    ownerOverview?(message: IncomingMessage): string | Promise<string>;
 }
 export declare class ReplyService {
     private readonly options;
@@ -54,6 +56,7 @@ export declare class ReplyService {
         found: boolean;
     }>;
     draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth): Promise<string>;
+    private webMode;
     private runReplyWorker;
     private loadImageText;
     private loadRecentHistory;

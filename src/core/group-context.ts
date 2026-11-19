@@ -65,4 +65,8 @@ export class GroupContextStore {
   size(): number {
     return this.chats.size;
   }
+
+  list(): GroupSummary[] {
+    return [...this.chats.values()];
+  }
 }
