@@ -618,6 +618,7 @@ P2：
 
 - 需求：`docs/REQUIREMENTS.md`
 - 记忆与证据设计：`docs/MEMORY-DESIGN.md`
+- 可靠性与文件处理优化设计：`docs/OPTIMIZATION-DESIGN.md`
 - 待办与决策（P0/P1/P2、参考实现、AgentSoul 评估）：`docs/BACKLOG.md`
 - 配置示例：`config.example.json`
 - 环境变量：`.env.example`
@@ -1007,6 +1008,7 @@ The project is free and open source. If it saves you time, voluntary support is 
 
 - Requirements: `docs/REQUIREMENTS.md`
 - Memory and evidence design: `docs/MEMORY-DESIGN.md`
+- Reliability and file-processing design: `docs/OPTIMIZATION-DESIGN.md`
 - Backlog and decisions (P0/P1/P2, reference review, AgentSoul): `docs/BACKLOG.md`
 - Config example: `config.example.json`
 - Env example: `.env.example`
