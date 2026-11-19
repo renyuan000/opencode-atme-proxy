@@ -30,6 +30,7 @@ export interface ScanServiceOptions {
   markProcessed(message: IncomingMessage): Promise<void>;
   sendToApprover(text: string): Promise<boolean>;
   sendToOwner(text: string): Promise<boolean>;
+  analyzeFile?(message: IncomingMessage, signal: AbortSignal): Promise<string | undefined>;
 }
 
 export class ScanService {
@@ -146,6 +147,26 @@ export class ScanService {
     return false;
   }
 
+  private async analyzeFile(message: IncomingMessage, signal: AbortSignal): Promise<void> {
+    if (!this.options.analyzeFile) return;
+    const files = (message.attachments ?? []).filter((item) => item.kind === "file");
+    if (files.length === 0) return;
+    try {
+      const analysis = await this.options.analyzeFile(message, signal);
+      if (!analysis?.trim()) return;
+      const names = files.map((file) => file.name).filter(Boolean).join("、");
+      await this.options.sendToOwner(
+        `文件分析（${message.chat.name ?? message.chat.id}）：\n文件：${names || "未命名文件"}\n${analysis.trim().slice(0, 6000)}`,
+      );
+    } catch (error) {
+      this.options.logger.warn("file analysis failed", {
+        messageId: message.messageId,
+        chatId: message.chat.id,
+        error: toErrorMessage(error),
+      });
+    }
+  }
+
   private async enrichFile(message: IncomingMessage): Promise<IncomingMessage> {
     const files = (message.attachments ?? []).filter(
       (item) => item.kind === "file" && item.key,
@@ -182,6 +203,7 @@ export class ScanService {
     if (await this.skipIrrelevantFile(message, enriched.text)) return;
     const classification = await this.options.intentService.classifyOne(enriched, signal);
     if (!classification?.relevant) return;
+    await this.analyzeFile(message, signal);
     let handled = false;
     if (
       classification.actionability === "task" &&
@@ -258,6 +280,7 @@ export class ScanService {
         continue;
       }
       this.appendContextForScan(message);
+      await this.analyzeFile(message, signal);
       if (
         item.actionability === "task" &&
         item.confidence >= this.options.config.filter.minTaskConfidence
