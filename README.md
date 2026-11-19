@@ -149,8 +149,8 @@ atme-proxy setup
 扫码会预填：
 
 - 机器人能力（`preset: false` 的最小机器人模板）
-- scopes：`im:message.group_at_msg:readonly`、`im:message.group_msg`、`im:message.p2p_msg:readonly`、`im:message:readonly`、`im:message:send_as_bot`、`im:chat:readonly`、`im:resource`、`contact:user.base:readonly`
-- 事件：`im.message.receive_v1`
+- scopes：`im:message.group_at_msg:readonly`、`im:message.group_msg`、`im:message.p2p_msg:readonly`、`im:message:readonly`、`im:message:send_as_bot`、`im:chat:readonly`、`docx:document:readonly`、`wiki:wiki:readonly`、`im:resource`、`contact:user.base:readonly`
+- 事件：`im.message.receive_v1`、`im.chat.member.bot.added_v1`、`im.chat.member.bot.deleted_v1`、`im.chat.updated_v1`
 - 回调：`card.action.trigger`
 
 仍需你在飞书确认/完成：**敏感权限 `im:message.group_msg` 需要管理员审批**；发布应用、把机器人拉进群。

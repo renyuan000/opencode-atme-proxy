@@ -422,6 +422,76 @@ export class FeishuAdapter implements PlatformAdapter {
     }
   }
 
+  async fetchDocumentText(
+    url: string,
+  ): Promise<{ title?: string; text: string; url: string } | undefined> {
+    const match = url.match(/(?:\/wiki\/|\/docx\/|\/docs\/)([A-Za-z0-9_-]+)/);
+    if (!match?.[1]) return undefined;
+    const kind = url.includes("/wiki/") ? "wiki" : url.includes("/docx/") ? "docx" : "docs";
+    const token = match[1];
+    try {
+      if (kind === "wiki") {
+        const node = await this.client.request({
+          method: "GET",
+          url: "/open-apis/wiki/v2/spaces/get_node",
+          params: { token },
+        });
+        if (node?.code !== 0 || !node?.data?.node) {
+          this.logger.warn("Feishu wiki node read failed", { url, code: node?.code, msg: node?.msg });
+          return undefined;
+        }
+        const objType = node.data.node.obj_type;
+        const objToken = node.data.node.obj_token;
+        if (!objToken) return undefined;
+        if (objType === "docx") {
+          const result = await this.readDocx(objToken);
+          return result ? { title: node.data.node.title, ...result, url } : undefined;
+        }
+        if (objType === "doc") {
+          const result = await this.readLegacyDoc(objToken);
+          return result ? { title: node.data.node.title, ...result, url } : undefined;
+        }
+        this.logger.info("unsupported Feishu wiki object", { url, objType });
+        return undefined;
+      }
+      if (kind === "docx") {
+        const result = await this.readDocx(token);
+        return result ? { ...result, url } : undefined;
+      }
+      const result = await this.readLegacyDoc(token);
+      return result ? { ...result, url } : undefined;
+    } catch (error) {
+      this.logger.warn("Feishu document read failed", { url, error: toErrorMessage(error) });
+      return undefined;
+    }
+  }
+
+  private async readDocx(token: string): Promise<{ text: string } | undefined> {
+    const response = await this.client.request({
+      method: "GET",
+      url: `/open-apis/docx/v1/documents/${encodeURIComponent(token)}/raw_content`,
+    });
+    if (response?.code !== 0) {
+      this.logger.warn("Feishu docx raw_content failed", { token, code: response?.code, msg: response?.msg });
+      return undefined;
+    }
+    const text = response?.data?.content ?? response?.data?.raw_content ?? response?.data?.document?.content;
+    return typeof text === "string" && text.trim() ? { text: text.trim() } : undefined;
+  }
+
+  private async readLegacyDoc(token: string): Promise<{ text: string } | undefined> {
+    const response = await this.client.request({
+      method: "GET",
+      url: `/open-apis/doc/v2/${encodeURIComponent(token)}/raw_content`,
+    });
+    if (response?.code !== 0) {
+      this.logger.warn("Feishu legacy doc raw_content failed", { token, code: response?.code, msg: response?.msg });
+      return undefined;
+    }
+    const text = response?.data?.content ?? response?.data?.raw_content;
+    return typeof text === "string" && text.trim() ? { text: text.trim() } : undefined;
+  }
+
   async fetchResource(
     messageId: string,
     key: string,

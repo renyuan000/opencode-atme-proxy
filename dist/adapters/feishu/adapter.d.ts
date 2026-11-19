@@ -97,6 +97,13 @@ export declare class FeishuAdapter implements PlatformAdapter {
         draft?: string;
     }): OutboundMessage;
     recallMessage(_chatId: string, messageId: string): Promise<void>;
+    fetchDocumentText(url: string): Promise<{
+        title?: string;
+        text: string;
+        url: string;
+    } | undefined>;
+    private readDocx;
+    private readLegacyDoc;
     fetchResource(messageId: string, key: string, kind?: "image" | "file"): Promise<{
         data: Buffer;
         mime: string;

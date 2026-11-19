@@ -652,6 +652,7 @@ export class ProxyRuntime {
             onMessage: (message) => this.onMessage(message),
             onAction: (action) => this.onAction(action),
             onChatMembership: (event) => this.onChatMembership(event),
+            onChatUpdated: (event) => this.onChatUpdated(event),
             onMessageRecalled: (event) => this.onMessageRecalled(event),
             onReconnected: () => this.onReconnected(),
         });
@@ -898,6 +899,18 @@ export class ProxyRuntime {
                 error: toErrorMessage(error),
             });
         }
+    }
+    async onChatUpdated(event) {
+        if (!event.name)
+            return;
+        const project = this.config.platforms.feishu.groups.find((group) => group.chatId === event.chatId)?.project;
+        await this.ensureGroupWorkspace(event.chatId, event.name, project);
+        this.notificationService.rememberChatName(event.chatId, event.name);
+        await this.audit.append({
+            actor: { system: true },
+            action: "chat_name_updated",
+            details: { chatId: event.chatId, chatName: event.name },
+        });
     }
     async onChatMembership(event) {
         if (event.change === "bot_removed") {

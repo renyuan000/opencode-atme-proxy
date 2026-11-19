@@ -6,6 +6,12 @@ export interface ChatMembershipEvent {
     actorId?: string;
     at: number;
 }
+export interface ChatUpdatedEvent {
+    platform: string;
+    chatId: string;
+    name?: string;
+    at: number;
+}
 export interface MessageRecalledEvent {
     platform: string;
     messageId: string;
@@ -16,6 +22,7 @@ export interface AdapterHandlers {
     onMessage(message: IncomingMessage): Promise<void>;
     onAction(action: PlatformAction): Promise<PlatformActionResult>;
     onChatMembership?(event: ChatMembershipEvent): Promise<void>;
+    onChatUpdated?(event: ChatUpdatedEvent): Promise<void>;
     onMessageRecalled?(event: MessageRecalledEvent): Promise<void>;
     onReconnected?(): Promise<void>;
 }
@@ -63,6 +70,11 @@ export interface PlatformAdapter {
         mime: string;
         filename?: string;
     }>;
+    fetchDocumentText?(url: string): Promise<{
+        title?: string;
+        text: string;
+        url: string;
+    } | undefined>;
     acknowledge?(messageId: string, emojiType?: string): Promise<void>;
     renderReplyManagement?(view: ReplyManagementView): OutboundMessage;
     renderCancelConfirm?(input: {

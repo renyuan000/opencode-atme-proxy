@@ -67,6 +67,26 @@ export class FeishuEventSource {
                 }
                 return { ok: true };
             },
+            "im.chat.updated_v1": async (data) => {
+                const event = data?.event ?? data;
+                const chatId = event?.chat_id;
+                const name = event?.after_change?.name;
+                if (chatId && this.handlers?.onChatUpdated) {
+                    this.logger.info("chat updated", { chatId, name });
+                    void this.handlers
+                        .onChatUpdated({
+                        platform: "feishu",
+                        chatId,
+                        ...(typeof name === "string" && name ? { name } : {}),
+                        at: Number(event?.create_time ?? Date.now()),
+                    })
+                        .catch((error) => this.logger.error("chat updated handler failed", {
+                        chatId,
+                        error: toErrorMessage(error),
+                    }));
+                }
+                return { ok: true };
+            },
             "card.action.trigger": async (raw) => {
                 if (!this.handlers)
                     return { ok: true };

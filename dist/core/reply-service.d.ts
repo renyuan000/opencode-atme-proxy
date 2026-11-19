@@ -58,5 +58,6 @@ export declare class ReplyService {
     private loadRecentHistory;
     private loadQuotedChain;
     private loadRecentDocuments;
+    private loadLinkedDocuments;
     private loadImages;
 }

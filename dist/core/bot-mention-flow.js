@@ -103,7 +103,7 @@ export class BotMentionFlow {
     expectsAttachment(message) {
         if (message.replyToMessageId)
             return true;
-        return /(原型|文件|附件|文档|截图|表格|html|pdf|docx?)/i.test(message.text);
+        return /(原型|文件|附件|文档|截图|表格|html|pdf|docx?|\/(wiki|docx|docs)\/)/i.test(message.text);
     }
     async analyzeBotRequest(message, intent, signal) {
         if (!this.options.config.botReply.analyzeBeforeEscalate)
