@@ -237,6 +237,9 @@ export class RelevanceService {
     }
     const text = message.text.toLowerCase();
     const matched: string[] = [];
+    if (this.options.keywords.include.length === 0) {
+      return { hit: message.mentions.length > 0 || message.text.trim().length > 0, matched: [] };
+    }
     for (const keyword of this.options.keywords.include) {
       if (keyword && text.includes(keyword.toLowerCase())) matched.push(keyword);
     }
@@ -383,6 +386,8 @@ function buildPrompt(
     "2. 是否是用户需要处理的任务（task）、需要回答的问题（question）、仅需知会（fyi）、还是无关（noise）。",
     "只输出严格 JSON，不输出 Markdown、解释或多余文字。",
     "不确定时倾向于 relevant=true，但降低 confidence。",
+    "如果用户画像为空，把项目群里的需求、方案、接口/字段、测试、故障、任务安排、评审意见都视为可能相关；只有寒暄、通知、纯表情、已明确解决的问题才判 noise。",
+    "不要把“用户不是项目负责人”当作无关理由。",
     "输出格式：{\"results\":[{\"message_id\":\"...\",\"relevant\":true,\"actionability\":\"task\",\"reason\":\"...\",\"confidence\":0.9,\"task\":{\"title\":\"...\",\"project\":\"...\",\"deadline\":null,\"requester\":\"...\",\"acceptance_hint\":\"...\"}}]}",
   ].join("\n");
 

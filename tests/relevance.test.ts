@@ -145,3 +145,17 @@ test("classify batches, aggregates usage, and fills missing messages", async () 
   assert.equal(byId.get("m2")?.reason, "missing from model output");
   assert.equal(byId.get("m3")?.reason, "not selected for filtering");
 });
+
+test("empty keyword profile still sends plain messages to classification", () => {
+  const service = new RelevanceService({
+    llm: client("{}"),
+    profile: { keywords: [], projects: [], tasks: [] },
+    keywords: { include: [], exclude: [] },
+    keywordPrefilter: true,
+    maxMessagesPerBatch: 50,
+    maxCharsPerMessage: 800,
+    minTaskConfidence: 0.7,
+    minReviewConfidence: 0.5,
+  });
+  assert.equal(service.prefilter(message("m1", "普通工作讨论")).hit, true);
+});
