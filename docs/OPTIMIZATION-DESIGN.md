@@ -476,3 +476,183 @@ xlsx > 20 sheet 或 > 500 行：分块
 7. 再评估是否需要 SQLite/多 worker
 
 这个设计适合作为 v1.5 的稳定性改造，不建议直接跳到复杂多智能体平台。
+
+## 18. OpenCode Session 使用现状
+
+### 18.1 两个进程的角色
+
+```text
+opencode-atme-proxy
+  = 控制器：飞书事件、路由、状态、审批、权限、恢复
+
+opencode serve
+  = Agent 运行时：创建 session、调用模型、执行工具、返回结果
+```
+
+`opencode serve` 不是固定的“一个角色”，而是承载多个逻辑 session：
+
+| 类型 | 数量 | 是否持久 | 用途 |
+|---|---|---|---|
+| coordinator | 每群 1 个 | 长期 | 群锚点，只作为父级，不跑 prompt |
+| group | 每群 1 个 | 长期 | 群摘要/长期上下文 |
+| worker:reply | 每群 1 个 | 长期 | 群回复，按群串行 |
+| worker:analysis | 每群 1 个 | 长期 | 任务分析 |
+| worker:review | 每群 1 个 | 长期 | 评审 |
+| worker:web | 每群按需 | 长期 | 私聊可联网回复/分析 |
+| child | 按任务/消息 | 临时 | 单次分析、执行、评审 |
+
+### 18.2 当前实现要点
+
+- coordinator 以 `coordinator:<platform>:<chatId>` 记录，不跑 prompt
+- group session 以 `group:<platform>:<chatId>` 记录
+- worker 以 `worker:<role>:<platform>:<chatId>[:web]` 记录
+- child 以 `child:<sessionId>` 记录，并携带 `chatId/taskId`
+- 每个 session 都显式设置 `directory`，不是依赖启动目录
+- child 的 parentID 指向该群 coordinator
+- session 映射写入群目录 `sessions.json`，不再全局混放
+
+### 18.3 为什么经常“找不到关联”
+
+当前问题不是 session 不存在，而是**注入给模型的上下文太窄**：
+
+1. 群回复 prompt 默认只带最近约 12 条
+2. 群上下文存储默认约 50 条 / 7 天
+3. `loadRecentHistory` 只在回复/引用/特定指代词时触发
+4. 引用链只在消息有 `replyToMessageId` 时回溯
+5. 没有按语义检索历史，只按最近和时间窗口
+6. 群知识画像只注入职责摘要，不是完整知识库
+7. 私聊目标最多保留最近 5 个，且用户不指定时可能不够
+8. OpenCode session 不是长期记忆库；它会被压缩，且每个任务 prompt 是重新组装的
+9. 文件/在线文档进入上下文的时机不一致；没有统一 manifest
+10. 群文件和引用文件如果既没有 @、也没有被引用，可能只出现在扫描上下文里，不会进入回复 prompt
+
+所以“找不到关联”通常不是模型不聪明，而是**检索范围、触发条件和上下文 manifest 不够明确**。
+
+## 19. Session 优化方案
+
+### 19.1 保持的边界
+
+- coordinator：每群一个，只做锚点
+- group：每群一个，只维护摘要
+- worker：每群每角色一个，不跨群复用
+- child：每次任务临时，父级必须指向该群 coordinator
+- web worker：独立 key，避免复用无网 session
+
+### 19.2 上下文不要依赖 session 历史
+
+session 只做执行载体，事实源仍是：
+
+```text
+chat-context.json
+group-context.json
+group-knowledge.json
+memory/
+evidence/
+files/
+tasks/
+```
+
+每次 prompt 注入一个明确的 **Context Manifest**：
+
+```json
+{
+  "messageIds": ["om_..."],
+  "replyToMessageIds": ["om_..."],
+  "fileHashes": ["sha256..."],
+  "taskIds": ["task_..."],
+  "summaryUpdatedAt": 0,
+  "knowledgeUpdatedAt": 0,
+  "truncated": false
+}
+```
+
+模型必须知道：
+
+- 当前消息是哪条
+- 引用了哪条
+- 读了哪些文件/文档
+- 哪些内容被截断
+- 哪些是推断，哪些是 owner 确认
+
+### 19.3 检索策略
+
+优先级：
+
+1. 当前消息
+2. 直接引用链，最多 5 层
+3. 同群最近上下文
+4. 群知识/职责
+5. 未关闭任务
+6. 证据关键词检索
+7. 最近文件/在线文档缓存
+8. 仍找不到 → 明确说找不到，或私聊 owner 补充
+
+禁止：
+
+- 在没有引用、没有证据时猜“应该是那个”
+- 用别的群/别的项目的上下文回答
+- 把 session 里的旧内容当成本群长期事实
+
+### 19.4 失败时的行为
+
+- 上下文不足：私聊 owner 说明缺少什么
+- 模型超时：记录阶段，私聊失败，不静默
+- 文件过大：给截断标记和原文路径
+- session 损坏：重建该群 session，不污染其他群
+- worker 卡住：按群/角色隔离，不能阻塞快通道
+
+## 20. 文档审计结论
+
+### 20.1 这份文档现在的定位
+
+本文是**目标设计**，不是“当前已实现”的说明。
+
+当前已实现：
+
+- 群状态/项目/职责分离
+- 群知识画像
+- 私聊目标
+- 文件/在线文档读取
+- 部分超时拆分
+
+当前未实现：
+
+- 持久 job 队列/lease
+- 快慢双通道
+- map-reduce 文件摘要
+- 模型降级/熔断
+- 完整 Context Manifest
+- 死信队列/日报
+
+### 20.2 是否适合当前开发
+
+适合，但需要按阶段收敛：
+
+- Phase 1 先做 session 归属 + Context Manifest + 文件大小门禁
+- Phase 2 再做持久 job + 快慢通道
+- Phase 3 再做 map-reduce 摘要
+- 不建议一开始上多 Agent、SQLite、外部摘要供应商
+
+### 20.3 给同事/GitHub 使用前必须检查
+
+- 不提交真实群 ID、app secret、内部域名、内部路径
+- `config.example.json` 全部使用占位符
+- 明确 License
+- 增加 CI：typecheck + test + build
+- 提供飞书权限/事件清单
+- 提供 systemd、备份、恢复、升级文档
+- 说明当前只支持飞书，其他平台通过 adapter 扩展
+- 说明大文件/长任务限制，不承诺“无限上下文”
+
+## 21. 最终建议
+
+优先级从高到低：
+
+1. **Context Manifest + session 归属**
+2. **文件大小门禁 + 原文落盘 + 明确截断**
+3. **快慢通道 + 持久 job**
+4. **模型超时/重试/降级**
+5. **map-reduce 摘要 / 群知识沉淀**
+6. **日报、死信、健康检查**
+
+先做 1–2，能显著减少“上下文找不到”和“大文件超时”；3–4 解决“不中断”；5–6 提升长期工作质量。
