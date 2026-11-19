@@ -17,6 +17,7 @@ export interface AdapterHandlers {
     onAction(action: PlatformAction): Promise<PlatformActionResult>;
     onChatMembership?(event: ChatMembershipEvent): Promise<void>;
     onMessageRecalled?(event: MessageRecalledEvent): Promise<void>;
+    onReconnected?(): Promise<void>;
 }
 export interface ListMessagesInput {
     chatId: string;

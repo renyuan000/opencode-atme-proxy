@@ -104,6 +104,7 @@ export class ProxyRuntime {
     groupLocks = new Map();
     blockedDirectAlerts = new Map();
     messageControllers = new Map();
+    recoveryPromise;
     memory;
     senderLimiter;
     projectResolver;
@@ -396,6 +397,7 @@ export class ProxyRuntime {
             tasks: this.tasks,
             dedup: this.dedup,
             groupIds: this.groupIds,
+            lastCursor: (_platform, chatId) => this.cursors.get(chatId),
             isMention: (message) => this.isMention(message),
             ingest: (message) => this.ingest(message),
             ingestBatch: (messages) => this.ingestBatch(messages),
@@ -589,6 +591,7 @@ export class ProxyRuntime {
             onAction: (action) => this.onAction(action),
             onChatMembership: (event) => this.onChatMembership(event),
             onMessageRecalled: (event) => this.onMessageRecalled(event),
+            onReconnected: () => this.onReconnected(),
         });
         await this.syncGroups();
         this.poller.start();
@@ -1125,7 +1128,21 @@ export class ProxyRuntime {
     async recoverOnStartup() {
         if (!this.started)
             return;
-        await this.recoveryService.recoverOnStartup();
+        if (this.recoveryPromise)
+            return this.recoveryPromise;
+        this.recoveryPromise = (async () => {
+            await this.syncGroups();
+            await this.recoveryService.recoverOnStartup();
+        })().finally(() => {
+            this.recoveryPromise = undefined;
+        });
+        return this.recoveryPromise;
+    }
+    async onReconnected() {
+        if (!this.started)
+            return;
+        this.logger.info("network restored; recovering missed messages");
+        await this.recoverOnStartup();
     }
     sweepExpiredApprovals() {
         return this.approvalService.sweepExpiredApprovals();

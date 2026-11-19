@@ -35,7 +35,10 @@ export class FeishuEventSource {
             onReady: () => this.logger.info("websocket ready"),
             onError: (error) => this.logger.error("websocket error", { error: toErrorMessage(error) }),
             onReconnecting: () => this.logger.warn("websocket reconnecting"),
-            onReconnected: () => this.logger.info("websocket reconnected"),
+            onReconnected: () => {
+                this.logger.info("websocket reconnected");
+                void this.handlers?.onReconnected?.().catch((error) => this.logger.warn("reconnect recovery failed", { error: toErrorMessage(error) }));
+            },
         });
         const dispatcher = new Lark.EventDispatcher({}).register({
             "im.message.receive_v1": async (data) => {

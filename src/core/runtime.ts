@@ -151,6 +151,7 @@ export class ProxyRuntime {
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly blockedDirectAlerts = new Map<string, number>();
   private readonly messageControllers = new Map<string, AbortController>();
+  private recoveryPromise?: Promise<void>;
   private readonly memory: MemoryStore;
   private readonly senderLimiter: SenderLimiter;
   private projectResolver?: ProjectResolver;
@@ -481,6 +482,7 @@ export class ProxyRuntime {
       tasks: this.tasks,
       dedup: this.dedup,
       groupIds: this.groupIds,
+      lastCursor: (_platform, chatId) => this.cursors.get(chatId),
       isMention: (message) => this.isMention(message),
       ingest: (message) => this.ingest(message),
       ingestBatch: (messages) => this.ingestBatch(messages),
@@ -681,6 +683,7 @@ export class ProxyRuntime {
       onAction: (action) => this.onAction(action),
       onChatMembership: (event) => this.onChatMembership(event),
       onMessageRecalled: (event) => this.onMessageRecalled(event),
+      onReconnected: () => this.onReconnected(),
     });
     await this.syncGroups();
     this.poller.start();
@@ -1249,7 +1252,20 @@ export class ProxyRuntime {
 
   async recoverOnStartup(): Promise<void> {
     if (!this.started) return;
-    await this.recoveryService.recoverOnStartup();
+    if (this.recoveryPromise) return this.recoveryPromise;
+    this.recoveryPromise = (async () => {
+      await this.syncGroups();
+      await this.recoveryService.recoverOnStartup();
+    })().finally(() => {
+      this.recoveryPromise = undefined;
+    });
+    return this.recoveryPromise;
+  }
+
+  private async onReconnected(): Promise<void> {
+    if (!this.started) return;
+    this.logger.info("network restored; recovering missed messages");
+    await this.recoverOnStartup();
   }
 
   private sweepExpiredApprovals(): Promise<void> {

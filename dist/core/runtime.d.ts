@@ -62,6 +62,7 @@ export declare class ProxyRuntime {
     private readonly groupLocks;
     private readonly blockedDirectAlerts;
     private readonly messageControllers;
+    private recoveryPromise?;
     private readonly memory;
     private readonly senderLimiter;
     private projectResolver?;
@@ -108,6 +109,7 @@ export declare class ProxyRuntime {
     private analyzeTask;
     private sendApproval;
     recoverOnStartup(): Promise<void>;
+    private onReconnected;
     private sweepExpiredApprovals;
     private onAction;
     private approveReply;

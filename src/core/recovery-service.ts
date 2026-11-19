@@ -14,6 +14,7 @@ export interface RecoveryServiceOptions {
   tasks: TaskStore;
   dedup: { has(key: string): boolean };
   groupIds: Set<string>;
+  lastCursor?(platform: string, chatId: string): number | undefined;
   isMention(message: IncomingMessage): boolean;
   ingest(message: IncomingMessage): Promise<void>;
   ingestBatch(messages: IncomingMessage[]): Promise<void>;
@@ -43,14 +44,22 @@ export class RecoveryService {
       return;
     }
     const endTime = Date.now();
-    const startTime = endTime - recovery.lookbackSeconds * 1000;
+    const configuredStart = endTime - recovery.lookbackSeconds * 1000;
     this.options.logger.info("startup recovery pull", {
-      startTime: new Date(startTime).toISOString(),
+      startTime: new Date(configuredStart).toISOString(),
       endTime: new Date(endTime).toISOString(),
       groups: this.options.groupIds.size,
     });
     for (const chatId of this.options.groupIds) {
       try {
+        const cursor = this.options.lastCursor?.("feishu", chatId);
+        const cursorStart =
+          cursor && cursor < endTime
+            ? Math.max(cursor - 60_000, endTime - 7 * 24 * 3600_000)
+            : undefined;
+        const startTime = cursorStart
+          ? Math.min(configuredStart, cursorStart)
+          : configuredStart;
         const result = await this.options.platform.listMessages({
           chatId,
           startTime,
