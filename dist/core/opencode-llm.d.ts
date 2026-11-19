@@ -16,5 +16,5 @@ export declare class OpenCodeLlmClient implements LlmClient {
     private readonly options;
     private readonly logger;
     constructor(options: OpenCodeLlmOptions);
-    complete(messages: LlmMessage[]): Promise<LlmCompletion>;
+    complete(messages: LlmMessage[], signal?: AbortSignal): Promise<LlmCompletion>;
 }

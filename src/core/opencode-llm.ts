@@ -20,7 +20,7 @@ export class OpenCodeLlmClient implements LlmClient {
     this.logger = options.logger ?? createLogger({ scope: "opencode-llm" });
   }
 
-  async complete(messages: LlmMessage[]): Promise<LlmCompletion> {
+  async complete(messages: LlmMessage[], signal?: AbortSignal): Promise<LlmCompletion> {
     const system = messages.find((message) => message.role === "system")?.content ?? "";
     const user = messages.find((message) => message.role === "user")?.content ?? "";
     const title = `${this.options.titlePrefix}:filter:${Date.now()}`;
@@ -42,6 +42,7 @@ export class OpenCodeLlmClient implements LlmClient {
         directory: this.options.directory,
         title,
         text: system ? `${system}\n\n${user}` : user,
+        ...(signal ? { signal } : {}),
       });
       return {
         text,

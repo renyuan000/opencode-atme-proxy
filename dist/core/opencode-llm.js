@@ -7,7 +7,7 @@ export class OpenCodeLlmClient {
         this.options = options;
         this.logger = options.logger ?? createLogger({ scope: "opencode-llm" });
     }
-    async complete(messages) {
+    async complete(messages, signal) {
         const system = messages.find((message) => message.role === "system")?.content ?? "";
         const user = messages.find((message) => message.role === "user")?.content ?? "";
         const title = `${this.options.titlePrefix}:filter:${Date.now()}`;
@@ -29,6 +29,7 @@ export class OpenCodeLlmClient {
                 directory: this.options.directory,
                 title,
                 text: system ? `${system}\n\n${user}` : user,
+                ...(signal ? { signal } : {}),
             });
             return {
                 text,
