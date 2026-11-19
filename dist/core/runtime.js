@@ -629,7 +629,7 @@ export class ProxyRuntime {
             const explicit = group.responsibility;
             const features = explicit?.owns?.length
                 ? explicit.owns
-                : [...new Set([...(existing?.features ?? []), ...known, ...tasks.slice(0, 3)])];
+                : [...new Set([...(existing?.features ?? []), ...known])];
             const dependencies = explicit?.dependsOn?.length ? explicit.dependsOn : dependsOn;
             const profile = {
                 chatId: group.chatId,
