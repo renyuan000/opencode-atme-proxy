@@ -101,6 +101,24 @@ export class ScanService {
             throw new Error("polled batch had failed messages; cursor not advanced");
         }
     }
+    async skipIrrelevantFile(message, content) {
+        const files = (message.attachments ?? []).filter((item) => item.kind === "file");
+        if (files.length === 0 || !this.options.isFileRelevant)
+            return false;
+        for (const file of files) {
+            const relevant = this.options.isFileRelevant(message, file.name ?? "", content);
+            if (relevant === false) {
+                await this.options.markProcessed(message);
+                this.options.logger.info("irrelevant file skipped", {
+                    messageId: message.messageId,
+                    fileName: file.name,
+                    chatId: message.chat.id,
+                });
+                return true;
+            }
+        }
+        return false;
+    }
     async enrichFile(message) {
         const files = (message.attachments ?? []).filter((item) => item.kind === "file" && item.key);
         if (files.length === 0 || !this.options.platform.fetchResource)
@@ -131,6 +149,8 @@ export class ScanService {
         if (message.sender.id === this.options.ownerOpenId())
             return;
         const enriched = await this.enrichFile(message);
+        if (await this.skipIrrelevantFile(message, enriched.text))
+            return;
         const classification = await this.options.intentService.classifyOne(enriched, signal);
         if (!classification?.relevant)
             return;
@@ -162,7 +182,16 @@ export class ScanService {
             await this.digestWithoutFilter(messages);
             return;
         }
-        const enriched = await this.enrichFiles(messages);
+        const enrichedAll = await this.enrichFiles(messages);
+        const accepted = [];
+        for (const message of enrichedAll) {
+            if (await this.skipIrrelevantFile(message, message.text))
+                continue;
+            accepted.push(message);
+        }
+        if (accepted.length === 0)
+            return;
+        const enriched = accepted;
         const first = enriched[0];
         const history = first
             ? this.options.chatContext

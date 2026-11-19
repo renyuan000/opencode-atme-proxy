@@ -24,6 +24,7 @@ export interface ScanServiceOptions {
     activeMessageIds: Set<string>;
     ownerOpenId(): string | undefined;
     isMention(message: IncomingMessage): boolean;
+    isFileRelevant?(message: IncomingMessage, fileName: string, content?: string): boolean | undefined;
     onMessage(message: IncomingMessage, wait: boolean): Promise<void>;
     markProcessed(message: IncomingMessage): Promise<void>;
     sendToApprover(text: string): Promise<boolean>;
@@ -33,6 +34,7 @@ export declare class ScanService {
     private readonly options;
     constructor(options: ScanServiceOptions);
     handlePolledBatch(messages: IncomingMessage[]): Promise<void>;
+    private skipIrrelevantFile;
     private enrichFile;
     private enrichFiles;
     handleGroupScan(message: IncomingMessage, signal: AbortSignal): Promise<void>;

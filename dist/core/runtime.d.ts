@@ -90,6 +90,7 @@ export declare class ProxyRuntime {
     private drainBackground;
     private sweepTimer?;
     private profileTimer?;
+    private groupSyncTimer?;
     start(): Promise<void>;
     stop(): Promise<void>;
     private onMessage;
@@ -121,6 +122,7 @@ export declare class ProxyRuntime {
     private handleBotMention;
     private handleMeMention;
     private handlePolledBatch;
+    private isFileRelevant;
     private handleGroupScan;
     private analyzeTask;
     private sendApproval;

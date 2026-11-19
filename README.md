@@ -33,7 +33,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **群摘要**：每群一个持久摘要会话，保留决策、被否决方案、假设和未解决问题，注入回复与任务分析。
 - **证据回查**：普通群消息按日期存 `groups/<群名__短ID>/replies/<date>.jsonl`，AI 按需 grep 最近 7 天原文。
 - **图片理解**：@我/@机器人 的图片会下载为视觉附件交给支持图片的 OpenCode 模型；最多 2 张、单张 3MB。模型不支持图片时自动尝试本地 `tesseract` OCR（需安装 `tesseract` 和 `chi_sim` 语言包）。
-- **文件关联**：引用链最多回溯 5 层；最近 24 小时群文件不限定发送人，最多读取 2 个。支持 docx/pdf/doc/html/xlsx/xls/txt/md/csv/json 等；doc 用 `antiword`，xlsx/xls 用 SheetJS，docx 优先 `pandoc` 再回退 `unzip`。
+- **文件关联**：引用链最多回溯 5 层；最近 24 小时群文件不限定发送人，最多读取 2 个。支持 docx/pdf/doc/html/xlsx/xls/txt/md/csv/json 等；doc 用 `antiword`，xlsx/xls 用 SheetJS，docx 优先 `pandoc` 再回退 `unzip`。群文件无 @ 也会按群知识画像判断文件名/内容，明显不相关的文件不进入上下文。
 - **在线文档**：按 @消息/引用里的 `/docx/`、`/wiki/`、`/docs/`、`/sheets/` 读取正文；wiki 下的 sheet 也支持。
 - **联网策略**：群聊默认禁用 `websearch/webfetch`；主人私聊默认允许 `websearch`，`webfetch` 需要私聊明确说“允许抓取/允许联网”。
 

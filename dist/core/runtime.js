@@ -603,6 +603,7 @@ export class ProxyRuntime {
             dedup: this.dedup,
             activeMessageIds: this.activeMessageIds,
             isMention: (message) => this.isMention(message),
+            isFileRelevant: (message, fileName, content) => this.isFileRelevant(message, fileName, content),
             onMessage: (message, wait) => this.onMessage(message, wait),
             markProcessed: (message) => this.markProcessed(message),
             sendToApprover: (text) => this.sendToApprover(text),
@@ -776,6 +777,7 @@ export class ProxyRuntime {
     }
     sweepTimer;
     profileTimer;
+    groupSyncTimer;
     async start() {
         if (this.started)
             return;
@@ -826,6 +828,10 @@ export class ProxyRuntime {
             void this.refreshGroupKnowledge();
         }, 10 * 60_000);
         this.profileTimer.unref?.();
+        this.groupSyncTimer = setInterval(() => {
+            void this.syncGroups();
+        }, 30 * 60_000);
+        this.groupSyncTimer.unref?.();
         void this.sweepExpiredApprovals();
         this.started = true;
         setImmediate(() => {
@@ -852,6 +858,9 @@ export class ProxyRuntime {
         if (this.profileTimer)
             clearInterval(this.profileTimer);
         this.profileTimer = undefined;
+        if (this.groupSyncTimer)
+            clearInterval(this.groupSyncTimer);
+        this.groupSyncTimer = undefined;
         this.poller.stop();
         await this.dispatcher.close(5000);
         await this.drainBackground();
@@ -1436,6 +1445,24 @@ export class ProxyRuntime {
     }
     handlePolledBatch(messages) {
         return this.scanService.handlePolledBatch(messages);
+    }
+    isFileRelevant(message, fileName, content) {
+        const profile = this.groupKnowledge.get(message.chat.id);
+        const responsibility = this.config.platforms.feishu.groups.find((group) => group.chatId === message.chat.id)?.responsibility;
+        const terms = [
+            profile?.product ?? "",
+            ...(profile?.features ?? []),
+            ...(profile?.dependsOn ?? []),
+            ...(responsibility?.summary ? [responsibility.summary] : []),
+            ...(responsibility?.owns ?? []),
+        ]
+            .flatMap((value) => value.split(/[\s,，。；;、:：/]+/))
+            .map((value) => value.trim().toLowerCase())
+            .filter((value) => value.length >= 2);
+        if (terms.length === 0)
+            return undefined;
+        const haystack = `${fileName}\n${content ?? ""}`.toLowerCase();
+        return terms.some((term) => haystack.includes(term));
     }
     handleGroupScan(message, signal) {
         return this.scanService.handleGroupScan(message, signal);
