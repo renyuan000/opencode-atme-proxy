@@ -52,7 +52,9 @@ export class BotMentionFlow {
     try {
       decision = await this.withTimeout(
         signal,
-        this.options.config.concurrency.replyTimeoutMs ?? 120_000,
+        /(私聊|只发我|不要发群|不要群里|私发我|分析给我)/.test(message.text)
+          ? 300_000
+          : (this.options.config.concurrency.replyTimeoutMs ?? 120_000),
         "decision",
         (child) => this.options.replyService.respond(enriched, child),
       );

@@ -1150,9 +1150,11 @@ export class ProxyRuntime {
       timeoutMs: mention
         ? Math.max(
             this.config.concurrency.mentionTimeoutMs,
-            (this.config.concurrency.intentTimeoutMs ?? 60_000) +
-              (this.config.concurrency.replyTimeoutMs ?? 120_000) +
-              5_000,
+            /(私聊|只发我|不要发群|不要群里|私发我|分析给我)/.test(message.text)
+              ? 305_000
+              : (this.config.concurrency.intentTimeoutMs ?? 60_000) +
+                  (this.config.concurrency.replyTimeoutMs ?? 120_000) +
+                  5_000,
           )
         : this.config.concurrency.scanTimeoutMs,
       run: async (signal) => {
