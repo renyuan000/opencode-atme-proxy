@@ -7,6 +7,8 @@ import { expandHome } from "./util.js";
 
 const GroupProjectSchema = z.object({
   primary: z.string().optional(),
+  core: z.array(z.string()).default([]),
+  reference: z.array(z.string()).default([]),
   secondary: z.array(z.string()).default([]),
 });
 

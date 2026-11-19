@@ -43,6 +43,8 @@ export interface ReplyServiceOptions {
     worktree: string;
     resolved: boolean;
     secondaryWorktrees?: string[];
+    coreProjects?: string[];
+    referenceProjects?: string[];
   }>;
   refreshSummary(platform: string, chatId: string): Promise<void>;
 }
@@ -312,10 +314,16 @@ export class ReplyService {
       "只有确实无法定位、且缺失会阻塞回答时，才问一个问题，并列出已查范围与候选。",
       "你了解当前主项目，回答时优先结合项目实际情况；不确定时明确说不确定。",
       `当前项目目录：${directory}`,
-      ...(project.secondaryWorktrees?.length
+      ...(project.coreProjects?.length
         ? [
-            "次要项目目录（只读参考，不要修改）：",
-            ...project.secondaryWorktrees.map((path) => `- ${path}`),
+            "核心项目目录（优先关联）：",
+            ...project.coreProjects.map((path) => `- ${path}`),
+          ]
+        : []),
+      ...(project.referenceProjects?.length
+        ? [
+            "参考项目目录（只在消息明确提及时参考，不要当成核心任务）：",
+            ...project.referenceProjects.map((path) => `- ${path}`),
           ]
         : []),
       ...(project.resolved

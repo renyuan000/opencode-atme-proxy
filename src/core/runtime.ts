@@ -163,6 +163,8 @@ export class ProxyRuntime {
       worktree: string;
       projectId?: string;
       secondaryWorktrees?: string[];
+      coreProjects?: string[];
+      referenceProjects?: string[];
       resolved: boolean;
       reason: string;
       at: number;
@@ -402,6 +404,10 @@ export class ProxyRuntime {
           ...(project.secondaryWorktrees
             ? { secondaryWorktrees: project.secondaryWorktrees }
             : {}),
+          ...(project.coreProjects ? { coreProjects: project.coreProjects } : {}),
+          ...(project.referenceProjects
+            ? { referenceProjects: project.referenceProjects }
+            : {}),
         };
       },
       refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
@@ -422,6 +428,10 @@ export class ProxyRuntime {
           resolved: project.resolved,
           ...(project.secondaryWorktrees
             ? { secondaryWorktrees: project.secondaryWorktrees }
+            : {}),
+          ...(project.coreProjects ? { coreProjects: project.coreProjects } : {}),
+          ...(project.referenceProjects
+            ? { referenceProjects: project.referenceProjects }
             : {}),
         };
       },
@@ -518,15 +528,18 @@ export class ProxyRuntime {
       maxCharsPerMessage: this.config.filter.maxCharsPerMessage,
       minTaskConfidence: this.config.filter.minTaskConfidence,
       minReviewConfidence: this.config.filter.minReviewConfidence,
-      projectNames: (chatId) => {
+      projectContext: (chatId) => {
         const project = this.config.platforms.feishu.groups.find(
           (group) => group.chatId === chatId,
         )?.project;
         return project
-          ? [project.primary, ...(project.secondary ?? [])].filter(
-              (value): value is string => Boolean(value),
-            )
-          : [];
+          ? {
+              core: [project.primary, ...(project.core ?? [])].filter(
+                (value): value is string => Boolean(value),
+              ),
+              reference: [...(project.reference ?? []), ...(project.secondary ?? [])],
+            }
+          : { core: [], reference: [] };
       },
       logger: this.logger.child("relevance"),
     });
@@ -1540,6 +1553,8 @@ export class ProxyRuntime {
     worktree: string;
     projectId?: string;
     secondaryWorktrees?: string[];
+    coreProjects?: string[];
+    referenceProjects?: string[];
     resolved: boolean;
     reason: string;
   }> {
@@ -1552,14 +1567,18 @@ export class ProxyRuntime {
         void this.notifyMissingProject(chatId);
         return {
           worktree: join(this.stateDir, "scratch"),
-          secondaryWorktrees: groupProject.secondary ?? [],
+          secondaryWorktrees: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
+          coreProjects: groupProject.core ?? [],
+          referenceProjects: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
           resolved: false,
           reason: "group project not configured",
         };
       }
       return {
         worktree: primary,
-        secondaryWorktrees: groupProject.secondary ?? [],
+        secondaryWorktrees: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
+        coreProjects: groupProject.core ?? [],
+        referenceProjects: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
         resolved: true,
         reason: "group project config",
       };

@@ -67,12 +67,18 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: z.ZodDefault<z.ZodBoolean>;
                 project: z.ZodOptional<z.ZodObject<{
                     primary: z.ZodOptional<z.ZodString>;
+                    core: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                    reference: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
                     secondary: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
                 }, "strip", z.ZodTypeAny, {
+                    core: string[];
+                    reference: string[];
                     secondary: string[];
                     primary?: string | undefined;
                 }, {
                     primary?: string | undefined;
+                    core?: string[] | undefined;
+                    reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 }>>;
             }, "strip", z.ZodTypeAny, {
@@ -80,6 +86,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: boolean;
                 name?: string | undefined;
                 project?: {
+                    core: string[];
+                    reference: string[];
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
@@ -89,6 +97,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled?: boolean | undefined;
                 project?: {
                     primary?: string | undefined;
+                    core?: string[] | undefined;
+                    reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 } | undefined;
             }>, "many">>;
@@ -128,6 +138,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: boolean;
                 name?: string | undefined;
                 project?: {
+                    core: string[];
+                    reference: string[];
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
@@ -167,6 +179,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled?: boolean | undefined;
                 project?: {
                     primary?: string | undefined;
+                    core?: string[] | undefined;
+                    reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 } | undefined;
             }[] | undefined;
@@ -202,6 +216,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: boolean;
                 name?: string | undefined;
                 project?: {
+                    core: string[];
+                    reference: string[];
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
@@ -243,6 +259,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled?: boolean | undefined;
                 project?: {
                     primary?: string | undefined;
+                    core?: string[] | undefined;
+                    reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 } | undefined;
             }[] | undefined;
@@ -929,6 +947,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: boolean;
                 name?: string | undefined;
                 project?: {
+                    core: string[];
+                    reference: string[];
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
@@ -1124,6 +1144,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled?: boolean | undefined;
                 project?: {
                     primary?: string | undefined;
+                    core?: string[] | undefined;
+                    reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 } | undefined;
             }[] | undefined;

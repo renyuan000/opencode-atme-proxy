@@ -34,6 +34,8 @@ export interface ReplyServiceOptions {
         worktree: string;
         resolved: boolean;
         secondaryWorktrees?: string[];
+        coreProjects?: string[];
+        referenceProjects?: string[];
     }>;
     refreshSummary(platform: string, chatId: string): Promise<void>;
 }
