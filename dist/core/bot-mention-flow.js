@@ -37,6 +37,8 @@ export class BotMentionFlow {
         }
         if (intent.action === "notify_owner") {
             const notified = await this.sendOwnerDecisionCard(message, intent, "notify");
+            if (notified)
+                this.options.rememberOwnerTarget(message);
             this.options.rememberFromMention(message, intent);
             if (notified)
                 await this.options.markProcessed(message);
@@ -50,6 +52,8 @@ export class BotMentionFlow {
         if (intent.action === "need_decision") {
             const analysis = await this.analyzeBotRequest(message, intent, signal);
             const notified = await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
+            if (notified)
+                this.options.rememberOwnerTarget(message);
             this.options.rememberFromMention(message, intent, analysis);
             if (notified)
                 await this.options.markProcessed(message);

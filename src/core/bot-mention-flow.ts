@@ -29,6 +29,7 @@ export interface BotMentionFlowOptions {
   safeReply(message: IncomingMessage, text: string): Promise<boolean>;
   markProcessed(message: IncomingMessage): Promise<void>;
   rememberFromMention(message: IncomingMessage, intent: BotIntent, analysis?: string): void;
+  rememberOwnerTarget(message: IncomingMessage): void;
 }
 
 export class BotMentionFlow {
@@ -72,6 +73,7 @@ export class BotMentionFlow {
 
     if (intent.action === "notify_owner") {
       const notified = await this.sendOwnerDecisionCard(message, intent, "notify");
+      if (notified) this.options.rememberOwnerTarget(message);
       this.options.rememberFromMention(message, intent);
       if (notified) await this.options.markProcessed(message);
       await this.options.audit.append({
@@ -85,6 +87,7 @@ export class BotMentionFlow {
     if (intent.action === "need_decision") {
       const analysis = await this.analyzeBotRequest(message, intent, signal);
       const notified = await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
+      if (notified) this.options.rememberOwnerTarget(message);
       this.options.rememberFromMention(message, intent, analysis);
       if (notified) await this.options.markProcessed(message);
       await this.options.audit.append({

@@ -62,6 +62,7 @@ export declare class ProxyRuntime {
     private readonly recoveryService;
     private readonly sentReplies;
     private readonly ownerAccess;
+    private readonly ownerTargets;
     private readonly groupLocks;
     private readonly blockedDirectAlerts;
     private readonly messageControllers;

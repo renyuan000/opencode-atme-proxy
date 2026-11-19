@@ -81,6 +81,7 @@ import {
 } from "./group-state.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
+import { OwnerTargetStore } from "./owner-target.js";
 import { OwnerAccessService } from "./owner-access-service.js";
 import {
   readJsonFile,
@@ -185,6 +186,7 @@ export class ProxyRuntime {
   private readonly recoveryService: RecoveryService;
   private readonly sentReplies: ScopedSentReplies;
   private readonly ownerAccess: OwnerAccessService;
+  private readonly ownerTargets: OwnerTargetStore;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly blockedDirectAlerts = new Map<string, number>();
   private readonly messageControllers = new Map<string, AbortController>();
@@ -294,6 +296,10 @@ export class ProxyRuntime {
       maxConcurrent: this.config.botReply.perSenderConcurrent,
       cooldownMs: this.config.botReply.cooldownSeconds * 1000,
     });
+    this.ownerTargets = new OwnerTargetStore(
+      join(this.stateDir, "owner-target.json"),
+      this.logger.child("owner-target"),
+    );
     this.ownerAccess = new OwnerAccessService({
       config: this.config,
       loaded: this.options.loaded,
@@ -644,6 +650,17 @@ export class ProxyRuntime {
       markProcessed: (message) => this.markProcessed(message),
       rememberFromMention: (message, intent, analysis) =>
         this.rememberFromMention(message, intent, analysis),
+      rememberOwnerTarget: (message) => {
+        const ownerId = this.ownerOpenId();
+        if (!ownerId) return;
+        this.ownerTargets.set({
+          ownerId,
+          chatId: message.chat.id,
+          ...(message.chat.name ? { chatName: message.chat.name } : {}),
+          sourceMessageId: message.messageId,
+          updatedAt: Date.now(),
+        });
+      },
     });
     this.scanService = new ScanService({
       config: this.config,
@@ -815,6 +832,7 @@ export class ProxyRuntime {
     await this.groupContext.load();
     this.evidence.prune();
     await this.ownerAccess.load();
+    await this.ownerTargets.load();
     this.ownerAccess.reconcile();
     await this.options.platform.start({
       onMessage: (message) => this.onMessage(message),
@@ -873,6 +891,7 @@ export class ProxyRuntime {
       this.memory.flush(),
       this.groupContext.flush(),
       this.ownerAccess.flush(),
+      this.ownerTargets.flush(),
     ]);
     this.logger.info("runtime stopped");
   }
@@ -904,6 +923,20 @@ export class ProxyRuntime {
       if (await this.claimOwner(message)) {
         await this.markProcessed(message);
         return;
+      }
+      const target = this.ownerTargets.get(message.sender.id);
+      if (
+        target &&
+        !message.replyToMessageId &&
+        !/^\s*[/／]/.test(message.text)
+      ) {
+        message = {
+          ...message,
+          text: [
+            `（当前私聊关联目标：群「${target.chatName ?? target.chatId}」，chatId=${target.chatId}${target.sourceMessageId ? `，messageId=${target.sourceMessageId}` : ""}）`,
+            message.text,
+          ].join("\n"),
+        };
       }
       await this.handleDirectMessage(message);
       return;

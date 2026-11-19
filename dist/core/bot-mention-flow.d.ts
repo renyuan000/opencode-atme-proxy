@@ -30,6 +30,7 @@ export interface BotMentionFlowOptions {
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
     markProcessed(message: IncomingMessage): Promise<void>;
     rememberFromMention(message: IncomingMessage, intent: BotIntent, analysis?: string): void;
+    rememberOwnerTarget(message: IncomingMessage): void;
 }
 export declare class BotMentionFlow {
     private readonly options;
