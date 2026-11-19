@@ -20,7 +20,13 @@ export class OwnerCommandService {
                 "/发送                  发送最近一条草稿",
                 "/取消 [编号|taskId]    取消指定或最近一条",
                 "/回复管理              查看并撤回最近回复",
+                "/职责 <群名|chatId> <说明>  设置群职责画像",
             ].join("\n");
+        }
+        if (command.command === "responsibility") {
+            if (!command.arg)
+                return "用法：/职责 <群名|chatId> <职责说明>";
+            return this.options.setGroupResponsibility(command.arg);
         }
         if (command.command === "replies") {
             const sent = await this.options.sendReplyManagementCard();

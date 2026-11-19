@@ -38,6 +38,7 @@ export class GroupWorkspaceManager {
                 createdAt: previous?.createdAt ?? now,
                 updatedAt: now,
                 project,
+                responsibility: input.responsibility ?? (previous?.responsibility ?? null),
                 paths: {
                     session: "session",
                     files: "files",
@@ -50,7 +51,8 @@ export class GroupWorkspaceManager {
             const changed = !previous ||
                 JSON.stringify(previous.project ?? null) !== JSON.stringify(next.project) ||
                 previous.name !== next.name ||
-                previous.stateGroupDir !== next.stateGroupDir;
+                previous.stateGroupDir !== next.stateGroupDir ||
+                JSON.stringify(previous.responsibility ?? null) !== JSON.stringify(next.responsibility);
             if (changed)
                 await writeJsonAtomic(path, next);
             this.dirs.set(input.chatId, dir);

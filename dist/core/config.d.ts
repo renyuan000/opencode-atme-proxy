@@ -95,6 +95,25 @@ export declare const AppConfigSchema: z.ZodObject<{
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 }>>;
+                responsibility: z.ZodOptional<z.ZodDefault<z.ZodObject<{
+                    summary: z.ZodDefault<z.ZodString>;
+                    owns: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                    dependsOn: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                    excludes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                    notes: z.ZodDefault<z.ZodString>;
+                }, "strip", z.ZodTypeAny, {
+                    summary: string;
+                    owns: string[];
+                    dependsOn: string[];
+                    excludes: string[];
+                    notes: string;
+                }, {
+                    summary?: string | undefined;
+                    owns?: string[] | undefined;
+                    dependsOn?: string[] | undefined;
+                    excludes?: string[] | undefined;
+                    notes?: string | undefined;
+                }>>>;
             }, "strip", z.ZodTypeAny, {
                 chatId: string;
                 enabled: boolean;
@@ -105,6 +124,13 @@ export declare const AppConfigSchema: z.ZodObject<{
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
+                responsibility?: {
+                    summary: string;
+                    owns: string[];
+                    dependsOn: string[];
+                    excludes: string[];
+                    notes: string;
+                } | undefined;
             }, {
                 chatId: string;
                 name?: string | undefined;
@@ -114,6 +140,13 @@ export declare const AppConfigSchema: z.ZodObject<{
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
+                } | undefined;
+                responsibility?: {
+                    summary?: string | undefined;
+                    owns?: string[] | undefined;
+                    dependsOn?: string[] | undefined;
+                    excludes?: string[] | undefined;
+                    notes?: string | undefined;
                 } | undefined;
             }>, "many">>;
             receiveAllGroupMessages: z.ZodDefault<z.ZodBoolean>;
@@ -157,6 +190,13 @@ export declare const AppConfigSchema: z.ZodObject<{
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
+                responsibility?: {
+                    summary: string;
+                    owns: string[];
+                    dependsOn: string[];
+                    excludes: string[];
+                    notes: string;
+                } | undefined;
             }[];
             receiveAllGroupMessages: boolean;
             rateLimit: {
@@ -197,6 +237,13 @@ export declare const AppConfigSchema: z.ZodObject<{
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 } | undefined;
+                responsibility?: {
+                    summary?: string | undefined;
+                    owns?: string[] | undefined;
+                    dependsOn?: string[] | undefined;
+                    excludes?: string[] | undefined;
+                    notes?: string | undefined;
+                } | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;
             autoSyncGroups?: boolean | undefined;
@@ -234,6 +281,13 @@ export declare const AppConfigSchema: z.ZodObject<{
                     reference: string[];
                     secondary: string[];
                     primary?: string | undefined;
+                } | undefined;
+                responsibility?: {
+                    summary: string;
+                    owns: string[];
+                    dependsOn: string[];
+                    excludes: string[];
+                    notes: string;
                 } | undefined;
             }[];
             receiveAllGroupMessages: boolean;
@@ -276,6 +330,13 @@ export declare const AppConfigSchema: z.ZodObject<{
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
+                } | undefined;
+                responsibility?: {
+                    summary?: string | undefined;
+                    owns?: string[] | undefined;
+                    dependsOn?: string[] | undefined;
+                    excludes?: string[] | undefined;
+                    notes?: string | undefined;
                 } | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;
@@ -972,6 +1033,13 @@ export declare const AppConfigSchema: z.ZodObject<{
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
+                responsibility?: {
+                    summary: string;
+                    owns: string[];
+                    dependsOn: string[];
+                    excludes: string[];
+                    notes: string;
+                } | undefined;
             }[];
             receiveAllGroupMessages: boolean;
             rateLimit: {
@@ -1172,6 +1240,13 @@ export declare const AppConfigSchema: z.ZodObject<{
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
+                } | undefined;
+                responsibility?: {
+                    summary?: string | undefined;
+                    owns?: string[] | undefined;
+                    dependsOn?: string[] | undefined;
+                    excludes?: string[] | undefined;
+                    notes?: string | undefined;
                 } | undefined;
             }[] | undefined;
             receiveAllGroupMessages?: boolean | undefined;

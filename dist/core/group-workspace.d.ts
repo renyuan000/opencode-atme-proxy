@@ -9,6 +9,13 @@ export interface GroupWorkspaceInput {
     chatId: string;
     name: string;
     project?: GroupWorkspaceProject;
+    responsibility?: {
+        summary?: string;
+        owns?: string[];
+        dependsOn?: string[];
+        excludes?: string[];
+        notes?: string;
+    };
     stateGroupDir: string;
 }
 export declare class GroupWorkspaceManager {

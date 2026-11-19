@@ -12,11 +12,22 @@ const GroupProjectSchema = z.object({
   secondary: z.array(z.string()).default([]),
 });
 
+const GroupResponsibilitySchema = z
+  .object({
+    summary: z.string().default(""),
+    owns: z.array(z.string()).default([]),
+    dependsOn: z.array(z.string()).default([]),
+    excludes: z.array(z.string()).default([]),
+    notes: z.string().default(""),
+  })
+  .default({});
+
 const GroupSchema = z.object({
   chatId: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().default(true),
   project: GroupProjectSchema.optional(),
+  responsibility: GroupResponsibilitySchema.optional(),
 });
 
 const FeishuSchema = z.object({

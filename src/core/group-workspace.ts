@@ -16,6 +16,13 @@ export interface GroupWorkspaceInput {
   chatId: string;
   name: string;
   project?: GroupWorkspaceProject;
+  responsibility?: {
+    summary?: string;
+    owns?: string[];
+    dependsOn?: string[];
+    excludes?: string[];
+    notes?: string;
+  };
   stateGroupDir: string;
 }
 
@@ -57,6 +64,7 @@ export class GroupWorkspaceManager {
         createdAt: previous?.createdAt ?? now,
         updatedAt: now,
         project,
+        responsibility: input.responsibility ?? (previous?.responsibility ?? null),
         paths: {
           session: "session",
           files: "files",
@@ -70,7 +78,8 @@ export class GroupWorkspaceManager {
         !previous ||
         JSON.stringify(previous.project ?? null) !== JSON.stringify(next.project) ||
         previous.name !== next.name ||
-        previous.stateGroupDir !== next.stateGroupDir;
+        previous.stateGroupDir !== next.stateGroupDir ||
+        JSON.stringify(previous.responsibility ?? null) !== JSON.stringify(next.responsibility);
       if (changed) await writeJsonAtomic(path, next);
       this.dirs.set(input.chatId, dir);
       await this.writeAlias(input, dirName);

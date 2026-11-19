@@ -41,6 +41,7 @@ export interface ReplyServiceOptions {
     }>;
     refreshSummary(platform: string, chatId: string): Promise<void>;
     ownerOverview?(message: IncomingMessage): string | Promise<string>;
+    responsibilityFor?(chatId: string): string;
 }
 export declare class ReplyService {
     private readonly options;

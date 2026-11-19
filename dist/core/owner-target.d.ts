@@ -14,6 +14,7 @@ export declare class OwnerTargetStore {
     private readonly logger;
     constructor(file: string, logger?: Logger);
     load(): Promise<void>;
+    list(ownerId: string, maxAgeMs?: number): OwnerTarget[];
     get(ownerId: string, maxAgeMs?: number): OwnerTarget | undefined;
     set(target: OwnerTarget): void;
     clear(ownerId: string): void;

@@ -268,6 +268,9 @@ export class ReplyService {
         const images = await this.loadImages(message);
         const ocrText = images.length > 0 ? await this.loadImageText(message) : undefined;
         const documentText = await this.loadRecentDocuments(message);
+        const responsibility = message.chat.kind === "group"
+            ? (this.options.responsibilityFor?.(message.chat.id) ?? "")
+            : "";
         const ownerContext = message.chat.kind === "direct" &&
             message.sender.id === this.options.ownerOpenId()
             ? (await this.options.ownerOverview?.(message) ?? "")
@@ -277,6 +280,7 @@ export class ReplyService {
             styleInstruction,
             "你的角色：资深软件架构师与研发负责人，熟悉当前主项目。",
             ...(memoryBlock ? [memoryBlock] : []),
+            ...(responsibility ? ["本群职责（判断是否相关时优先参考）：", responsibility] : []),
             ...(ownerContext ? ["跨群上下文（仅供主人）：", ownerContext] : []),
             ...(summaryBlock ? ["群摘要（长期，优先参考）：", summaryBlock] : []),
             ...(quoteBlock.length > 0

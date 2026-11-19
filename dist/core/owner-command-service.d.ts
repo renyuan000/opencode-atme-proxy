@@ -22,6 +22,7 @@ export interface OwnerCommandServiceOptions {
     askOpenCode(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal): Promise<string>;
     approveReply(action: PlatformAction, pending: PendingCard): Promise<boolean>;
     sendReplyManagementCard(): Promise<boolean>;
+    setGroupResponsibility(arg: string): Promise<string>;
     logger: Logger;
 }
 export declare class OwnerCommandService {

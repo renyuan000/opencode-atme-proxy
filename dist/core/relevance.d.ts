@@ -61,6 +61,13 @@ export interface RelevanceOptions {
     projectContext?(chatId: string): {
         core: string[];
         reference: string[];
+        responsibility?: {
+            summary: string;
+            owns: string[];
+            dependsOn: string[];
+            excludes: string[];
+            notes: string;
+        };
     };
     logger?: Logger;
 }

@@ -277,6 +277,7 @@ export class ProxyRuntime {
             askOpenCode: (message, style, signal) => this.askOpenCode(message, style, signal),
             approveReply: (action, pending) => this.approveReply(action, pending),
             sendReplyManagementCard: () => this.approvalService.sendReplyManagementCard(),
+            setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
             logger: this.logger.child("owner-command"),
         });
         const profile = {
@@ -330,6 +331,10 @@ export class ProxyRuntime {
             },
             refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
             ownerOverview: (message) => this.contextService.ownerOverview(message),
+            responsibilityFor: (chatId) => {
+                const responsibility = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility;
+                return responsibility ? JSON.stringify(responsibility) : "";
+            },
         });
         this.taskService = new TaskService({
             config: this.config,
@@ -458,13 +463,17 @@ export class ProxyRuntime {
             minTaskConfidence: this.config.filter.minTaskConfidence,
             minReviewConfidence: this.config.filter.minReviewConfidence,
             projectContext: (chatId) => {
-                const project = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.project;
-                return project
-                    ? {
-                        core: [project.primary, ...(project.core ?? [])].filter((value) => Boolean(value)),
-                        reference: [...(project.reference ?? []), ...(project.secondary ?? [])],
-                    }
-                    : { core: [], reference: [] };
+                const group = this.config.platforms.feishu.groups.find((item) => item.chatId === chatId);
+                const project = group?.project;
+                return {
+                    core: project
+                        ? [project.primary, ...(project.core ?? [])].filter((value) => Boolean(value))
+                        : [],
+                    reference: project
+                        ? [...(project.reference ?? []), ...(project.secondary ?? [])]
+                        : [],
+                    ...(group?.responsibility ? { responsibility: group.responsibility } : {}),
+                };
             },
             logger: this.logger.child("relevance"),
         });
@@ -553,6 +562,11 @@ export class ProxyRuntime {
             chatId,
             name: info.name,
             stateGroupDir: info.dir,
+            ...(this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility
+                ? {
+                    responsibility: this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility,
+                }
+                : {}),
             ...(project
                 ? {
                     project: {
@@ -766,14 +780,16 @@ export class ProxyRuntime {
                 await this.markProcessed(message);
                 return;
             }
-            const target = this.ownerTargets.get(message.sender.id);
-            if (target &&
+            const targets = this.ownerTargets.list(message.sender.id);
+            if (targets.length > 0 &&
                 !message.replyToMessageId &&
                 !/^\s*[/／]/.test(message.text)) {
+                const lines = targets.map((target, index) => `${index + 1}. 群「${target.chatName ?? target.chatId}」 chatId=${target.chatId}${target.sourceMessageId ? ` messageId=${target.sourceMessageId}` : ""}`);
                 message = {
                     ...message,
                     text: [
-                        `（当前私聊关联目标：群「${target.chatName ?? target.chatId}」，chatId=${target.chatId}${target.sourceMessageId ? `，messageId=${target.sourceMessageId}` : ""}）`,
+                        "（当前私聊关联目标，供参考；如果用户没有明确指定，不要猜测，先列出让主人选：）",
+                        ...lines,
                         message.text,
                     ].join("\n"),
                 };
@@ -992,6 +1008,44 @@ export class ProxyRuntime {
     }
     chatLabel(message) {
         return this.notificationService.chatLabel(message);
+    }
+    async setGroupResponsibility(arg) {
+        const match = arg.trim().match(/^(\S+)\s+([\s\S]+)$/);
+        if (!match)
+            return "用法：/职责 <群名|chatId> <职责说明>";
+        const key = match[1] ?? "";
+        const description = (match[2] ?? "").trim();
+        const group = this.config.platforms.feishu.groups.find((item) => item.chatId === key || item.name === key);
+        if (!group)
+            return `找不到群：${key}`;
+        group.responsibility = {
+            summary: description,
+            owns: [],
+            dependsOn: [],
+            excludes: [],
+            notes: "",
+        };
+        const path = this.options.loaded.path;
+        if (path) {
+            try {
+                const raw = await readJsonFile(path, {});
+                const groups = raw.platforms?.feishu?.groups;
+                if (Array.isArray(groups)) {
+                    const target = groups.find((item) => item?.chatId === group.chatId);
+                    if (target)
+                        target.responsibility = group.responsibility;
+                }
+                await writeJsonAtomic(path, raw);
+            }
+            catch (error) {
+                this.logger.warn("failed to persist group responsibility", {
+                    chatId: group.chatId,
+                    error: toErrorMessage(error),
+                });
+            }
+        }
+        await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
+        return `已设置「${group.name ?? group.chatId}」职责：${description}`;
     }
     handleOwnerCommand(message, command) {
         return this.ownerCommandService.handle(message, command);
