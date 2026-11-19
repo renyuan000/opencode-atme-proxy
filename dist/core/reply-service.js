@@ -605,9 +605,23 @@ export class ReplyService {
         const docs = [];
         for (const url of unique) {
             try {
-                const doc = await platform.fetchDocumentText(url);
+                const cached = this.options.documentCache?.get(message.chat.id, url);
+                const doc = cached ?? (await platform.fetchDocumentText(url));
                 if (doc?.text) {
-                    docs.push(`${doc.title ? `${doc.title}\n` : ""}${doc.url}\n${doc.text.slice(0, 12_000)}`);
+                    const relevant = this.options.documentRelevance?.(message.chat.id, doc);
+                    if (relevant === undefined && !cached) {
+                        await this.options.notifyOwner?.(`在线文档无法判断是否与本群职责相关，请确认是否纳入：\n${doc.title ? `${doc.title}\n` : ""}${url}`);
+                    }
+                    if (relevant === false)
+                        continue;
+                    if (!cached) {
+                        this.options.documentCache?.set(message.chat.id, {
+                            url,
+                            ...(doc.title ? { title: doc.title } : {}),
+                            text: doc.text,
+                        });
+                    }
+                    docs.push(`${doc.title ? `${doc.title}\n` : ""}${url}\n${doc.text.slice(0, 12_000)}`);
                 }
             }
             catch (error) {

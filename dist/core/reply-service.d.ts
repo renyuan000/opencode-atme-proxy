@@ -42,6 +42,22 @@ export interface ReplyServiceOptions {
     refreshSummary(platform: string, chatId: string): Promise<void>;
     ownerOverview?(message: IncomingMessage): string | Promise<string>;
     responsibilityFor?(chatId: string): string;
+    documentCache?: {
+        get(chatId: string, url: string): {
+            title?: string;
+            text: string;
+        } | undefined;
+        set(chatId: string, entry: {
+            url: string;
+            title?: string;
+            text: string;
+        }): void;
+    };
+    documentRelevance?(chatId: string, doc: {
+        title?: string;
+        text: string;
+    }): boolean | undefined;
+    notifyOwner?(text: string): Promise<boolean>;
 }
 export interface UnifiedReply {
     action: "answer" | "no_reply" | "need_decision" | "notify_owner";

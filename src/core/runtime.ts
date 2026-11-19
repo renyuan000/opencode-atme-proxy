@@ -82,6 +82,7 @@ import {
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerTargetStore } from "./owner-target.js";
+import { ScopedDocumentCache } from "./document-cache.js";
 import { OwnerAccessService } from "./owner-access-service.js";
 import {
   readJsonFile,
@@ -187,6 +188,7 @@ export class ProxyRuntime {
   private readonly sentReplies: ScopedSentReplies;
   private readonly ownerAccess: OwnerAccessService;
   private readonly ownerTargets: OwnerTargetStore;
+  private readonly documentCache: ScopedDocumentCache;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly blockedDirectAlerts = new Map<string, number>();
   private readonly messageControllers = new Map<string, AbortController>();
@@ -296,6 +298,10 @@ export class ProxyRuntime {
       maxConcurrent: this.config.botReply.perSenderConcurrent,
       cooldownMs: this.config.botReply.cooldownSeconds * 1000,
     });
+    this.documentCache = new ScopedDocumentCache(
+      this.groupState,
+      this.logger.child("document-cache"),
+    );
     this.ownerTargets = new OwnerTargetStore(
       join(this.stateDir, "owner-target.json"),
       this.logger.child("owner-target"),
@@ -465,6 +471,25 @@ export class ProxyRuntime {
       },
       refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
       ownerOverview: (message) => this.contextService.ownerOverview(message),
+      documentCache: this.documentCache,
+      documentRelevance: (chatId, doc) => {
+        const responsibility = this.config.platforms.feishu.groups.find(
+          (group) => group.chatId === chatId,
+        )?.responsibility;
+        if (!responsibility) return undefined;
+        const terms = [
+          responsibility.summary,
+          responsibility.notes,
+          ...(responsibility.owns ?? []),
+        ]
+          .flatMap((value) => value.split(/[\s,，。；;、:：/]+/))
+          .map((value) => value.trim())
+          .filter((value) => value.length >= 2);
+        if (terms.length === 0) return undefined;
+        const text = `${doc.title ?? ""} ${doc.text}`.toLowerCase();
+        return terms.some((term) => text.includes(term.toLowerCase()));
+      },
+      notifyOwner: (text) => this.sendToOwner(text),
       responsibilityFor: (chatId) => {
         const responsibility = this.config.platforms.feishu.groups.find(
           (group) => group.chatId === chatId,
@@ -853,6 +878,7 @@ export class ProxyRuntime {
     this.evidence.prune();
     await this.ownerAccess.load();
     await this.ownerTargets.load();
+    await this.documentCache.load();
     this.ownerAccess.reconcile();
     await this.options.platform.start({
       onMessage: (message) => this.onMessage(message),
@@ -912,6 +938,7 @@ export class ProxyRuntime {
       this.groupContext.flush(),
       this.ownerAccess.flush(),
       this.ownerTargets.flush(),
+      this.documentCache.flush(),
     ]);
     this.logger.info("runtime stopped");
   }

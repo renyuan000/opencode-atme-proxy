@@ -30,6 +30,7 @@ import { GroupStateLayout, ScopedApprovals, ScopedAudit, ScopedChatContext, Scop
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerTargetStore } from "./owner-target.js";
+import { ScopedDocumentCache } from "./document-cache.js";
 import { OwnerAccessService } from "./owner-access-service.js";
 import { readJsonFile, sha256, toErrorMessage, redactPreview, truncate, truncateMiddle, writeJsonAtomic, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
@@ -110,6 +111,7 @@ export class ProxyRuntime {
     sentReplies;
     ownerAccess;
     ownerTargets;
+    documentCache;
     groupLocks = new Map();
     blockedDirectAlerts = new Map();
     messageControllers = new Map();
@@ -178,6 +180,7 @@ export class ProxyRuntime {
             maxConcurrent: this.config.botReply.perSenderConcurrent,
             cooldownMs: this.config.botReply.cooldownSeconds * 1000,
         });
+        this.documentCache = new ScopedDocumentCache(this.groupState, this.logger.child("document-cache"));
         this.ownerTargets = new OwnerTargetStore(join(this.stateDir, "owner-target.json"), this.logger.child("owner-target"));
         this.ownerAccess = new OwnerAccessService({
             config: this.config,
@@ -333,6 +336,25 @@ export class ProxyRuntime {
             },
             refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
             ownerOverview: (message) => this.contextService.ownerOverview(message),
+            documentCache: this.documentCache,
+            documentRelevance: (chatId, doc) => {
+                const responsibility = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility;
+                if (!responsibility)
+                    return undefined;
+                const terms = [
+                    responsibility.summary,
+                    responsibility.notes,
+                    ...(responsibility.owns ?? []),
+                ]
+                    .flatMap((value) => value.split(/[\s,，。；;、:：/]+/))
+                    .map((value) => value.trim())
+                    .filter((value) => value.length >= 2);
+                if (terms.length === 0)
+                    return undefined;
+                const text = `${doc.title ?? ""} ${doc.text}`.toLowerCase();
+                return terms.some((term) => text.includes(term.toLowerCase()));
+            },
+            notifyOwner: (text) => this.sendToOwner(text),
             responsibilityFor: (chatId) => {
                 const responsibility = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility;
                 return responsibility ? JSON.stringify(responsibility) : "";
@@ -698,6 +720,7 @@ export class ProxyRuntime {
         this.evidence.prune();
         await this.ownerAccess.load();
         await this.ownerTargets.load();
+        await this.documentCache.load();
         this.ownerAccess.reconcile();
         await this.options.platform.start({
             onMessage: (message) => this.onMessage(message),
@@ -758,6 +781,7 @@ export class ProxyRuntime {
             this.groupContext.flush(),
             this.ownerAccess.flush(),
             this.ownerTargets.flush(),
+            this.documentCache.flush(),
         ]);
         this.logger.info("runtime stopped");
     }
