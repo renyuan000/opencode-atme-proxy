@@ -210,7 +210,14 @@ export class ScanService {
         const summary = related.length > 0
             ? `与你相关 ${related.length} 条，共 ${messages.length} 条`
             : `本轮 ${messages.length} 条，未识别出强相关；下面是最近的`;
-        await this.options.sendToOwner([`群消息分析：${summary}`, ...lines].join("\n\n"));
+        const first = messages[0];
+        const group = first
+            ? (this.options.chatContext.get(`${first.platform}:${first.chat.id}`)?.chatName ??
+                this.options.config.platforms.feishu.groups.find((item) => item.chatId === first.chat.id)?.name ??
+                first.chat.name ??
+                first.chat.id)
+            : "未知群";
+        await this.options.sendToOwner([`群消息分析（${group}）：${summary}`, ...lines].join("\n\n"));
     }
     appendContextForScan(message) {
         if (!this.options.config.context.enabled)
