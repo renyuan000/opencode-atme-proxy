@@ -9,6 +9,7 @@ const COMMANDS = {
     回复列表: "replies",
     职责: "responsibility",
     目标: "target",
+    画像: "profile",
     帮助: "help",
     help: "help",
 };
@@ -17,7 +18,7 @@ export function parseOwnerCommand(text) {
     if (["/", "／", "?", "？", "/?", "／?", "/？", "／？"].includes(bare)) {
         return { command: "help", arg: "" };
     }
-    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|职责|目标|帮助|help)\s*([\s\S]*)$/i);
+    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|职责|目标|画像|帮助|help)\s*([\s\S]*)$/i);
     if (!match)
         return undefined;
     const token = match[1] ?? "";

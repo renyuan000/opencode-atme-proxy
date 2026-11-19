@@ -20,7 +20,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 
 - **私聊对话**：和机器人单独聊天会直接回复（默认仅限 owner）。
 - **私聊改稿**：审批卡发出后，可私聊 `/列表`、`/改写 <新内容>`、`/重写 <要求>`、`/发送`、`/取消 [编号|taskId]`；`/帮助` 查看命令。
-- **群职责画像**：私聊 `/职责 <群名|chatId> <说明>` 设置本群主职责、依赖和排除项，并注入筛选、回复和分析上下文。
+- **群职责画像**：私聊 `/职责 <群名|chatId> <说明>` 设置本群主职责、依赖和排除项，并注入筛选、回复和分析上下文；`/画像 [群名|chatId]` 查看初始/当前群画像。
 - **私聊目标选择**：私聊 `/目标` 查看最近目标，`/目标 <编号|chatId|messageId>` 选择当前目标。
 - **私聊目标绑定**：群内待确认消息会记录 `chatId/chatName/messageId`；私聊跟进未引用时自动带上最近目标；多个目标只列候选，不猜。
 - **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
@@ -471,6 +471,8 @@ WSL2 可能随时重启，插件启动时会做四件事：
 ```text
 groups/<群名__短ID>/
   group.json          群身份、项目、职责
+  group-profile.json  初始/持续演进的群画像
+  group-profile-history.jsonl 群画像变更历史
   chat-context.json   本群最近上下文（默认 50 条 / 7 天）
   group-context.json  本群摘要
   memory.json         本群记忆兼容文件

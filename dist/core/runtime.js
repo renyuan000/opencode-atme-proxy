@@ -32,6 +32,7 @@ import { OwnerStore } from "./owner-store.js";
 import { OwnerTargetStore } from "./owner-target.js";
 import { ScopedDocumentCache } from "./document-cache.js";
 import { ScopedDocumentRefs } from "./document-ref-store.js";
+import { ScopedGroupProfiles } from "./group-profile.js";
 import { OwnerAccessService } from "./owner-access-service.js";
 import { readJsonFile, sha256, toErrorMessage, redactPreview, truncate, truncateMiddle, writeJsonAtomic, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
@@ -114,6 +115,7 @@ export class ProxyRuntime {
     ownerTargets;
     documentCache;
     documentRefs;
+    groupProfiles;
     groupLocks = new Map();
     blockedDirectAlerts = new Map();
     messageControllers = new Map();
@@ -184,6 +186,7 @@ export class ProxyRuntime {
         });
         this.documentCache = new ScopedDocumentCache(this.groupState, this.logger.child("document-cache"));
         this.documentRefs = new ScopedDocumentRefs(this.groupState, this.logger.child("document-refs"));
+        this.groupProfiles = new ScopedGroupProfiles(this.groupState, this.logger.child("group-profile"));
         this.ownerTargets = new OwnerTargetStore(join(this.stateDir, "owner-target.json"), this.logger.child("owner-target"));
         this.ownerAccess = new OwnerAccessService({
             config: this.config,
@@ -286,6 +289,7 @@ export class ProxyRuntime {
             setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
             listOwnerTargets: () => this.listOwnerTargets(),
             selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
+            getGroupProfiles: (arg) => this.getGroupProfiles(arg),
             logger: this.logger.child("owner-command"),
         });
         const profile = {
@@ -361,7 +365,16 @@ export class ProxyRuntime {
             notifyOwner: (text) => this.sendToOwner(text),
             responsibilityFor: (chatId) => {
                 const responsibility = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility;
-                return responsibility ? JSON.stringify(responsibility) : "";
+                const inferred = this.groupProfiles.get(chatId);
+                return JSON.stringify(responsibility ??
+                    (inferred
+                        ? {
+                            summary: `[推断] ${inferred.product}`,
+                            owns: inferred.features,
+                            dependsOn: inferred.dependsOn,
+                            notes: `初始群画像，置信度 ${inferred.confidence}`,
+                        }
+                        : null));
             },
         });
         this.taskService = new TaskService({
@@ -493,6 +506,18 @@ export class ProxyRuntime {
             projectContext: (chatId) => {
                 const group = this.config.platforms.feishu.groups.find((item) => item.chatId === chatId);
                 const project = group?.project;
+                const inferred = this.groupProfiles.get(chatId);
+                const responsibility = group?.responsibility
+                    ? group.responsibility
+                    : inferred
+                        ? {
+                            summary: `[推断] ${inferred.product}`,
+                            owns: inferred.features,
+                            dependsOn: inferred.dependsOn,
+                            excludes: [],
+                            notes: `初始群画像，置信度 ${inferred.confidence}`,
+                        }
+                        : undefined;
                 return {
                     core: project
                         ? [project.primary, ...(project.core ?? [])].filter((value) => Boolean(value))
@@ -500,7 +525,7 @@ export class ProxyRuntime {
                     reference: project
                         ? [...(project.reference ?? []), ...(project.secondary ?? [])]
                         : [],
-                    ...(group?.responsibility ? { responsibility: group.responsibility } : {}),
+                    ...(responsibility ? { responsibility } : {}),
                 };
             },
             logger: this.logger.child("relevance"),
@@ -583,6 +608,56 @@ export class ProxyRuntime {
             sendToApprover: (text) => this.sendToApprover(text),
             sendToOwner: (text) => this.sendToOwner(text),
         });
+    }
+    async refreshGroupProfiles() {
+        const allTasks = await this.tasks.list();
+        for (const group of this.config.platforms.feishu.groups) {
+            const existing = this.groupProfiles.get(group.chatId);
+            const tasks = allTasks
+                .filter((task) => task.chatId === group.chatId)
+                .slice(-10)
+                .map((task) => truncate(task.title, 80));
+            const project = group.project;
+            const dependsOn = [
+                ...(project?.core ?? []),
+                ...(project?.reference ?? []),
+                ...(project?.secondary ?? []),
+            ].map((value) => value.split("/").filter(Boolean).pop() ?? value);
+            const name = group.name ?? group.chatId;
+            const product = name.replace(/^产品[-—]/, "").trim() || name;
+            const known = inferFeatures(product);
+            const explicit = group.responsibility;
+            const features = explicit?.owns?.length
+                ? explicit.owns
+                : [...new Set([...(existing?.features ?? []), ...known, ...tasks.slice(0, 3)])];
+            const dependencies = explicit?.dependsOn?.length ? explicit.dependsOn : dependsOn;
+            const profile = {
+                chatId: group.chatId,
+                name,
+                product,
+                summary: explicit?.summary || existing?.summary || `[推断] ${product}`,
+                features,
+                tasks: [...new Set([...(existing?.tasks ?? []), ...tasks])].slice(-20),
+                dependsOn: [...new Set(dependencies)],
+                excludes: explicit?.excludes ?? existing?.excludes ?? [],
+                source: explicit ? "owner" : "inferred",
+                confidence: explicit ? 1 : known.length > 0 ? 0.6 : 0.3,
+                updatedAt: Date.now(),
+            };
+            if (!existing ||
+                existing.product !== profile.product ||
+                existing.summary !== profile.summary ||
+                JSON.stringify(existing.tasks) !== JSON.stringify(profile.tasks) ||
+                JSON.stringify(existing.features) !== JSON.stringify(profile.features) ||
+                JSON.stringify(existing.dependsOn) !== JSON.stringify(profile.dependsOn)) {
+                await this.groupProfiles.set(profile);
+                this.logger.info("initial group profile inferred", {
+                    chatId: group.chatId,
+                    product,
+                    confidence: profile.confidence,
+                });
+            }
+        }
     }
     async ensureGroupWorkspace(chatId, name, project) {
         const info = await this.groupState.ensure(chatId, name);
@@ -700,6 +775,7 @@ export class ProxyRuntime {
         ]);
     }
     sweepTimer;
+    profileTimer;
     async start() {
         if (this.started)
             return;
@@ -721,11 +797,13 @@ export class ProxyRuntime {
         await this.memory.load();
         await this.memory.migrateShards();
         await this.groupContext.load();
+        await this.refreshGroupProfiles();
         this.evidence.prune();
         await this.ownerAccess.load();
         await this.ownerTargets.load();
         await this.documentCache.load();
         await this.documentRefs.load();
+        await this.groupProfiles.load();
         this.ownerAccess.reconcile();
         await this.options.platform.start({
             onMessage: (message) => this.onMessage(message),
@@ -744,6 +822,10 @@ export class ProxyRuntime {
             void this.memory.flush();
         }, 60_000);
         this.sweepTimer.unref?.();
+        this.profileTimer = setInterval(() => {
+            void this.refreshGroupProfiles();
+        }, 10 * 60_000);
+        this.profileTimer.unref?.();
         void this.sweepExpiredApprovals();
         this.started = true;
         setImmediate(() => {
@@ -767,6 +849,9 @@ export class ProxyRuntime {
         if (this.sweepTimer)
             clearInterval(this.sweepTimer);
         this.sweepTimer = undefined;
+        if (this.profileTimer)
+            clearInterval(this.profileTimer);
+        this.profileTimer = undefined;
         this.poller.stop();
         await this.dispatcher.close(5000);
         await this.drainBackground();
@@ -788,6 +873,7 @@ export class ProxyRuntime {
             this.ownerTargets.flush(),
             this.documentCache.flush(),
             this.documentRefs.flush(),
+            this.groupProfiles.flush(),
         ]);
         this.logger.info("runtime stopped");
     }
@@ -1041,6 +1127,29 @@ export class ProxyRuntime {
     chatLabel(message) {
         return this.notificationService.chatLabel(message);
     }
+    async getGroupProfiles(arg) {
+        await this.refreshGroupProfiles();
+        const profiles = this.groupProfiles.list();
+        if (profiles.length === 0)
+            return "还没有群画像。";
+        const key = arg.trim();
+        const selected = key
+            ? profiles.filter((profile) => profile.chatId === key || profile.name === key || profile.product === key)
+            : profiles;
+        if (selected.length === 0)
+            return `找不到群画像：${key}`;
+        return selected
+            .map((profile) => [
+            `群：${profile.name} (${profile.chatId})`,
+            `产品：${profile.product}`,
+            `摘要：${profile.summary}`,
+            `功能：${profile.features.join("、") || "待补充"}`,
+            `依赖：${profile.dependsOn.join("、") || "无"}`,
+            `排除：${profile.excludes.join("、") || "无"}`,
+            `来源：${profile.source}｜置信度：${profile.confidence}｜更新：${new Date(profile.updatedAt).toLocaleString()}`,
+        ].join("\n"))
+            .join("\n\n");
+    }
     listOwnerTargets() {
         const ownerId = this.ownerOpenId();
         if (!ownerId)
@@ -1099,6 +1208,7 @@ export class ProxyRuntime {
             }
         }
         await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
+        await this.refreshGroupProfiles();
         return `已设置「${group.name ?? group.chatId}」职责：${description}`;
     }
     handleOwnerCommand(message, command) {
@@ -1799,5 +1909,14 @@ function stringArray(value) {
     return Array.isArray(value)
         ? value.filter((item) => typeof item === "string")
         : [];
+}
+function inferFeatures(product) {
+    if (/资产测绘/.test(product)) {
+        return ["资产管理", "探测任务", "资产发现", "指纹", "弱口令", "漏洞", "POC"];
+    }
+    if (/流分/.test(product)) {
+        return ["协议解析", "会话缓存", "流分变换", "网络访问行为", "Kafka", "KD-ZMQ"];
+    }
+    return [];
 }
 //# sourceMappingURL=runtime.js.map

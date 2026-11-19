@@ -65,6 +65,7 @@ export declare class ProxyRuntime {
     private readonly ownerTargets;
     private readonly documentCache;
     private readonly documentRefs;
+    private readonly groupProfiles;
     private readonly groupLocks;
     private readonly blockedDirectAlerts;
     private readonly messageControllers;
@@ -76,6 +77,7 @@ export declare class ProxyRuntime {
     private readonly background;
     private readonly projectCache;
     constructor(options: RuntimeOptions);
+    private refreshGroupProfiles;
     private ensureGroupWorkspace;
     private ownerOpenId;
     private ownerName;
@@ -87,6 +89,7 @@ export declare class ProxyRuntime {
     private track;
     private drainBackground;
     private sweepTimer?;
+    private profileTimer?;
     start(): Promise<void>;
     stop(): Promise<void>;
     private onMessage;
@@ -102,6 +105,7 @@ export declare class ProxyRuntime {
     private onChatMembership;
     private fetchChatName;
     private chatLabel;
+    private getGroupProfiles;
     private listOwnerTargets;
     private selectOwnerTarget;
     private setGroupResponsibility;

@@ -98,6 +98,8 @@ A 解决“同一句话被拆成几条发”，B 解决“隔很久补充同一�
   groups/
     <群名__短chatId>/
       group.json                  群身份、项目、职责
+      group-profile.json          初始/持续演进的群画像
+      group-profile-history.jsonl 群画像变更历史
       chat-context.json           本群聊天上下文 / 7 天
       group-context.json          本群摘要
       memory.json                 本群记忆兼容文件

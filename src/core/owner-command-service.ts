@@ -30,6 +30,7 @@ export interface OwnerCommandServiceOptions {
   setGroupResponsibility(arg: string): Promise<string>;
   listOwnerTargets(): string;
   selectOwnerTarget(arg: string): string;
+  getGroupProfiles(arg: string): Promise<string>;
   logger: Logger;
 }
 
@@ -51,7 +52,11 @@ export class OwnerCommandService {
         "/回复管理              查看并撤回最近回复",
         "/职责 <群名|chatId> <说明>  设置群职责画像",
         "/目标 [编号|chatId|messageId] 查看/选择私聊目标",
+        "/画像 [群名|chatId]      查看群初始画像",
       ].join("\n");
+    }
+    if (command.command === "profile") {
+      return this.options.getGroupProfiles(command.arg);
     }
     if (command.command === "target") {
       return command.arg
