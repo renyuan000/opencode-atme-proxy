@@ -457,6 +457,10 @@ export class FeishuAdapter implements PlatformAdapter {
           const result = await this.readLegacyDoc(objToken);
           return result ? { title: node.data.node.title, ...result, url } : undefined;
         }
+        if (objType === "sheet") {
+          const result = await this.readSpreadsheet(objToken, url);
+          return result ? { title: node.data.node.title, ...result, url } : undefined;
+        }
         this.logger.info("unsupported Feishu wiki object", { url, objType });
         return undefined;
       }
