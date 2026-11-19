@@ -89,34 +89,55 @@ A 解决“同一句话被拆成几条发”，B 解决“隔很久补充同一�
 
 ## 4. 目录结构
 
+当前实现（2026-11-19）：
+
 ```text
 <stateDir>/
-  memory/
-    <chatId>/                    按群分片（当前实现）
-      records.json              当前有效记忆，按 id 去重（长期）
-      history/
-        2026-11-16.jsonl        记忆变更历史（720 天）
-    index.json                  群与记录数索引
-  replies/
-    <群名__chatId>/
-      2026-11-16.jsonl          相关原文与回复（720 天）
-  tasks/
-    <taskId>.json
-  analyses/<taskId>/<version>.json
-  approvals/<taskId>.json
-  executions/<taskId>.json
-  reviews/<taskId>.json
-  chat-context.json             群会话事件单元索引 / 7 天，只给 prompt
-  dedup.json                    低相关消息只留 message_id
-  audit.jsonl                   只记动作与 ID，不记正文
+  owner.json                      owner 绑定（全局）
+  owner-target.json               私聊最近目标（全局，最多 5 个）
+  groups/
+    <群名__短chatId>/
+      group.json                  群身份、项目、职责
+      chat-context.json           本群聊天上下文 / 7 天
+      group-context.json          本群摘要
+      memory.json                 本群记忆兼容文件
+      memory/records.json         本群当前有效记忆
+      memory/history/             本群记忆变更历史（720 天）
+      replies/                    本群原文与回复（720 天）
+      evidence/                   本群历史聊天 log
+      tasks/                      本群任务
+      analyses/<taskId>/          本群分析
+      approvals/                  本群审批
+      executions/                 本群执行
+      reviews/                    本群评审
+      pending.json                本群待审批卡
+      sessions.json               本群 session 映射
+      sent-replies.json           本群机器人回复
+      cursors.json                本群游标
+      dedup.json                  本群去重
+      outbound.json               本群发送幂等
+      history-mentions.json       本群历史 mention 标记
+      audit.jsonl                 本群审计
 ```
 
-目录命名：
+群业务根：
 
-- 记忆当前用 `<chatId>` 分片；目标命名 `群名__chatId`，群名从 `index.json` 补。
-- 证据用 `群名__chatId`；群名去掉 `/ \ : * ? " < > |`，截断 40 字符。
-- 群名为空或未解析时用 `群__<chatId>`。
-- 群名变更不改目录名，`index.json` 记录最新 `chatName`。
+```text
+/mnt/d/Work/atme-groups/<群名__短chatId>/
+  group.json
+  session/
+  files/
+  worktrees/
+  analysis/
+  execution/
+```
+
+命名规则：
+
+- 逻辑主键始终是完整 `chatId`，目录名用 `群名__短chatId`。
+- 群名变化不改目录；更新 `group.json.name`，写 `aliases.json` 和 `aliases/<新群名__短ID>` 软链接。
+- 群名为空或未解析时用 `群__<chatId>`；私聊用 `私聊__<短ID>`。
+- 历史共享文件只作 legacy 保留，不再是主读写路径。
 
 规则：
 
@@ -422,10 +443,10 @@ C. 同群未关闭任务（7 天内，最多 5 个）
 |------------------------|------------------------------|----------------------------------------------|
 | 临时 child session     | 7 天归档 / 30 天删除         | 只清理对话载体；持久会话豁免                  |
 | 持久会话（主/群/worker） | 长期                         | 不参与 7/30 清理                             |
-| 相关原文与回复         | 720 天                       | `replies/<群名__chatId>/<date>.jsonl`        |
+| 相关原文与回复         | 720 天                       | `groups/<群名__短ID>/replies/<date>.jsonl`   |
 | 低相关消息             | 不存正文                     | 只留 `message_id`                            |
-| 当前记忆               | pinned 永久；非 pinned 720 天 | `memory/<群名__chatId>/records.json`         |
-| 记忆变更史             | 720 天                       | `memory/<群名__chatId>/history/<date>.jsonl` |
+| 当前记忆               | pinned 永久；非 pinned 720 天 | `groups/<群名__短ID>/memory/records.json`    |
+| 记忆变更史             | 720 天                       | `groups/<群名__短ID>/memory/history/<date>.jsonl` |
 | 任务档案               | 长期                         | 体积小，review 必需                           |
 | 热点上下文             | 7 天 / 50 条                 | 只给 prompt                                  |
 | 审计                   | 1 年                         | 只记动作与 ID                                |

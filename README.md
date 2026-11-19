@@ -20,7 +20,9 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 
 - **私聊对话**：和机器人单独聊天会直接回复（默认仅限 owner）。
 - **私聊改稿**：审批卡发出后，可私聊 `/列表`、`/改写 <新内容>`、`/重写 <要求>`、`/发送`、`/取消 [编号|taskId]`；`/帮助` 查看命令。
-- **命令提示**：私聊发送 `/` 或 `／` 会返回命令列表（含 `/回复管理`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
+- **群职责画像**：私聊 `/职责 <群名|chatId> <说明>` 设置本群主职责、依赖和排除项，并注入筛选、回复和分析上下文。
+- **私聊目标绑定**：群内待确认消息会记录 `chatId/chatName/messageId`；私聊跟进未引用时自动带上最近目标；多个目标只列候选，不猜。
+- **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
 - **卡片回复管理**：代答审批卡和开发审批卡都有「回复管理」，可看待审批草稿和最近 5 条可撤回回复；每条带群/发送人/时间/内容，取消或撤回前可辨认。撤回受飞书权限和企业撤回时限限制（默认 24 小时）。
 - **回执优先**：对方只是确认或同意时，只回“收到”，不分析、不查资料、不追问。
 - **快速回执**：@机器人/@我/owner 私聊收到后，机器人先给消息加一个表情（默认 `OK`，`reply.ackReaction` 可改；设为空字符串关闭）。
@@ -28,14 +30,16 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **回复必要性**：通知、公告、闲聊、已有答案或与 owner 无关的消息不代答；模糊时用小模型判定。
 - **引用解析**：对方回复某条消息时，自动带上被回复消息与同线程上下文，短指代优先在该范围内解析。
 - **群摘要**：每群一个持久摘要会话，保留决策、被否决方案、假设和未解决问题，注入回复与任务分析。
-- **证据回查**：普通群消息按日期存 `replies/<群名__chatId>/<date>.jsonl`，AI 按需 grep 最近 7 天原文。
+- **证据回查**：普通群消息按日期存 `groups/<群名__短ID>/replies/<date>.jsonl`，AI 按需 grep 最近 7 天原文。
 - **图片理解**：@我/@机器人 的图片会下载为视觉附件交给支持图片的 OpenCode 模型；最多 2 张、单张 3MB。模型不支持图片时自动尝试本地 `tesseract` OCR（需安装 `tesseract` 和 `chi_sim` 语言包）。
-- **文件关联**：@消息前 10 分钟内同发送人的最近文件（docx/pdf/txt/md/sql 等）会提取文本一并交给模型；docx 优先用 `pandoc`，失败回退 `unzip`。
+- **文件关联**：引用链最多回溯 5 层；最近 24 小时群文件不限定发送人，最多读取 2 个。支持 docx/pdf/doc/html/xlsx/xls/txt/md/csv/json 等；doc 用 `antiword`，xlsx/xls 用 SheetJS，docx 优先 `pandoc` 再回退 `unzip`。
+- **在线文档**：按 @消息/引用里的 `/docx/`、`/wiki/`、`/docs/`、`/sheets/` 读取正文；wiki 下的 sheet 也支持。
+- **联网策略**：群聊默认禁用 `websearch/webfetch`；主人私聊默认允许 `websearch`，`webfetch` 需要私聊明确说“允许抓取/允许联网”。
 
 - **消息类型识别**：@机器人 先判断是询问、任务、提醒、通知还是闲聊，再决定动作。
 - **发言必要性评估**：@机器人 不必然回复。助手判断 `answer / need_decision / notify_owner / no_reply`；寒暄或无需介入就不回，避免刷屏。
 - **防刷屏**：按发送者限流、限并发、加冷却；同一人连续刷只警告一次，不同同事仍可并发处理。
-- **需要你决策时群里 @ 你**：涉及上线、排期、承诺、资源、风险或信息不足时，机器人在群里 @ 你的主账号，并附问题、来源、原因，不代替你承诺。
+- **需要你决策时私聊请示**：涉及上线、排期、承诺、资源、风险或信息不足时，机器人私聊你，附来源、原因和建议；不在群里 @ 你，不代替你承诺。
 - **实时 @ 接管**：@机器人 按必要性直接回答或升级；@我 默认先私聊请示，批准后引用回复。
 - **周期筛选**：定时拉取群历史，用关键词 + 筛选模型（默认复用 OpenCode 模型）筛出“我的任务”，只在私聊汇总，不刷群。
 - **任务闭环**：任务识别 → 分析 → 审批 → 开发 → 测试 → 回写 → 审计。
@@ -408,11 +412,11 @@ websocket ready
 
 | 层           | 文件                | 存什么                                                                   | 默认              |
 |--------------|---------------------|--------------------------------------------------------------------------|-------------------|
-| 聊天上下文   | `chat-context.json` | 群内文本消息（纯表情/回执除外）、@消息、媒体占位符                           | 每群 50 条 / 7 天 |
-| 关键信息记忆 | `memory.json`       | 任务、决策、事实、偏好、截止时间、结论；主动 upsert、可 pin、可 TTL              | 2000 条 / 90 天   |
+| 聊天上下文   | `groups/<群名__短ID>/chat-context.json` | 群内文本消息（纯表情/回执除外）、@消息、媒体占位符                           | 每群 50 条 / 7 天 |
+| 关键信息记忆 | `groups/<群名__短ID>/memory/` | 任务、决策、事实、偏好、截止时间、结论；主动 upsert、可 pin、可 TTL              | 2000 条 / 90 天   |
 | 运行日志     | stderr / `logFile`  | `messageId/chatId/类型/结果` 等元数据，**最多 80 字预览（明显凭据已掩码）** | 关                |
 
-- 普通群消息：除了纯表情/回执，全部进 `chat-context.json` 和 `replies/<群名__chatId>/<date>.jsonl`；AI 需要时回查最近 7 天原文。
+- 普通群消息：除了纯表情/回执，全部进 `chat-context.json` 和 `groups/<群名__短ID>/replies/<date>.jsonl`；AI 需要时回查最近 7 天原文。
 - 关键信息在 @ 消息处理、任务分析后主动提取；回答和任务分析会注入相关记忆。
 - 不做额外归档/索引；证据按日期 JSONL 保存，日志只记最多 80 字脱敏预览，不写全文。
 
@@ -461,29 +465,33 @@ WSL2 可能随时重启，插件启动时会做四件事：
 
 ### 目录与上下文
 
-`stateDir` 默认 `~/.local/state/opencode-atme-proxy`，主要文件：
+`stateDir` 默认 `~/.local/state/opencode-atme-proxy`。群数据按 `群名__短ID` 物理隔离：
 
 ```text
-dedup.json          消息去重
-cursors.json        每群拉取游标
-projects.json       群 → 项目绑定
-chat-context.json   最近群聊上下文（默认 50 条 / 7 天）
-group-context.json  群摘要（决策 / 假设 / 未解决问题）
-replies/            群证据（按群 + 日期）
-memory.json         聚合记忆（兼容保留）
-memory/             按群记忆分片 + history/
-sessions.json       coordinator / group / worker / child 映射
-tasks/              任务
-analyses/           任务分析（按版本）
-approvals/          审批记录
-executions/         执行记录
-pending.json        待审批卡片
-audit.jsonl         审计
-instance.lock       单实例锁
-worktrees/          执行工作树
+groups/<群名__短ID>/
+  group.json          群身份、项目、职责
+  chat-context.json   本群最近上下文（默认 50 条 / 7 天）
+  group-context.json  本群摘要
+  memory.json         本群记忆兼容文件
+  memory/             本群记忆分片 + history/
+  replies/            本群证据
+  evidence/           本群历史聊天证据
+  tasks/              本群任务
+  analyses/           本群分析
+  approvals/          本群审批
+  executions/         本群执行
+  reviews/            本群评审
+  pending.json        本群待审批卡
+  sessions.json       本群 coordinator/group/worker/child 映射
+  sent-replies.json   本群已发送回复
+  cursors.json        本群游标
+  dedup.json          本群去重
+  outbound.json       本群发送幂等
+  history-mentions.json 本群历史 mention
+  audit.jsonl         本群审计
 ```
 
-删除旧证据：直接删 `replies/<群名__chatId>/<YYYY-MM-DD>.jsonl`，不需要改索引；保留期默认 720 天。
+全局只保留 `owner.json`、`owner-target.json`、`groups/` 和运行锁/日志。群业务根目录在 `/mnt/d/Work/atme-groups/<群名__短ID>/`，包含 `session/`、`files/`、`worktrees/`、`analysis/`、`execution/`；群名变更只更新 `group.json` 和 `aliases/`，不改目录。
 
 ### 关键配置
 
