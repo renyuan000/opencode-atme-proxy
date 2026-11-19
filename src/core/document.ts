@@ -36,6 +36,22 @@ export async function extractDocumentText(
   if (["txt", "md", "sql", "csv", "json", "log", "yaml", "yml"].includes(ext)) {
     return data.toString("utf8").trim().slice(0, 20_000) || undefined;
   }
+  if (ext === "html" || ext === "htm") {
+    return data
+      .toString("utf8")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .slice(0, 20_000) || undefined;
+  }
   if (!["docx", "pdf", "doc"].includes(ext)) return undefined;
 
   const dir = await mkdtemp(join(tmpdir(), "atme-doc-"));

@@ -351,6 +351,25 @@ export class ReplyService {
                 if (!fetched)
                     break;
                 lines.push(`- [引用链 ${depth + 1}] ${fetched.sender.displayName ?? fetched.sender.id}: ${truncateMiddle(fetched.text, 500)}`);
+                if (platform.fetchResource) {
+                    for (const attachment of fetched.attachments ?? []) {
+                        if (attachment.kind !== "file" || !attachment.key)
+                            continue;
+                        try {
+                            const resource = await platform.fetchResource(fetched.messageId, attachment.key, "file");
+                            const text = await extractDocumentText(resource.data, resource.mime, attachment.name);
+                            if (text) {
+                                lines.push(`- [引用文件 ${attachment.name ?? ""}] ${text.slice(0, 6000)}`);
+                            }
+                        }
+                        catch (error) {
+                            this.options.logger.warn("failed to load quoted file", {
+                                messageId: fetched.messageId,
+                                error: toErrorMessage(error),
+                            });
+                        }
+                    }
+                }
                 id = fetched.replyToMessageId;
             }
             catch (error) {
