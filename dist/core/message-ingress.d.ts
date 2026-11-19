@@ -1,5 +1,4 @@
 import type { AppConfig } from "./config.js";
-import type { DedupStore } from "./dedup.js";
 import type { ChatContextStore } from "./chat-context.js";
 import type { EvidenceStore } from "./evidence-store.js";
 import type { Logger } from "./logger.js";
@@ -8,7 +7,12 @@ import type { IncomingMessage } from "./types.js";
 export interface MessageIngressOptions {
     config: AppConfig;
     logger: Logger;
-    dedup: DedupStore;
+    dedup: {
+        has(key: string, chatId?: string): boolean;
+        add(key: string, chatId?: string): void;
+        flush(): Promise<void>;
+        delete(key: string, chatId?: string): void;
+    };
     chatContext: ChatContextStore;
     evidence: EvidenceStore;
     senderLimiter: SenderLimiter;

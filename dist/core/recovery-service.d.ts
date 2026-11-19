@@ -11,12 +11,12 @@ export interface RecoveryServiceOptions {
     pending: PendingStore;
     tasks: TaskStore;
     dedup: {
-        has(key: string): boolean;
-        delete(key: string): void;
+        has(key: string, chatId?: string): boolean;
+        delete(key: string, chatId?: string): void;
     };
     historyMentions: {
-        has(key: string): boolean;
-        add(key: string): void;
+        has(key: string, chatId?: string): boolean;
+        add(key: string, chatId?: string): void;
         flush(): Promise<void>;
     };
     sentReplies: {

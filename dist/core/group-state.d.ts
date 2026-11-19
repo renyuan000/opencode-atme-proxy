@@ -10,6 +10,7 @@ import { type SentReplyRecord } from "./sent-reply-store.js";
 import { type CursorRecord } from "./cursor.js";
 import { type BoundProject } from "./project-store.js";
 import { ApprovalStore } from "./approval-store.js";
+import { AuditLog } from "./audit.js";
 export interface GroupStateInfo {
     chatId: string;
     name: string;
@@ -201,4 +202,33 @@ export declare class ScopedApprovals {
     latest(taskId: string, kind: Parameters<ApprovalStore["latest"]>[1]): Promise<import("./types.js").ApprovalRecord | undefined>;
     append(record: Parameters<ApprovalStore["append"]>[0]): Promise<void>;
     replaceLatest(record: Parameters<ApprovalStore["replaceLatest"]>[0]): Promise<void>;
+}
+export declare class ScopedDedup {
+    private readonly layout;
+    private readonly filename;
+    private readonly ttlMs;
+    private readonly maxEntries;
+    private readonly logger?;
+    private readonly stores;
+    constructor(layout: GroupStateLayout, filename: string, ttlMs: number, maxEntries: number, logger?: Logger | undefined);
+    load(): Promise<void>;
+    private store;
+    has(key: string, chatId?: string): boolean;
+    add(key: string, chatId?: string): void;
+    delete(key: string, chatId?: string): void;
+    flush(): Promise<void>;
+    close(): Promise<void>;
+}
+export declare class ScopedAudit {
+    private readonly layout;
+    private readonly chatForTask;
+    private readonly stores;
+    constructor(layout: GroupStateLayout, chatForTask: (taskId: string) => Promise<string | undefined>);
+    private storeFor;
+    append(input: {
+        actor: Parameters<AuditLog["append"]>[0]["actor"];
+        action: string;
+        taskId?: string;
+        details?: Record<string, unknown>;
+    }): Promise<import("./types.js").AuditEvent>;
 }

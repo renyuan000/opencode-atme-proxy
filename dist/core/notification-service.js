@@ -48,7 +48,7 @@ export class NotificationService {
     }
     async safeReply(message, text) {
         const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;
-        if (this.options.outbound.has(key)) {
+        if (this.options.outbound.has(key, message.chat.id)) {
             this.options.logger.info("skip duplicate reply", {
                 messageId: message.messageId,
             });
@@ -57,7 +57,7 @@ export class NotificationService {
         try {
             await this.options.sendLimiter.take();
             const result = await this.options.platform.reply({ chatId: message.chat.id, messageId: message.messageId }, { kind: "text", text, uuid: stableUuid(key) });
-            this.options.outbound.add(key);
+            this.options.outbound.add(key, message.chat.id);
             await this.options.outbound.flush();
             try {
                 await this.options.sentReplies.add({

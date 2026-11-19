@@ -21,7 +21,7 @@ export interface ScanServiceOptions {
   taskService: TaskService;
   filterEnabled: boolean;
   groupIds: Set<string>;
-  dedup: { has(key: string): boolean };
+  dedup: { has(key: string, chatId?: string): boolean };
   activeMessageIds: Set<string>;
   ownerOpenId(): string | undefined;
   isMention(message: IncomingMessage): boolean;
@@ -66,7 +66,7 @@ export class ScanService {
 
     const fresh = plain.filter((message) => {
       const key = `${message.platform}:${message.messageId}`;
-      return !this.options.dedup.has(key) && !this.options.activeMessageIds.has(key);
+      return !this.options.dedup.has(key, message.chat.id) && !this.options.activeMessageIds.has(key);
     });
     if (fresh.length === 0) return;
     const perSender = new Map<string, number>();

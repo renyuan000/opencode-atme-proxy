@@ -40,7 +40,7 @@ export class ScanService {
             return;
         const fresh = plain.filter((message) => {
             const key = `${message.platform}:${message.messageId}`;
-            return !this.options.dedup.has(key) && !this.options.activeMessageIds.has(key);
+            return !this.options.dedup.has(key, message.chat.id) && !this.options.activeMessageIds.has(key);
         });
         if (fresh.length === 0)
             return;

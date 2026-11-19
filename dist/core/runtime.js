@@ -3,8 +3,6 @@ import { mkdir } from "node:fs/promises";
 import { createLogger } from "./logger.js";
 import { OpenAiCompatibleClient, RelevanceService, parseJsonLoose, } from "./relevance.js";
 import { detectReplyStyle, enforceReplyLength, } from "./reply-style.js";
-import { DedupStore } from "./dedup.js";
-import { AuditLog } from "./audit.js";
 import { ConcurrentDispatcher } from "./dispatcher.js";
 import { PollingService } from "./poller.js";
 import { TokenBucket } from "./rate-limit.js";
@@ -27,7 +25,7 @@ import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
-import { GroupStateLayout, ScopedApprovals, ScopedChatContext, ScopedCursors, ScopedEvidence, ScopedGroupContext, ScopedMemory, ScopedPending, ScopedProjects, ScopedSentReplies, ScopedSessions, ScopedTasks, } from "./group-state.js";
+import { GroupStateLayout, ScopedApprovals, ScopedAudit, ScopedChatContext, ScopedDedup, ScopedCursors, ScopedEvidence, ScopedGroupContext, ScopedMemory, ScopedPending, ScopedProjects, ScopedSentReplies, ScopedSessions, ScopedTasks, } from "./group-state.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerAccessService } from "./owner-access-service.js";
@@ -110,24 +108,9 @@ export class ProxyRuntime {
         this.config = options.loaded.config;
         this.stateDir = requireStateDir(this.config);
         this.groupState = new GroupStateLayout(join(this.stateDir, "groups"), this.logger.child("group-state"));
-        this.dedup = new DedupStore({
-            file: join(this.stateDir, "dedup.json"),
-            ttlMs: 7 * 24 * 3600 * 1000,
-            maxEntries: 100_000,
-            logger: this.logger.child("dedup"),
-        });
-        this.historyMentions = new DedupStore({
-            file: join(this.stateDir, "history-mentions.json"),
-            ttlMs: 90 * 24 * 3600 * 1000,
-            maxEntries: 20_000,
-            logger: this.logger.child("history-mentions"),
-        });
-        this.outbound = new DedupStore({
-            file: join(this.stateDir, "outbound.json"),
-            ttlMs: 7 * 24 * 3600 * 1000,
-            maxEntries: 50_000,
-            logger: this.logger.child("outbound"),
-        });
+        this.dedup = new ScopedDedup(this.groupState, "dedup.json", 7 * 24 * 3600 * 1000, 100_000, this.logger.child("dedup"));
+        this.historyMentions = new ScopedDedup(this.groupState, "history-mentions.json", 90 * 24 * 3600 * 1000, 20_000, this.logger.child("history-mentions"));
+        this.outbound = new ScopedDedup(this.groupState, "outbound.json", 7 * 24 * 3600 * 1000, 50_000, this.logger.child("outbound"));
         this.cursors = new ScopedCursors(this.groupState, this.logger.child("cursor"));
         this.sessions = new ScopedSessions(this.groupState, this.logger.child("sessions"));
         this.sessionManager = new SessionManager({
@@ -142,7 +125,10 @@ export class ProxyRuntime {
             const task = await this.tasks.get(taskId);
             return task?.chatId;
         });
-        this.audit = new AuditLog(AuditLog.defaultPath(this.stateDir));
+        this.audit = new ScopedAudit(this.groupState, async (taskId) => {
+            const task = await this.tasks.get(taskId);
+            return task?.chatId;
+        });
         this.pending = new ScopedPending(this.groupState, this.logger.child("pending"));
         this.sentReplies = new ScopedSentReplies(this.groupState, 7 * 24 * 3600_000, 50, this.logger.child("sent-replies"));
         this.approvalService = new ApprovalService({
@@ -565,7 +551,7 @@ export class ProxyRuntime {
             this.messageControllers.delete(key);
         }
         this.activeMessageIds.delete(key);
-        this.dedup.add(key);
+        this.dedup.add(key, event.chatId);
         await this.dedup.flush();
         const replies = this.sentReplies.listBySource(event.messageId);
         for (const reply of replies) {
@@ -731,10 +717,10 @@ export class ProxyRuntime {
             return;
         }
         const dedupKey = `${message.platform}:${message.messageId}`;
-        const wasSeen = this.dedup.has(dedupKey);
+        const wasSeen = this.dedup.has(dedupKey, message.chat.id);
         await this.messageIngress.handle(message, chatName, wait, force);
         if (!wasSeen && this.isMention(message)) {
-            this.historyMentions.add(dedupKey);
+            this.historyMentions.add(dedupKey, message.chat.id);
         }
     }
     async dispatchGroupMessage(message, limited, wait, force = false) {
@@ -763,7 +749,7 @@ export class ProxyRuntime {
                 const unlink = this.linkAbort(controller, signal);
                 try {
                     this.logger.info("dispatch job started", { messageId: message.messageId, force });
-                    if (controller.signal.aborted || (!force && this.dedup.has(dedupKey)))
+                    if (controller.signal.aborted || (!force && this.dedup.has(dedupKey, message.chat.id)))
                         return;
                     await this.handleMessage(message, controller.signal);
                     this.logger.info("dispatch job finished", { messageId: message.messageId });
@@ -955,7 +941,7 @@ export class ProxyRuntime {
             return;
         }
         const dedupKey = `${message.platform}:${message.messageId}`;
-        if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey))
+        if (this.dedup.has(dedupKey, message.chat.id) || this.activeMessageIds.has(dedupKey))
             return;
         this.activeMessageIds.add(dedupKey);
         void this.acknowledge(message);
@@ -1005,7 +991,7 @@ export class ProxyRuntime {
                 this.messageControllers.set(dedupKey, controller);
                 const unlink = this.linkAbort(controller, signal);
                 try {
-                    if (controller.signal.aborted || this.dedup.has(dedupKey))
+                    if (controller.signal.aborted || this.dedup.has(dedupKey, message.chat.id))
                         return;
                     const style = detectReplyStyle(message, this.replyOptions);
                     const reply = await this.askOpenCode(message, style, controller.signal);
@@ -1566,7 +1552,7 @@ export class ProxyRuntime {
         return this.notificationService.sendToApprover(text);
     }
     async markProcessed(message) {
-        this.dedup.add(`${message.platform}:${message.messageId}`);
+        this.dedup.add(`${message.platform}:${message.messageId}`, message.chat.id);
         await this.dedup.flush();
     }
     sanitize(text) {

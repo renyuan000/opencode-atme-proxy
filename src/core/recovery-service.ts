@@ -12,8 +12,12 @@ export interface RecoveryServiceOptions {
   platform: PlatformAdapter;
   pending: PendingStore;
   tasks: TaskStore;
-  dedup: { has(key: string): boolean; delete(key: string): void };
-  historyMentions: { has(key: string): boolean; add(key: string): void; flush(): Promise<void> };
+  dedup: { has(key: string, chatId?: string): boolean; delete(key: string, chatId?: string): void };
+  historyMentions: {
+    has(key: string, chatId?: string): boolean;
+    add(key: string, chatId?: string): void;
+    flush(): Promise<void>;
+  };
   sentReplies: { hasSource(messageId: string): boolean };
   groupIds: Set<string>;
   lastCursor?(platform: string, chatId: string): number | undefined;
@@ -60,7 +64,7 @@ export class RecoveryService {
             ? Math.max(cursor - 60_000, endTime - 7 * 24 * 3600_000)
             : undefined;
         const startTime = cursorStart
-          ? Math.min(configuredStart, cursorStart)
+          ? Math.max(configuredStart, cursorStart)
           : configuredStart;
         const result = await this.options.platform.listMessages({
           chatId,
@@ -75,7 +79,7 @@ export class RecoveryService {
         );
         const unprocessed = result.messages.filter(
           (message) =>
-            !this.options.dedup.has(`${message.platform}:${message.messageId}`),
+            !this.options.dedup.has(`${message.platform}:${message.messageId}`, chatId),
         );
         this.options.logger.info("startup recovery fetched", {
           chatId,
@@ -89,9 +93,9 @@ export class RecoveryService {
         const mentions: IncomingMessage[] = [];
         for (const message of allMentions) {
           const key = `${message.platform}:${message.messageId}`;
-          if (this.options.historyMentions.has(key)) continue;
+          if (this.options.historyMentions.has(key, chatId)) continue;
           if (this.options.sentReplies.hasSource(message.messageId)) {
-            this.options.historyMentions.add(key);
+            this.options.historyMentions.add(key, chatId);
             continue;
           }
           mentions.push(message);
@@ -109,9 +113,9 @@ export class RecoveryService {
         for (const message of mentions) {
           const key = `${message.platform}:${message.messageId}`;
           try {
-            this.options.dedup.delete(key);
+            this.options.dedup.delete(key, chatId);
             await this.options.ingest(message, true);
-            this.options.historyMentions.add(key);
+            this.options.historyMentions.add(key, chatId);
             await this.options.historyMentions.flush();
           } catch (error) {
             this.options.logger.error("historical mention processing failed; will retry", {

@@ -13,6 +13,8 @@ import { SentReplyStore, type SentReplyRecord } from "./sent-reply-store.js";
 import { CursorStore, type CursorRecord } from "./cursor.js";
 import { ProjectStore, type BoundProject } from "./project-store.js";
 import { ApprovalStore } from "./approval-store.js";
+import { DedupStore } from "./dedup.js";
+import { AuditLog } from "./audit.js";
 import { readJsonFile } from "./util.js";
 
 const UNSAFE = /[/\\:*?"<>|]/g;
@@ -705,5 +707,98 @@ export class ScopedApprovals {
 
   async replaceLatest(record: Parameters<ApprovalStore["replaceLatest"]>[0]) {
     return (await this.storeForTask(record.taskId)).replaceLatest(record);
+  }
+}
+
+export class ScopedDedup {
+  private readonly stores = new Map<string, DedupStore>();
+
+  constructor(
+    private readonly layout: GroupStateLayout,
+    private readonly filename: string,
+    private readonly ttlMs: number,
+    private readonly maxEntries: number,
+    private readonly logger?: Logger,
+  ) {}
+
+  async load(): Promise<void> {
+    for (const info of this.layout.all()) await this.store(info.chatId).load();
+    await this.store("").load();
+  }
+
+  private store(chatId: string): DedupStore {
+    const key = chatId || "_unassigned";
+    const existing = this.stores.get(key);
+    if (existing) return existing;
+    const dir = chatId ? this.layout.dirFor(chatId) : this.layout.unassignedPath();
+    const store = new DedupStore({
+      file: join(dir, this.filename),
+      ttlMs: this.ttlMs,
+      maxEntries: this.maxEntries,
+      ...(this.logger ? { logger: this.logger } : {}),
+    });
+    this.stores.set(key, store);
+    return store;
+  }
+
+  has(key: string, chatId?: string): boolean {
+    if (chatId) return this.store(chatId).has(key);
+    for (const store of this.stores.values()) if (store.has(key)) return true;
+    return false;
+  }
+
+  add(key: string, chatId?: string): void {
+    this.store(chatId ?? "").add(key);
+  }
+
+  delete(key: string, chatId?: string): void {
+    if (chatId) {
+      this.store(chatId).delete(key);
+      return;
+    }
+    for (const store of this.stores.values()) store.delete(key);
+  }
+
+  async flush(): Promise<void> {
+    await Promise.all([...this.stores.values()].map((store) => store.flush()));
+  }
+
+  async close(): Promise<void> {
+    await Promise.all([...this.stores.values()].map((store) => store.close()));
+  }
+}
+
+export class ScopedAudit {
+  private readonly stores = new Map<string, AuditLog>();
+
+  constructor(
+    private readonly layout: GroupStateLayout,
+    private readonly chatForTask: (taskId: string) => Promise<string | undefined>,
+  ) {}
+
+  private async storeFor(input: {
+    taskId?: string;
+    details?: Record<string, unknown>;
+  }): Promise<AuditLog> {
+    let chatId = input.taskId ? await this.chatForTask(input.taskId) : undefined;
+    if (!chatId && typeof input.details?.chatId === "string") {
+      chatId = input.details.chatId;
+    }
+    const key = chatId || "_unassigned";
+    const existing = this.stores.get(key);
+    if (existing) return existing;
+    const dir = chatId ? this.layout.dirFor(chatId) : this.layout.unassignedPath();
+    const store = new AuditLog(join(dir, "audit.jsonl"));
+    this.stores.set(key, store);
+    return store;
+  }
+
+  async append(input: {
+    actor: Parameters<AuditLog["append"]>[0]["actor"];
+    action: string;
+    taskId?: string;
+    details?: Record<string, unknown>;
+  }) {
+    return (await this.storeFor(input)).append(input);
   }
 }

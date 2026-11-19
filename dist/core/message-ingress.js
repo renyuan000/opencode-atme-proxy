@@ -6,7 +6,7 @@ export class MessageIngress {
     }
     async handle(message, _chatName, wait = false, force = false) {
         const dedupKey = `${message.platform}:${message.messageId}`;
-        if ((!force && this.options.dedup.has(dedupKey)) || this.options.activeMessageIds.has(dedupKey)) {
+        if ((!force && this.options.dedup.has(dedupKey, message.chat.id)) || this.options.activeMessageIds.has(dedupKey)) {
             return;
         }
         this.options.activeMessageIds.add(dedupKey);
@@ -25,7 +25,7 @@ export class MessageIngress {
                 });
                 await this.options.safeReply(message, this.options.config.botReply.overloadReply);
             }
-            this.options.dedup.add(dedupKey);
+            this.options.dedup.add(dedupKey, message.chat.id);
             await this.options.dedup.flush();
             this.options.activeMessageIds.delete(dedupKey);
             return;

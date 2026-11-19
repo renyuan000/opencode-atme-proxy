@@ -35,7 +35,7 @@ export class RecoveryService {
                     ? Math.max(cursor - 60_000, endTime - 7 * 24 * 3600_000)
                     : undefined;
                 const startTime = cursorStart
-                    ? Math.min(configuredStart, cursorStart)
+                    ? Math.max(configuredStart, cursorStart)
                     : configuredStart;
                 const result = await this.options.platform.listMessages({
                     chatId,
@@ -47,7 +47,7 @@ export class RecoveryService {
                 if (result.messages.length === 0)
                     continue;
                 const messageIds = result.messages.map((message) => `${message.platform}:${message.messageId}`);
-                const unprocessed = result.messages.filter((message) => !this.options.dedup.has(`${message.platform}:${message.messageId}`));
+                const unprocessed = result.messages.filter((message) => !this.options.dedup.has(`${message.platform}:${message.messageId}`, chatId));
                 this.options.logger.info("startup recovery fetched", {
                     chatId,
                     fetched: result.messages.length,
@@ -60,10 +60,10 @@ export class RecoveryService {
                 const mentions = [];
                 for (const message of allMentions) {
                     const key = `${message.platform}:${message.messageId}`;
-                    if (this.options.historyMentions.has(key))
+                    if (this.options.historyMentions.has(key, chatId))
                         continue;
                     if (this.options.sentReplies.hasSource(message.messageId)) {
-                        this.options.historyMentions.add(key);
+                        this.options.historyMentions.add(key, chatId);
                         continue;
                     }
                     mentions.push(message);
@@ -81,9 +81,9 @@ export class RecoveryService {
                 for (const message of mentions) {
                     const key = `${message.platform}:${message.messageId}`;
                     try {
-                        this.options.dedup.delete(key);
+                        this.options.dedup.delete(key, chatId);
                         await this.options.ingest(message, true);
-                        this.options.historyMentions.add(key);
+                        this.options.historyMentions.add(key, chatId);
                         await this.options.historyMentions.flush();
                     }
                     catch (error) {

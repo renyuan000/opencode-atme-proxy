@@ -65,7 +65,9 @@ import { SentReplyStore } from "./sent-reply-store.js";
 import {
   GroupStateLayout,
   ScopedApprovals,
+  ScopedAudit,
   ScopedChatContext,
+  ScopedDedup,
   ScopedCursors,
   ScopedEvidence,
   ScopedGroupContext,
@@ -121,9 +123,9 @@ export class ProxyRuntime {
   private readonly logger: Logger;
   private readonly config: AppConfig;
   private readonly stateDir: string;
-  private readonly dedup: DedupStore;
-  private readonly historyMentions: DedupStore;
-  private readonly outbound: DedupStore;
+  private readonly dedup: ScopedDedup;
+  private readonly historyMentions: ScopedDedup;
+  private readonly outbound: ScopedDedup;
   private readonly groupState: GroupStateLayout;
   private readonly cursors: ScopedCursors;
   private readonly sessions: ScopedSessions;
@@ -132,7 +134,7 @@ export class ProxyRuntime {
   private readonly recentMessages = new Map<string, IncomingMessage[]>();
   private readonly tasks: ScopedTasks;
   private readonly approvals: ScopedApprovals;
-  private readonly audit: AuditLog;
+  private readonly audit: ScopedAudit;
   private readonly dispatcher: ConcurrentDispatcher;
   private readonly sendLimiter: TokenBucket;
   private readonly relevance: RelevanceService;
@@ -196,24 +198,27 @@ export class ProxyRuntime {
       join(this.stateDir, "groups"),
       this.logger.child("group-state"),
     );
-    this.dedup = new DedupStore({
-      file: join(this.stateDir, "dedup.json"),
-      ttlMs: 7 * 24 * 3600 * 1000,
-      maxEntries: 100_000,
-      logger: this.logger.child("dedup"),
-    });
-    this.historyMentions = new DedupStore({
-      file: join(this.stateDir, "history-mentions.json"),
-      ttlMs: 90 * 24 * 3600 * 1000,
-      maxEntries: 20_000,
-      logger: this.logger.child("history-mentions"),
-    });
-    this.outbound = new DedupStore({
-      file: join(this.stateDir, "outbound.json"),
-      ttlMs: 7 * 24 * 3600 * 1000,
-      maxEntries: 50_000,
-      logger: this.logger.child("outbound"),
-    });
+    this.dedup = new ScopedDedup(
+      this.groupState,
+      "dedup.json",
+      7 * 24 * 3600 * 1000,
+      100_000,
+      this.logger.child("dedup"),
+    );
+    this.historyMentions = new ScopedDedup(
+      this.groupState,
+      "history-mentions.json",
+      90 * 24 * 3600 * 1000,
+      20_000,
+      this.logger.child("history-mentions"),
+    );
+    this.outbound = new ScopedDedup(
+      this.groupState,
+      "outbound.json",
+      7 * 24 * 3600 * 1000,
+      50_000,
+      this.logger.child("outbound"),
+    );
     this.cursors = new ScopedCursors(this.groupState, this.logger.child("cursor"));
     this.sessions = new ScopedSessions(this.groupState, this.logger.child("sessions"));
     this.sessionManager = new SessionManager({
@@ -228,7 +233,10 @@ export class ProxyRuntime {
       const task = await this.tasks.get(taskId);
       return task?.chatId;
     });
-    this.audit = new AuditLog(AuditLog.defaultPath(this.stateDir));
+    this.audit = new ScopedAudit(this.groupState, async (taskId) => {
+      const task = await this.tasks.get(taskId);
+      return task?.chatId;
+    });
     this.pending = new ScopedPending(this.groupState, this.logger.child("pending"));
     this.sentReplies = new ScopedSentReplies(
       this.groupState,
@@ -241,7 +249,7 @@ export class ProxyRuntime {
       pending: this.pending as unknown as PendingStore,
       tasks: this.tasks as unknown as TaskStore,
       approvals: this.approvals as unknown as ApprovalStore,
-      audit: this.audit,
+      audit: this.audit as unknown as AuditLog,
       platform: this.options.platform,
       logger: this.logger.child("approval"),
       ownerOpenId: () => this.ownerOpenId(),
@@ -270,7 +278,7 @@ export class ProxyRuntime {
         join(this.stateDir, "owner.json"),
         this.logger.child("owner"),
       ),
-      audit: this.audit,
+      audit: this.audit as unknown as AuditLog,
       logger: this.logger.child("owner"),
       sendToOwner: (text) => this.sendToOwner(text),
     });
@@ -362,7 +370,7 @@ export class ProxyRuntime {
     this.ownerCommandService = new OwnerCommandService({
       pending: this.pending as unknown as PendingStore,
       tasks: this.tasks as unknown as TaskStore,
-      audit: this.audit,
+      audit: this.audit as unknown as AuditLog,
       platform: this.options.platform,
       sendLimiter: this.sendLimiter,
       ownerOpenId: () => this.ownerOpenId(),
@@ -398,7 +406,7 @@ export class ProxyRuntime {
       sessionManager: this.sessionManager,
       tasks: this.tasks as unknown as TaskStore,
       pending: this.pending as unknown as PendingStore,
-      audit: this.audit,
+      audit: this.audit as unknown as AuditLog,
       platform: this.options.platform,
       sendLimiter: this.sendLimiter,
       llm,
@@ -428,7 +436,7 @@ export class ProxyRuntime {
       stateDir: this.stateDir,
       stateDirFor: (chatId) => this.groupState.dirFor(chatId),
       tasks: this.tasks as unknown as TaskStore,
-      audit: this.audit,
+      audit: this.audit as unknown as AuditLog,
       contextService: this.contextService,
       sessionManager: this.sessionManager,
       logger: this.logger.child("task"),
@@ -471,7 +479,7 @@ export class ProxyRuntime {
       stateDirFor: (chatId) => this.groupState.dirFor(chatId),
       tasks: this.tasks as unknown as TaskStore,
       approvals: this.approvals as unknown as ApprovalStore,
-      audit: this.audit,
+      audit: this.audit as unknown as AuditLog,
       executor: this.executor,
       bridge: this.options.bridge,
       sessionManager: this.sessionManager,
@@ -574,7 +582,7 @@ export class ProxyRuntime {
       replyService: this.replyService,
       taskService: this.taskService,
       tasks: this.tasks as unknown as TaskStore,
-      audit: this.audit,
+      audit: this.audit as unknown as AuditLog,
       prepare: async (message, signal) => {
         await this.waitForBurst(message, signal);
         const burst = await this.applyBurstGrouping(message);
@@ -593,7 +601,7 @@ export class ProxyRuntime {
       bridge: this.options.bridge,
       platform: this.options.platform,
       sendLimiter: this.sendLimiter,
-      audit: this.audit,
+      audit: this.audit as unknown as AuditLog,
       readOnlyPermission: READ_ONLY_PERMISSION,
       ownerOpenId: () => this.ownerOpenId(),
       ownerName: () => this.ownerName(),
@@ -676,7 +684,7 @@ export class ProxyRuntime {
       this.messageControllers.delete(key);
     }
     this.activeMessageIds.delete(key);
-    this.dedup.add(key);
+    this.dedup.add(key, event.chatId);
     await this.dedup.flush();
     const replies = this.sentReplies.listBySource(event.messageId);
     for (const reply of replies) {
@@ -849,10 +857,10 @@ export class ProxyRuntime {
       return;
     }
     const dedupKey = `${message.platform}:${message.messageId}`;
-    const wasSeen = this.dedup.has(dedupKey);
+    const wasSeen = this.dedup.has(dedupKey, message.chat.id);
     await this.messageIngress.handle(message, chatName, wait, force);
     if (!wasSeen && this.isMention(message)) {
-      this.historyMentions.add(dedupKey);
+      this.historyMentions.add(dedupKey, message.chat.id);
     }
   }
 
@@ -887,7 +895,7 @@ export class ProxyRuntime {
         const unlink = this.linkAbort(controller, signal);
         try {
           this.logger.info("dispatch job started", { messageId: message.messageId, force });
-          if (controller.signal.aborted || (!force && this.dedup.has(dedupKey))) return;
+          if (controller.signal.aborted || (!force && this.dedup.has(dedupKey, message.chat.id))) return;
           await this.handleMessage(message, controller.signal);
           this.logger.info("dispatch job finished", { messageId: message.messageId });
         } finally {
@@ -1093,7 +1101,7 @@ export class ProxyRuntime {
       return;
     }
     const dedupKey = `${message.platform}:${message.messageId}`;
-    if (this.dedup.has(dedupKey) || this.activeMessageIds.has(dedupKey)) return;
+    if (this.dedup.has(dedupKey, message.chat.id) || this.activeMessageIds.has(dedupKey)) return;
     this.activeMessageIds.add(dedupKey);
     void this.acknowledge(message);
     const command = parseOwnerCommand(message.text);
@@ -1144,7 +1152,7 @@ export class ProxyRuntime {
         this.messageControllers.set(dedupKey, controller);
         const unlink = this.linkAbort(controller, signal);
         try {
-          if (controller.signal.aborted || this.dedup.has(dedupKey)) return;
+          if (controller.signal.aborted || this.dedup.has(dedupKey, message.chat.id)) return;
           const style = detectReplyStyle(message, this.replyOptions);
           const reply = await this.askOpenCode(message, style, controller.signal);
           const ok = await this.safeReply(message, this.sanitize(reply));
@@ -1768,7 +1776,7 @@ export class ProxyRuntime {
   }
 
   private async markProcessed(message: IncomingMessage): Promise<void> {
-    this.dedup.add(`${message.platform}:${message.messageId}`);
+    this.dedup.add(`${message.platform}:${message.messageId}`, message.chat.id);
     await this.dedup.flush();
   }
 

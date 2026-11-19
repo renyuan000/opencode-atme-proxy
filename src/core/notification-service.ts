@@ -16,7 +16,7 @@ export interface NotificationServiceOptions {
   bridge: OpenCodeBridge;
   sendLimiter: TokenBucket;
   evidence: EvidenceStore;
-  outbound: DedupStore;
+  outbound: { has(key: string, chatId?: string): boolean; add(key: string, chatId?: string): void; flush(): Promise<void>; delete(key: string, chatId?: string): void };
   sentReplies: SentReplyStore;
   chatNames: Map<string, { name: string; at: number }>;
   ownerOpenId(): string | undefined;
@@ -71,7 +71,7 @@ export class NotificationService {
 
   async safeReply(message: IncomingMessage, text: string): Promise<boolean> {
     const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;
-    if (this.options.outbound.has(key)) {
+    if (this.options.outbound.has(key, message.chat.id)) {
       this.options.logger.info("skip duplicate reply", {
         messageId: message.messageId,
       });
@@ -83,7 +83,7 @@ export class NotificationService {
         { chatId: message.chat.id, messageId: message.messageId },
         { kind: "text", text, uuid: stableUuid(key) },
       );
-      this.options.outbound.add(key);
+      this.options.outbound.add(key, message.chat.id);
       await this.options.outbound.flush();
       try {
         await this.options.sentReplies.add({

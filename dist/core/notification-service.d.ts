@@ -1,5 +1,4 @@
 import type { AppConfig } from "./config.js";
-import type { DedupStore } from "./dedup.js";
 import type { EvidenceStore } from "./evidence-store.js";
 import type { Logger } from "./logger.js";
 import type { OpenCodeBridge } from "./opencode.js";
@@ -14,7 +13,12 @@ export interface NotificationServiceOptions {
     bridge: OpenCodeBridge;
     sendLimiter: TokenBucket;
     evidence: EvidenceStore;
-    outbound: DedupStore;
+    outbound: {
+        has(key: string, chatId?: string): boolean;
+        add(key: string, chatId?: string): void;
+        flush(): Promise<void>;
+        delete(key: string, chatId?: string): void;
+    };
     sentReplies: SentReplyStore;
     chatNames: Map<string, {
         name: string;

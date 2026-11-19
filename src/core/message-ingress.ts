@@ -11,7 +11,7 @@ import { isLowValueMessage } from "./util.js";
 export interface MessageIngressOptions {
   config: AppConfig;
   logger: Logger;
-  dedup: DedupStore;
+  dedup: { has(key: string, chatId?: string): boolean; add(key: string, chatId?: string): void; flush(): Promise<void>; delete(key: string, chatId?: string): void };
   chatContext: ChatContextStore;
   evidence: EvidenceStore;
   senderLimiter: SenderLimiter;
@@ -35,7 +35,7 @@ export class MessageIngress {
     force = false,
   ): Promise<void> {
     const dedupKey = `${message.platform}:${message.messageId}`;
-    if ((!force && this.options.dedup.has(dedupKey)) || this.options.activeMessageIds.has(dedupKey)) {
+    if ((!force && this.options.dedup.has(dedupKey, message.chat.id)) || this.options.activeMessageIds.has(dedupKey)) {
       return;
     }
     this.options.activeMessageIds.add(dedupKey);
@@ -55,7 +55,7 @@ export class MessageIngress {
         });
         await this.options.safeReply(message, this.options.config.botReply.overloadReply);
       }
-      this.options.dedup.add(dedupKey);
+      this.options.dedup.add(dedupKey, message.chat.id);
       await this.options.dedup.flush();
       this.options.activeMessageIds.delete(dedupKey);
       return;

@@ -19,7 +19,7 @@ export interface ScanServiceOptions {
     filterEnabled: boolean;
     groupIds: Set<string>;
     dedup: {
-        has(key: string): boolean;
+        has(key: string, chatId?: string): boolean;
     };
     activeMessageIds: Set<string>;
     ownerOpenId(): string | undefined;
