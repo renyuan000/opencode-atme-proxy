@@ -26,6 +26,7 @@ export declare class SentReplyStore {
     listRecallable(limit?: number, now?: number): SentReplyRecord[];
     get(id: string): SentReplyRecord | undefined;
     hasSource(sourceMessageId: string): boolean;
+    listBySource(sourceMessageId: string): SentReplyRecord[];
     add(input: Omit<SentReplyRecord, "id" | "status">): Promise<SentReplyRecord>;
     markRecalled(id: string, at?: number): Promise<boolean>;
     flush(): Promise<void>;

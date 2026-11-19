@@ -25,7 +25,7 @@ export interface BotMentionFlowOptions {
         worktree: string;
         resolved: boolean;
     }>;
-    sendToOwner(text: string): Promise<boolean>;
+    sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
     sendToApprover(text: string): Promise<boolean>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
     markProcessed(message: IncomingMessage): Promise<void>;
@@ -34,7 +34,9 @@ export interface BotMentionFlowOptions {
 export declare class BotMentionFlow {
     private readonly options;
     constructor(options: BotMentionFlowOptions);
+    private readonly missingContextNotified;
     handle(message: IncomingMessage, signal: AbortSignal): Promise<void>;
+    private expectsAttachment;
     private analyzeBotRequest;
     private sendOwnerDecisionCard;
     private sanitize;

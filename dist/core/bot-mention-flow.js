@@ -4,9 +4,15 @@ export class BotMentionFlow {
     constructor(options) {
         this.options = options;
     }
+    missingContextNotified = new Set();
     async handle(message, signal) {
-        const enriched = await this.options.replyService.enrichWithQuoted(message);
+        const enrichment = await this.options.replyService.enrichWithQuoted(message);
+        const enriched = enrichment.message;
         this.options.logger.info("bot mention handling", { messageId: message.messageId });
+        if (!enrichment.found && this.expectsAttachment(message) && !this.missingContextNotified.has(message.messageId)) {
+            this.missingContextNotified.add(message.messageId);
+            await this.options.sendToOwner(`没回溯到这条消息的文件或引用内容，请补充文件/链接/路径：\n群：${message.chat.name ?? message.chat.id}\n消息：${message.text.slice(0, 300)}`, message.messageId);
+        }
         const intent = await this.options.intentService.decideBotIntent(enriched, signal);
         this.options.logger.info("bot intent decided", {
             messageId: message.messageId,
@@ -94,6 +100,11 @@ export class BotMentionFlow {
             details: { messageId: message.messageId, style, reason: intent.reason },
         });
     }
+    expectsAttachment(message) {
+        if (message.replyToMessageId)
+            return true;
+        return /(原型|文件|附件|文档|截图|表格|html|pdf|docx?)/i.test(message.text);
+    }
     async analyzeBotRequest(message, intent, signal) {
         if (!this.options.config.botReply.analyzeBeforeEscalate)
             return undefined;
@@ -152,7 +163,7 @@ export class BotMentionFlow {
             ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),
             ...(analysis ? [`分析：\n${analysis}`] : []),
         ].join("\n");
-        return this.options.sendToOwner(text);
+        return this.options.sendToOwner(text, message.messageId);
     }
     sanitize(text) {
         return text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim();

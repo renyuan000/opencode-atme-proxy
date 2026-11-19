@@ -52,6 +52,9 @@ export class SentReplyStore {
     hasSource(sourceMessageId) {
         return this.replies.some((item) => item.status === "sent" && item.sourceMessageId === sourceMessageId);
     }
+    listBySource(sourceMessageId) {
+        return this.replies.filter((item) => item.status === "sent" && item.sourceMessageId === sourceMessageId);
+    }
     async add(input) {
         const record = {
             ...input,

@@ -25,7 +25,7 @@ export interface NotificationServiceOptions {
 export declare class NotificationService {
     private readonly options;
     constructor(options: NotificationServiceOptions);
-    sendToOwner(text: string): Promise<boolean>;
+    sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
     sendToApprover(text: string): Promise<boolean>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
     chatLabel(message: IncomingMessage): Promise<string>;

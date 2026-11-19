@@ -24,7 +24,7 @@ export interface BotMentionFlowOptions {
   ownerOpenId(): string | undefined;
   ownerName(): string;
   resolveProject(chatId: string): Promise<{ worktree: string; resolved: boolean }>;
-  sendToOwner(text: string): Promise<boolean>;
+  sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
   sendToApprover(text: string): Promise<boolean>;
   safeReply(message: IncomingMessage, text: string): Promise<boolean>;
   markProcessed(message: IncomingMessage): Promise<void>;
@@ -34,9 +34,19 @@ export interface BotMentionFlowOptions {
 export class BotMentionFlow {
   constructor(private readonly options: BotMentionFlowOptions) {}
 
+  private readonly missingContextNotified = new Set<string>();
+
   async handle(message: IncomingMessage, signal: AbortSignal): Promise<void> {
-    const enriched = await this.options.replyService.enrichWithQuoted(message);
+    const enrichment = await this.options.replyService.enrichWithQuoted(message);
+    const enriched = enrichment.message;
     this.options.logger.info("bot mention handling", { messageId: message.messageId });
+    if (!enrichment.found && this.expectsAttachment(message) && !this.missingContextNotified.has(message.messageId)) {
+      this.missingContextNotified.add(message.messageId);
+      await this.options.sendToOwner(
+        `没回溯到这条消息的文件或引用内容，请补充文件/链接/路径：\n群：${message.chat.name ?? message.chat.id}\n消息：${message.text.slice(0, 300)}`,
+        message.messageId,
+      );
+    }
     const intent = await this.options.intentService.decideBotIntent(enriched, signal);
     this.options.logger.info("bot intent decided", {
       messageId: message.messageId,
@@ -120,6 +130,11 @@ export class BotMentionFlow {
     });
   }
 
+  private expectsAttachment(message: IncomingMessage): boolean {
+    if (message.replyToMessageId) return true;
+    return /(原型|文件|附件|文档|截图|表格|html|pdf|docx?)/i.test(message.text);
+  }
+
   private async analyzeBotRequest(
     message: IncomingMessage,
     intent: BotIntent,
@@ -190,7 +205,7 @@ export class BotMentionFlow {
       ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),
       ...(analysis ? [`分析：\n${analysis}`] : []),
     ].join("\n");
-    return this.options.sendToOwner(text);
+    return this.options.sendToOwner(text, message.messageId);
   }
 
   private sanitize(text: string): string {

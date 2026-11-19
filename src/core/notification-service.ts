@@ -25,12 +25,12 @@ export interface NotificationServiceOptions {
 export class NotificationService {
   constructor(private readonly options: NotificationServiceOptions) {}
 
-  async sendToOwner(text: string): Promise<boolean> {
+  async sendToOwner(text: string, sourceMessageId?: string): Promise<boolean> {
     const openId = this.options.ownerOpenId();
     if (!openId) return false;
     try {
       await this.options.sendLimiter.take();
-      await this.options.platform.send(
+      const result = await this.options.platform.send(
         { kind: "user", userId: openId },
         {
           kind: "text",
@@ -38,6 +38,24 @@ export class NotificationService {
           uuid: stableUuid("owner", openId, sha256(text).slice(0, 16)),
         },
       );
+      if (sourceMessageId) {
+        try {
+          await this.options.sentReplies.add({
+            platform: "feishu",
+            chatId: `user:${openId}`,
+            senderLabel: openId,
+            sourceMessageId,
+            sentMessageId: result.messageId,
+            text,
+            sourceText: "",
+            sentAt: Date.now(),
+          });
+        } catch (error) {
+          this.options.logger.warn("failed to record owner message", {
+            error: toErrorMessage(error),
+          });
+        }
+      }
       return true;
     } catch (error) {
       this.options.logger.error("failed to send to owner", {

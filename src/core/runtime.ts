@@ -593,7 +593,7 @@ export class ProxyRuntime {
       ownerOpenId: () => this.ownerOpenId(),
       ownerName: () => this.ownerName(),
       resolveProject: (chatId) => this.resolveProject(chatId),
-      sendToOwner: (text) => this.sendToOwner(text),
+      sendToOwner: (text, sourceMessageId) => this.sendToOwner(text, sourceMessageId),
       sendToApprover: (text) => this.sendToApprover(text),
       safeReply: (message, text) => this.safeReply(message, text),
       markProcessed: (message) => this.markProcessed(message),
@@ -634,8 +634,8 @@ export class ProxyRuntime {
     return this.ownerAccess.claim(message);
   }
 
-  private sendToOwner(text: string): Promise<boolean> {
-    return this.notificationService.sendToOwner(text);
+  private sendToOwner(text: string, sourceMessageId?: string): Promise<boolean> {
+    return this.notificationService.sendToOwner(text, sourceMessageId);
   }
 
   private async acknowledge(message: IncomingMessage): Promise<void> {
@@ -673,10 +673,33 @@ export class ProxyRuntime {
     this.activeMessageIds.delete(key);
     this.dedup.add(key);
     await this.dedup.flush();
+    const replies = this.sentReplies.listBySource(event.messageId);
+    for (const reply of replies) {
+      try {
+        if (!this.options.platform.recallMessage) {
+          this.logger.warn("platform cannot recall bot replies", { messageId: event.messageId });
+          break;
+        }
+        await this.options.platform.recallMessage(reply.chatId, reply.sentMessageId);
+        await this.sentReplies.markRecalled(reply.id);
+        this.logger.info("recalled bot reply after source message recall", {
+          sourceMessageId: event.messageId,
+          sentMessageId: reply.sentMessageId,
+          chatId: reply.chatId,
+        });
+      } catch (error) {
+        this.logger.warn("failed to recall bot reply after source recall", {
+          sourceMessageId: event.messageId,
+          sentMessageId: reply.sentMessageId,
+          error: toErrorMessage(error),
+        });
+      }
+    }
     this.logger.info("message recalled; processing aborted", {
       messageId: event.messageId,
       chatId: event.chatId,
       aborted: Boolean(controller),
+      repliesRecalled: replies.length,
     });
   }
 

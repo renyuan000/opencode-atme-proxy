@@ -84,6 +84,12 @@ export class SentReplyStore {
     );
   }
 
+  listBySource(sourceMessageId: string): SentReplyRecord[] {
+    return this.replies.filter(
+      (item) => item.status === "sent" && item.sourceMessageId === sourceMessageId,
+    );
+  }
+
   async add(input: Omit<SentReplyRecord, "id" | "status">): Promise<SentReplyRecord> {
     const record: SentReplyRecord = {
       ...input,
