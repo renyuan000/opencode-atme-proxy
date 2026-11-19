@@ -29,6 +29,7 @@ export interface ReplyServiceOptions {
         modelID: string;
     };
     readOnlyPermission: SessionPermission[];
+    webPermission?: SessionPermission[];
     ownerOpenId(): string | undefined;
     resolveProject(chatId: string): Promise<{
         worktree: string;

@@ -102,6 +102,14 @@ const READ_ONLY_PERMISSION: Array<{
   { permission: "edit", pattern: "*", action: "deny" },
   { permission: "bash", pattern: "*", action: "deny" },
   { permission: "webfetch", pattern: "*", action: "deny" },
+  { permission: "websearch", pattern: "*", action: "deny" },
+  { permission: "external_directory", pattern: "*", action: "deny" },
+];
+
+const WEB_PERMISSION: typeof READ_ONLY_PERMISSION = [
+  { permission: "edit", pattern: "*", action: "deny" },
+  { permission: "bash", pattern: "*", action: "deny" },
+  { permission: "webfetch", pattern: "*", action: "allow" },
   { permission: "websearch", pattern: "*", action: "allow" },
   { permission: "external_directory", pattern: "*", action: "deny" },
 ];
@@ -421,6 +429,7 @@ export class ProxyRuntime {
       replyOptions: this.replyOptions,
       ...(this.config.opencode.replyModel ? { model: this.config.opencode.replyModel } : {}),
       readOnlyPermission: READ_ONLY_PERMISSION,
+      webPermission: WEB_PERMISSION,
       ownerOpenId: () => this.ownerOpenId(),
       resolveProject: async (chatId) => {
         const project = await this.resolveProject(chatId);

@@ -38,6 +38,7 @@ export interface ReplyServiceOptions {
   replyOptions: ReplyStyleOptions;
   model?: { providerID: string; modelID: string };
   readOnlyPermission: SessionPermission[];
+  webPermission?: SessionPermission[];
   ownerOpenId(): string | undefined;
   resolveProject(chatId: string): Promise<{
     worktree: string;
@@ -417,8 +418,15 @@ export class ReplyService {
           directory,
           title: `${this.options.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
           role: "reply",
+          web:
+            message.chat.kind === "direct" &&
+            message.sender.id === this.options.ownerOpenId(),
           ...(this.options.model ? { model: this.options.model } : {}),
-          permission: this.options.readOnlyPermission,
+          permission:
+            message.chat.kind === "direct" &&
+            message.sender.id === this.options.ownerOpenId()
+              ? (this.options.webPermission ?? this.options.readOnlyPermission)
+              : this.options.readOnlyPermission,
           ...(this.options.config.opencode.agent
             ? { agent: this.options.config.opencode.agent }
             : {}),

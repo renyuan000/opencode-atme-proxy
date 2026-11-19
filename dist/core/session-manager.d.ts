@@ -21,6 +21,7 @@ export interface WorkerInput {
         providerID: string;
         modelID: string;
     };
+    web?: boolean;
 }
 export interface ChildInput {
     platform: string;

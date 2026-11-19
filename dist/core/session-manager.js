@@ -85,7 +85,7 @@ export class SessionManager {
         return sessionId;
     }
     async createWorkerSession(input) {
-        const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
+        const key = `worker:${input.role}:${input.platform}:${input.chatId}${input.web ? ":web" : ""}`;
         const existing = this.options.sessions.get(key);
         if (existing && existing.directory === input.directory) {
             const probe = this.options.bridge.getSession;
@@ -105,7 +105,7 @@ export class SessionManager {
                 : input.agent;
         const sessionId = await this.options.bridge.createSession({
             directory: input.directory,
-            title: input.title,
+            title: input.web ? `${input.title}:web` : input.title,
             parentID: coordinator,
             ...(roleAgent ? { agent: roleAgent } : {}),
             ...(input.permission ? { permission: input.permission } : {}),
