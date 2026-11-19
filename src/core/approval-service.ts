@@ -99,7 +99,7 @@ export class ApprovalService {
       if (!(await this.isAuthorizedActor(action.actor))) {
         return { ok: false, toast: "无权操作" };
       }
-      return (await this.sendReplyManagementCard())
+      return (await this.sendReplyManagementCard(false))
         ? { ok: true, toast: "回复管理已发送" }
         : { ok: false, toast: "回复管理卡片发送失败" };
     }
@@ -314,10 +314,10 @@ export class ApprovalService {
     return rendered.kind === "card" ? rendered.card : undefined;
   }
 
-  async sendReplyManagementCard(): Promise<boolean> {
+  async sendReplyManagementCard(withNames = true): Promise<boolean> {
     const ownerId = this.options.ownerOpenId();
     if (!ownerId) return false;
-    const view = await this.replyManagementView();
+    const view = await this.replyManagementView(withNames);
     const message = this.options.platform.renderReplyManagement?.(view);
     if (!message) return false;
     try {
@@ -340,7 +340,7 @@ export class ApprovalService {
   }
 
   private async replyManagementResult(toast: string): Promise<PlatformActionResult> {
-    const view = await this.replyManagementView();
+    const view = await this.replyManagementView(false);
     const message = this.options.platform.renderReplyManagement?.(view);
     return {
       ok: true,
@@ -365,7 +365,7 @@ export class ApprovalService {
     return value;
   }
 
-  private async replyManagementView(): Promise<ReplyManagementView> {
+  private async replyManagementView(withNames = true): Promise<ReplyManagementView> {
     const pending: PendingReplySummary[] = [];
     const cards = this.options.pending
       .snapshot()
@@ -378,7 +378,7 @@ export class ApprovalService {
         taskId: card.taskId,
         planHash: card.planHash,
         chatLabel: task?.chatName ?? this.groupLabel(card.chatId),
-        senderLabel: await this.resolveSenderLabel(sender),
+        senderLabel: withNames ? await this.resolveSenderLabel(sender) : sender,
         draft: card.draft ?? "（无草稿）",
         excerpt: task?.excerpt ?? "",
         createdAt: card.createdAt,
@@ -389,7 +389,7 @@ export class ApprovalService {
       sent.push({
         id: item.id,
         chatLabel: item.chatName ?? this.groupLabel(item.chatId),
-        senderLabel: await this.resolveSenderLabel(item.senderLabel),
+        senderLabel: withNames ? await this.resolveSenderLabel(item.senderLabel) : item.senderLabel,
         text: item.text,
         sourceText: item.sourceText,
         sentAt: item.sentAt,

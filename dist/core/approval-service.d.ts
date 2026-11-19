@@ -37,7 +37,7 @@ export declare class ApprovalService {
     private resolvedCardFor;
     private cancelPendingNow;
     private pendingApprovalCard;
-    sendReplyManagementCard(): Promise<boolean>;
+    sendReplyManagementCard(withNames?: boolean): Promise<boolean>;
     private groupLabel;
     private replyManagementResult;
     private resolveSenderLabel;
