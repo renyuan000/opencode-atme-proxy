@@ -42,6 +42,20 @@ export class OwnerTargetStore {
         this.targets.set(target.ownerId, next);
         this.dirty = true;
     }
+    select(ownerId, value) {
+        const list = this.list(ownerId);
+        const index = Number(value);
+        const selected = Number.isInteger(index) && index > 0
+            ? list[index - 1]
+            : list.find((target) => target.chatId === value ||
+                target.sourceMessageId === value ||
+                target.chatName === value);
+        if (!selected)
+            return undefined;
+        this.targets.set(ownerId, [selected, ...list.filter((item) => item !== selected)]);
+        this.dirty = true;
+        return selected;
+    }
     clear(ownerId) {
         if (this.targets.delete(ownerId))
             this.dirty = true;

@@ -17,6 +17,7 @@ export declare class OwnerTargetStore {
     list(ownerId: string, maxAgeMs?: number): OwnerTarget[];
     get(ownerId: string, maxAgeMs?: number): OwnerTarget | undefined;
     set(target: OwnerTarget): void;
+    select(ownerId: string, value: string): OwnerTarget | undefined;
     clear(ownerId: string): void;
     flush(): Promise<void>;
 }

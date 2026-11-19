@@ -278,6 +278,8 @@ export class ProxyRuntime {
             approveReply: (action, pending) => this.approveReply(action, pending),
             sendReplyManagementCard: () => this.approvalService.sendReplyManagementCard(),
             setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
+            listOwnerTargets: () => this.listOwnerTargets(),
+            selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
             logger: this.logger.child("owner-command"),
         });
         const profile = {
@@ -1008,6 +1010,28 @@ export class ProxyRuntime {
     }
     chatLabel(message) {
         return this.notificationService.chatLabel(message);
+    }
+    listOwnerTargets() {
+        const ownerId = this.ownerOpenId();
+        if (!ownerId)
+            return "owner 未绑定。";
+        const targets = this.ownerTargets.list(ownerId);
+        if (targets.length === 0)
+            return "当前没有私聊关联目标。";
+        return [
+            "当前私聊目标：",
+            ...targets.map((target, index) => `${index + 1}. ${target.chatName ?? target.chatId} chatId=${target.chatId}${target.sourceMessageId ? ` messageId=${target.sourceMessageId}` : ""}`),
+            "用 /目标 <编号|chatId|messageId> 选择。",
+        ].join("\n");
+    }
+    selectOwnerTarget(arg) {
+        const ownerId = this.ownerOpenId();
+        if (!ownerId)
+            return "owner 未绑定。";
+        const target = this.ownerTargets.select(ownerId, arg.trim());
+        if (!target)
+            return "找不到目标，用 /目标 查看列表。";
+        return `已选择目标：${target.chatName ?? target.chatId} ${target.sourceMessageId ?? ""}`.trim();
     }
     async setGroupResponsibility(arg) {
         const match = arg.trim().match(/^(\S+)\s+([\s\S]+)$/);

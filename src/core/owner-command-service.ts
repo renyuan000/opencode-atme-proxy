@@ -28,6 +28,8 @@ export interface OwnerCommandServiceOptions {
   approveReply(action: PlatformAction, pending: PendingCard): Promise<boolean>;
   sendReplyManagementCard(): Promise<boolean>;
   setGroupResponsibility(arg: string): Promise<string>;
+  listOwnerTargets(): string;
+  selectOwnerTarget(arg: string): string;
   logger: Logger;
 }
 
@@ -48,7 +50,13 @@ export class OwnerCommandService {
         "/取消 [编号|taskId]    取消指定或最近一条",
         "/回复管理              查看并撤回最近回复",
         "/职责 <群名|chatId> <说明>  设置群职责画像",
+        "/目标 [编号|chatId|messageId] 查看/选择私聊目标",
       ].join("\n");
+    }
+    if (command.command === "target") {
+      return command.arg
+        ? this.options.selectOwnerTarget(command.arg)
+        : this.options.listOwnerTargets();
     }
     if (command.command === "responsibility") {
       if (!command.arg) return "用法：/职责 <群名|chatId> <职责说明>";

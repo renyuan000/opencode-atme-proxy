@@ -100,6 +100,8 @@ export declare class ProxyRuntime {
     private onChatMembership;
     private fetchChatName;
     private chatLabel;
+    private listOwnerTargets;
+    private selectOwnerTarget;
     private setGroupResponsibility;
     private handleOwnerCommand;
     private notifyBlockedDirect;
