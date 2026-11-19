@@ -471,8 +471,8 @@ WSL2 可能随时重启，插件启动时会做四件事：
 ```text
 groups/<群名__短ID>/
   group.json          群身份、项目、职责
-  group-profile.json  初始/持续演进的群画像
-  group-profile-history.jsonl 群画像变更历史
+  group-knowledge.json  初始/持续演进的群画像
+  group-knowledge-history.jsonl 群画像变更历史
   chat-context.json   本群最近上下文（默认 50 条 / 7 天）
   group-context.json  本群摘要
   memory.json         本群记忆兼容文件

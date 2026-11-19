@@ -30,7 +30,7 @@ export interface OwnerCommandServiceOptions {
   setGroupResponsibility(arg: string): Promise<string>;
   listOwnerTargets(): string;
   selectOwnerTarget(arg: string): string;
-  getGroupProfiles(arg: string): Promise<string>;
+  getGroupKnowledge(arg: string): Promise<string>;
   logger: Logger;
 }
 
@@ -56,7 +56,7 @@ export class OwnerCommandService {
       ].join("\n");
     }
     if (command.command === "profile") {
-      return this.options.getGroupProfiles(command.arg);
+      return this.options.getGroupKnowledge(command.arg);
     }
     if (command.command === "target") {
       return command.arg

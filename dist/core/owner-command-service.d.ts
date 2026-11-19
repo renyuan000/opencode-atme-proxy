@@ -25,7 +25,7 @@ export interface OwnerCommandServiceOptions {
     setGroupResponsibility(arg: string): Promise<string>;
     listOwnerTargets(): string;
     selectOwnerTarget(arg: string): string;
-    getGroupProfiles(arg: string): Promise<string>;
+    getGroupKnowledge(arg: string): Promise<string>;
     logger: Logger;
 }
 export declare class OwnerCommandService {

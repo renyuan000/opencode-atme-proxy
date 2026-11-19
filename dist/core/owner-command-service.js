@@ -26,7 +26,7 @@ export class OwnerCommandService {
             ].join("\n");
         }
         if (command.command === "profile") {
-            return this.options.getGroupProfiles(command.arg);
+            return this.options.getGroupKnowledge(command.arg);
         }
         if (command.command === "target") {
             return command.arg

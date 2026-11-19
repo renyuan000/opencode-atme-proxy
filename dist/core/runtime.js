@@ -32,7 +32,7 @@ import { OwnerStore } from "./owner-store.js";
 import { OwnerTargetStore } from "./owner-target.js";
 import { ScopedDocumentCache } from "./document-cache.js";
 import { ScopedDocumentRefs } from "./document-ref-store.js";
-import { ScopedGroupProfiles } from "./group-profile.js";
+import { ScopedGroupKnowledge } from "./group-knowledge.js";
 import { OwnerAccessService } from "./owner-access-service.js";
 import { readJsonFile, sha256, toErrorMessage, redactPreview, truncate, truncateMiddle, writeJsonAtomic, } from "./util.js";
 const ASSISTANT_LABEL = "（助手代答）";
@@ -115,7 +115,7 @@ export class ProxyRuntime {
     ownerTargets;
     documentCache;
     documentRefs;
-    groupProfiles;
+    groupKnowledge;
     groupLocks = new Map();
     blockedDirectAlerts = new Map();
     messageControllers = new Map();
@@ -186,7 +186,7 @@ export class ProxyRuntime {
         });
         this.documentCache = new ScopedDocumentCache(this.groupState, this.logger.child("document-cache"));
         this.documentRefs = new ScopedDocumentRefs(this.groupState, this.logger.child("document-refs"));
-        this.groupProfiles = new ScopedGroupProfiles(this.groupState, this.logger.child("group-profile"));
+        this.groupKnowledge = new ScopedGroupKnowledge(this.groupState, this.logger.child("group-knowledge"));
         this.ownerTargets = new OwnerTargetStore(join(this.stateDir, "owner-target.json"), this.logger.child("owner-target"));
         this.ownerAccess = new OwnerAccessService({
             config: this.config,
@@ -289,7 +289,7 @@ export class ProxyRuntime {
             setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
             listOwnerTargets: () => this.listOwnerTargets(),
             selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
-            getGroupProfiles: (arg) => this.getGroupProfiles(arg),
+            getGroupKnowledge: (arg) => this.getGroupKnowledge(arg),
             logger: this.logger.child("owner-command"),
         });
         const profile = {
@@ -365,7 +365,7 @@ export class ProxyRuntime {
             notifyOwner: (text) => this.sendToOwner(text),
             responsibilityFor: (chatId) => {
                 const responsibility = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility;
-                const inferred = this.groupProfiles.get(chatId);
+                const inferred = this.groupKnowledge.get(chatId);
                 return JSON.stringify(responsibility ??
                     (inferred
                         ? {
@@ -506,7 +506,7 @@ export class ProxyRuntime {
             projectContext: (chatId) => {
                 const group = this.config.platforms.feishu.groups.find((item) => item.chatId === chatId);
                 const project = group?.project;
-                const inferred = this.groupProfiles.get(chatId);
+                const inferred = this.groupKnowledge.get(chatId);
                 const responsibility = group?.responsibility
                     ? group.responsibility
                     : inferred
@@ -609,10 +609,10 @@ export class ProxyRuntime {
             sendToOwner: (text) => this.sendToOwner(text),
         });
     }
-    async refreshGroupProfiles() {
+    async refreshGroupKnowledge() {
         const allTasks = await this.tasks.list();
         for (const group of this.config.platforms.feishu.groups) {
-            const existing = this.groupProfiles.get(group.chatId);
+            const existing = this.groupKnowledge.get(group.chatId);
             const tasks = allTasks
                 .filter((task) => task.chatId === group.chatId)
                 .slice(-10)
@@ -650,7 +650,7 @@ export class ProxyRuntime {
                 JSON.stringify(existing.tasks) !== JSON.stringify(profile.tasks) ||
                 JSON.stringify(existing.features) !== JSON.stringify(profile.features) ||
                 JSON.stringify(existing.dependsOn) !== JSON.stringify(profile.dependsOn)) {
-                await this.groupProfiles.set(profile);
+                await this.groupKnowledge.set(profile);
                 this.logger.info("initial group profile inferred", {
                     chatId: group.chatId,
                     product,
@@ -797,13 +797,13 @@ export class ProxyRuntime {
         await this.memory.load();
         await this.memory.migrateShards();
         await this.groupContext.load();
-        await this.refreshGroupProfiles();
+        await this.refreshGroupKnowledge();
         this.evidence.prune();
         await this.ownerAccess.load();
         await this.ownerTargets.load();
         await this.documentCache.load();
         await this.documentRefs.load();
-        await this.groupProfiles.load();
+        await this.groupKnowledge.load();
         this.ownerAccess.reconcile();
         await this.options.platform.start({
             onMessage: (message) => this.onMessage(message),
@@ -823,7 +823,7 @@ export class ProxyRuntime {
         }, 60_000);
         this.sweepTimer.unref?.();
         this.profileTimer = setInterval(() => {
-            void this.refreshGroupProfiles();
+            void this.refreshGroupKnowledge();
         }, 10 * 60_000);
         this.profileTimer.unref?.();
         void this.sweepExpiredApprovals();
@@ -873,7 +873,7 @@ export class ProxyRuntime {
             this.ownerTargets.flush(),
             this.documentCache.flush(),
             this.documentRefs.flush(),
-            this.groupProfiles.flush(),
+            this.groupKnowledge.flush(),
         ]);
         this.logger.info("runtime stopped");
     }
@@ -1127,9 +1127,9 @@ export class ProxyRuntime {
     chatLabel(message) {
         return this.notificationService.chatLabel(message);
     }
-    async getGroupProfiles(arg) {
-        await this.refreshGroupProfiles();
-        const profiles = this.groupProfiles.list();
+    async getGroupKnowledge(arg) {
+        await this.refreshGroupKnowledge();
+        const profiles = this.groupKnowledge.list();
         if (profiles.length === 0)
             return "还没有群画像。";
         const key = arg.trim();
@@ -1208,7 +1208,7 @@ export class ProxyRuntime {
             }
         }
         await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
-        await this.refreshGroupProfiles();
+        await this.refreshGroupKnowledge();
         return `已设置「${group.name ?? group.chatId}」职责：${description}`;
     }
     handleOwnerCommand(message, command) {
