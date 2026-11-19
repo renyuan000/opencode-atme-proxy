@@ -16,4 +16,5 @@ export declare class GroupWorkspaceManager {
     private readonly logger;
     constructor(root: string, logger?: Logger);
     ensure(input: GroupWorkspaceInput): Promise<string | undefined>;
+    private writeAlias;
 }

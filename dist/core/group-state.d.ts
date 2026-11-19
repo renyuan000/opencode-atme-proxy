@@ -12,6 +12,7 @@ import { type BoundProject } from "./project-store.js";
 import { ApprovalStore } from "./approval-store.js";
 import { AuditLog } from "./audit.js";
 export declare function groupDirName(chatId: string, name?: string): string;
+export declare function shortGroupId(chatId: string): string;
 export interface GroupStateInfo {
     chatId: string;
     name: string;

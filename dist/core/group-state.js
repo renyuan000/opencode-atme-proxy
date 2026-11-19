@@ -23,6 +23,10 @@ export function groupDirName(chatId, name) {
 function sanitize(value) {
     return (value.replace(UNSAFE, "_").trim() || "群").slice(0, 40);
 }
+export function shortGroupId(chatId) {
+    const id = chatId.split(":").pop() ?? chatId;
+    return id.slice(0, 11);
+}
 function shortId(chatId) {
     const id = chatId.split(":").pop() ?? chatId;
     return id.slice(0, 11);
@@ -73,8 +77,13 @@ export class GroupStateLayout {
     }
     async ensure(chatId, name) {
         const existing = this.byChat.get(chatId);
-        if (existing)
+        if (existing) {
+            if (name && name !== existing.name) {
+                existing.name = name;
+                await this.writeGroupJson(existing);
+            }
             return existing;
+        }
         const displayName = name || (chatId.startsWith("oc_b0143a44") ? "私聊" : `群_${shortId(chatId)}`);
         let dirName = `${sanitize(displayName)}__${shortId(chatId)}`;
         let info = this.byDir.get(dirName);
@@ -100,17 +109,19 @@ export class GroupStateLayout {
     async writeGroupJson(info) {
         await mkdir(info.dir, { recursive: true });
         const path = join(info.dir, "group.json");
-        const existing = await readFile(path, "utf8").catch(() => "");
-        if (existing)
-            return;
+        const previous = await readFile(path, "utf8")
+            .then((raw) => JSON.parse(raw))
+            .catch(() => undefined);
         const body = {
+            ...(previous ?? {}),
             groupKey: `feishu:${info.chatId}`,
             chatId: info.chatId,
             name: info.name,
             shortId: shortId(info.chatId),
             dirName: info.dirName,
-            createdAt: new Date().toISOString(),
-            project: null,
+            createdAt: previous?.createdAt ?? new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            project: previous?.project ?? null,
         };
         const { writeJsonAtomic } = await import("./util.js");
         await writeJsonAtomic(path, body);
