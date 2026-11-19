@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createLogger } from "./logger.js";
 import { OpenAiCompatibleClient, RelevanceService, parseJsonLoose, } from "./relevance.js";
 import { detectReplyStyle, enforceReplyLength, } from "./reply-style.js";
@@ -105,6 +105,7 @@ export class ProxyRuntime {
     blockedDirectAlerts = new Map();
     messageControllers = new Map();
     recoveryPromise;
+    missingProjectNotices = new Map();
     memory;
     senderLimiter;
     projectResolver;
@@ -1145,6 +1146,30 @@ export class ProxyRuntime {
         });
         return this.recoveryPromise;
     }
+    async notifyMissingProject(chatId) {
+        const group = this.config.platforms.feishu.groups.find((item) => item.chatId === chatId);
+        if (!group?.project || group.project.primary?.trim())
+            return;
+        const now = Date.now();
+        const last = this.missingProjectNotices.get(chatId) ?? 0;
+        if (now - last < 24 * 3600_000)
+            return;
+        this.missingProjectNotices.set(chatId, now);
+        const paths = [
+            this.config.project.worktree,
+            ...this.config.repos.map((repo) => repo.path),
+            ...(group.project.secondary ?? []),
+        ].filter((value) => Boolean(value));
+        const parents = [...new Set(paths.map((value) => dirname(value)))];
+        const suggestion = parents.length > 0
+            ? `参考现有项目位置：\n${parents.slice(0, 3).map((item) => `- ${item}`).join("\n")}\n建议在相同目录下创建项目目录。`
+            : "请提供主项目目录，以及可选的参考项目目录。";
+        await this.sendToOwner([
+            `群「${group.name ?? chatId}」还没有配置主项目目录。`,
+            suggestion,
+            "请私聊我主项目路径；如果有次项目/参考项目，也一起给我。",
+        ].join("\n"));
+    }
     async onReconnected() {
         if (!this.started)
             return;
@@ -1369,6 +1394,7 @@ export class ProxyRuntime {
         if (groupProject) {
             const primary = groupProject.primary?.trim();
             if (!primary) {
+                void this.notifyMissingProject(chatId);
                 return {
                     worktree: join(this.stateDir, "scratch"),
                     secondaryWorktrees: groupProject.secondary ?? [],
