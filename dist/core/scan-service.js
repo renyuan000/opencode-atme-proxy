@@ -138,6 +138,7 @@ export class ScanService {
                 chatId: message.chat.id,
                 error: toErrorMessage(error),
             });
+            await this.options.sendToOwner(`文件分析失败（${message.chat.name ?? message.chat.id}）：\n文件：${files.map((file) => file.name).filter(Boolean).join("、") || "未命名文件"}\n原因：${toErrorMessage(error)}`);
         }
     }
     async enrichFile(message) {
