@@ -20,6 +20,7 @@ export declare class ProxyRuntime {
     private readonly dedup;
     private readonly historyMentions;
     private readonly outbound;
+    private readonly groupState;
     private readonly cursors;
     private readonly sessions;
     private readonly sessionManager;

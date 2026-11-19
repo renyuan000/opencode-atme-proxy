@@ -15,6 +15,7 @@ import { toErrorMessage, truncate, writeJsonAtomic } from "./util.js";
 export interface ExecutionServiceOptions {
   config: AppConfig;
   stateDir: string;
+  stateDirFor?(chatId: string): string;
   tasks: TaskStore;
   approvals: ApprovalStore;
   audit: AuditLog;
@@ -57,7 +58,7 @@ export class ExecutionService {
       await this.options.tasks.save(task);
       const execution = await this.runOpenCodeExecution(task, repo, analysis);
       await writeJsonAtomic(
-        join(this.options.stateDir, "executions", `${task.id}.json`),
+        join(this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir, "executions", `${task.id}.json`),
         execution,
       );
       task.state = execution.status === "succeeded" ? "done" : "failed";
@@ -147,7 +148,7 @@ export class ExecutionService {
         finishedAt: Date.now(),
       };
       await writeJsonAtomic(
-        join(this.options.stateDir, "executions", `${task.id}.json`),
+        join(this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir, "executions", `${task.id}.json`),
         execution,
       );
       task.state = "done";

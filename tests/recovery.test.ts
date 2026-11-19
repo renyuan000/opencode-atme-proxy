@@ -16,6 +16,7 @@ import type {
   TaskRecord,
 } from "../src/core/types.js";
 import type { OpenCodeBridge } from "../src/core/opencode.js";
+import { ensureTestGroup, testGroupDir } from "./group-state.js";
 
 function config(stateDir: string, resume = true): LoadedConfig {
   return {
@@ -144,7 +145,8 @@ function task(state: TaskRecord["state"], updatedAt = Date.now()): TaskRecord {
 test("resume re-analyzes candidate tasks and nudges stale approvals", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
   try {
-    const store = new TaskStore(dir);
+    await ensureTestGroup(dir, "chat");
+    const store = new TaskStore(testGroupDir(dir, "chat"));
     await store.load();
     await store.save(task("candidate"));
     await store.save({
@@ -158,7 +160,7 @@ test("resume re-analyzes candidate tasks and nudges stale approvals", async () =
     await runtime.start();
     await runtime.recoverOnStartup();
     await new Promise((r) => setTimeout(r, 150));
-    const reloaded = new TaskStore(dir);
+    const reloaded = new TaskStore(testGroupDir(dir, "chat"));
     await reloaded.load();
     const open = await reloaded.get("task_open");
     const wait = await reloaded.get("task_wait");
@@ -176,7 +178,8 @@ test("resume re-analyzes candidate tasks and nudges stale approvals", async () =
 test("resume pauses stale executing tasks instead of replaying", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
   try {
-    const store = new TaskStore(dir);
+    await ensureTestGroup(dir, "chat");
+    const store = new TaskStore(testGroupDir(dir, "chat"));
     await store.load();
     await store.save(task("executing", Date.now() - 10 * 60_000));
     await store.close();
@@ -185,7 +188,7 @@ test("resume pauses stale executing tasks instead of replaying", async () => {
     await runtime.start();
     await runtime.recoverOnStartup();
     await new Promise((r) => setTimeout(r, 100));
-    const reloaded = new TaskStore(dir);
+    const reloaded = new TaskStore(testGroupDir(dir, "chat"));
     await reloaded.load();
     const executing = await reloaded.get("task_open");
     assert.equal(executing?.state, "awaiting_approval");

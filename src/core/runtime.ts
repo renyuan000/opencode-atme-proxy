@@ -62,6 +62,20 @@ import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
 import { SentReplyStore } from "./sent-reply-store.js";
+import {
+  GroupStateLayout,
+  ScopedApprovals,
+  ScopedChatContext,
+  ScopedCursors,
+  ScopedEvidence,
+  ScopedGroupContext,
+  ScopedMemory,
+  ScopedPending,
+  ScopedProjects,
+  ScopedSentReplies,
+  ScopedSessions,
+  ScopedTasks,
+} from "./group-state.js";
 import { parseOwnerCommand, type OwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerAccessService } from "./owner-access-service.js";
@@ -110,13 +124,14 @@ export class ProxyRuntime {
   private readonly dedup: DedupStore;
   private readonly historyMentions: DedupStore;
   private readonly outbound: DedupStore;
-  private readonly cursors: CursorStore;
-  private readonly sessions: SessionStore;
+  private readonly groupState: GroupStateLayout;
+  private readonly cursors: ScopedCursors;
+  private readonly sessions: ScopedSessions;
   private readonly sessionManager: SessionManager;
   private readonly chatNames = new Map<string, { name: string; at: number }>();
   private readonly recentMessages = new Map<string, IncomingMessage[]>();
-  private readonly tasks: TaskStore;
-  private readonly approvals: ApprovalStore;
+  private readonly tasks: ScopedTasks;
+  private readonly approvals: ScopedApprovals;
   private readonly audit: AuditLog;
   private readonly dispatcher: ConcurrentDispatcher;
   private readonly sendLimiter: TokenBucket;
@@ -124,17 +139,17 @@ export class ProxyRuntime {
   private readonly llm: LlmClient;
   private readonly replyOptions: ReplyStyleOptions;
   private readonly activeMessageIds = new Set<string>();
-  private readonly pending: PendingStore;
+  private readonly pending: ScopedPending;
   private readonly poller: PollingService;
   private readonly executor: GitExecutor;
   private started = false;
   private readonly groupIds: Set<string>;
   private readonly pollingEnabled: boolean;
   private readonly filterEnabled: boolean;
-  private readonly projectStore: ProjectStore;
-  private readonly chatContext: ChatContextStore;
-  private readonly evidence: EvidenceStore;
-  private readonly groupContext: GroupContextStore;
+  private readonly projectStore: ScopedProjects;
+  private readonly chatContext: ScopedChatContext;
+  private readonly evidence: ScopedEvidence;
+  private readonly groupContext: ScopedGroupContext;
   private readonly contextService: ContextService;
   private readonly approvalService: ApprovalService;
   private readonly executionService: ExecutionService;
@@ -148,14 +163,14 @@ export class ProxyRuntime {
   private readonly scanService: ScanService;
   private readonly notificationService: NotificationService;
   private readonly recoveryService: RecoveryService;
-  private readonly sentReplies: SentReplyStore;
+  private readonly sentReplies: ScopedSentReplies;
   private readonly ownerAccess: OwnerAccessService;
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly blockedDirectAlerts = new Map<string, number>();
   private readonly messageControllers = new Map<string, AbortController>();
   private recoveryPromise?: Promise<void>;
   private readonly missingProjectNotices = new Map<string, number>();
-  private readonly memory: MemoryStore;
+  private readonly memory: ScopedMemory;
   private readonly senderLimiter: SenderLimiter;
   private projectResolver?: ProjectResolver;
   private readonly background = new Set<Promise<unknown>>();
@@ -177,6 +192,10 @@ export class ProxyRuntime {
     this.logger = options.logger ?? createLogger({ scope: "runtime" });
     this.config = options.loaded.config;
     this.stateDir = requireStateDir(this.config);
+    this.groupState = new GroupStateLayout(
+      join(this.stateDir, "groups"),
+      this.logger.child("group-state"),
+    );
     this.dedup = new DedupStore({
       file: join(this.stateDir, "dedup.json"),
       ttlMs: 7 * 24 * 3600 * 1000,
@@ -195,46 +214,40 @@ export class ProxyRuntime {
       maxEntries: 50_000,
       logger: this.logger.child("outbound"),
     });
-    this.cursors = new CursorStore({
-      file: join(this.stateDir, "cursors.json"),
-      logger: this.logger.child("cursor"),
-    });
-    this.sessions = new SessionStore(
-      join(this.stateDir, "sessions.json"),
-      this.logger.child("sessions"),
-    );
+    this.cursors = new ScopedCursors(this.groupState, this.logger.child("cursor"));
+    this.sessions = new ScopedSessions(this.groupState, this.logger.child("sessions"));
     this.sessionManager = new SessionManager({
       bridge: this.options.bridge,
-      sessions: this.sessions,
+      sessions: this.sessions as unknown as SessionStore,
       config: this.config,
       logger: this.logger.child("sessions"),
       readOnlyPermission: READ_ONLY_PERMISSION,
     });
-    this.tasks = new TaskStore(this.stateDir, this.logger.child("tasks"));
-    this.approvals = new ApprovalStore(this.stateDir);
+    this.tasks = new ScopedTasks(this.groupState, this.logger.child("tasks"));
+    this.approvals = new ScopedApprovals(this.groupState, async (taskId) => {
+      const task = await this.tasks.get(taskId);
+      return task?.chatId;
+    });
     this.audit = new AuditLog(AuditLog.defaultPath(this.stateDir));
-    this.pending = new PendingStore(
-      join(this.stateDir, "pending.json"),
-      this.logger.child("pending"),
-    );
-    this.sentReplies = new SentReplyStore(
-      join(this.stateDir, "sent-replies.json"),
+    this.pending = new ScopedPending(this.groupState, this.logger.child("pending"));
+    this.sentReplies = new ScopedSentReplies(
+      this.groupState,
       7 * 24 * 3600_000,
       50,
       this.logger.child("sent-replies"),
     );
     this.approvalService = new ApprovalService({
       config: this.config,
-      pending: this.pending,
-      tasks: this.tasks,
-      approvals: this.approvals,
+      pending: this.pending as unknown as PendingStore,
+      tasks: this.tasks as unknown as TaskStore,
+      approvals: this.approvals as unknown as ApprovalStore,
       audit: this.audit,
       platform: this.options.platform,
       logger: this.logger.child("approval"),
       ownerOpenId: () => this.ownerOpenId(),
       sendToApprover: (text) => this.sendToApprover(text),
       approveReply: (action, pending) => this.approveReply(action, pending),
-      sentReplies: this.sentReplies,
+      sentReplies: this.sentReplies as unknown as SentReplyStore,
       startExecution: (task, planHash) => {
         this.track(this.executionService.executeTask(task, planHash)).catch((error) => {
           this.logger.error("execution failed", {
@@ -244,10 +257,7 @@ export class ProxyRuntime {
         });
       },
     });
-    this.projectStore = new ProjectStore(
-      join(this.stateDir, "projects.json"),
-      this.logger.child("projects"),
-    );
+    this.projectStore = new ScopedProjects(this.groupState, this.logger.child("projects"));
     this.senderLimiter = new SenderLimiter({
       maxPerMinute: this.config.botReply.perSenderPerMinute,
       maxConcurrent: this.config.botReply.perSenderConcurrent,
@@ -265,40 +275,33 @@ export class ProxyRuntime {
       sendToOwner: (text) => this.sendToOwner(text),
     });
     this.ownerAccess.init();
-    this.chatContext = new ChatContextStore({
-      file: join(this.stateDir, "chat-context.json"),
+    this.chatContext = new ScopedChatContext(this.groupState, {
       maxMessagesPerChat: this.config.context.maxMessagesPerChat,
       maxCharsPerMessage: this.config.context.maxCharsPerMessage,
       maxChats: this.config.context.maxChats,
       ttlMs: this.config.context.ttlDays * 86_400_000,
       logger: this.logger.child("context"),
     });
-    this.memory = new MemoryStore({
-      file: join(this.stateDir, "memory.json"),
-      shardDir: join(this.stateDir, "memory"),
+    this.memory = new ScopedMemory(this.groupState, {
       maxEntries: this.config.memory.maxEntries,
       ttlMs: this.config.memory.ttlDays * 86_400_000,
       pinnedKinds: this.config.memory.pinnedKinds,
       logger: this.logger.child("memory"),
     });
-    this.evidence = new EvidenceStore({
-      dir: join(this.stateDir, "replies"),
+    this.evidence = new ScopedEvidence(this.groupState, {
       enabled: this.config.evidence?.enabled ?? true,
       retentionDays: this.config.evidence?.retentionDays ?? 720,
       maxChars: this.config.evidence?.maxChars ?? 4000,
       logger: this.logger.child("evidence"),
     });
-    this.groupContext = new GroupContextStore(
-      join(this.stateDir, "group-context.json"),
-      this.logger.child("group-context"),
-    );
+    this.groupContext = new ScopedGroupContext(this.groupState, this.logger.child("group-context"));
     this.contextService = new ContextService({
       config: this.config,
-      chatContext: this.chatContext,
-      memory: this.memory,
-      tasks: this.tasks,
-      groupContext: this.groupContext,
-      evidence: this.evidence,
+      chatContext: this.chatContext as unknown as ChatContextStore,
+      memory: this.memory as unknown as MemoryStore,
+      tasks: this.tasks as unknown as TaskStore,
+      groupContext: this.groupContext as unknown as GroupContextStore,
+      evidence: this.evidence as unknown as EvidenceStore,
     });
     this.dispatcher = new ConcurrentDispatcher({
       concurrency: this.config.concurrency.global,
@@ -322,8 +325,8 @@ export class ProxyRuntime {
       config: this.config,
       logger: this.logger.child("ingress"),
       dedup: this.dedup,
-      chatContext: this.chatContext,
-      evidence: this.evidence,
+      chatContext: this.chatContext as unknown as ChatContextStore,
+      evidence: this.evidence as unknown as EvidenceStore,
       senderLimiter: this.senderLimiter,
       activeMessageIds: this.activeMessageIds,
       ownerOpenId: () => this.ownerOpenId(),
@@ -357,8 +360,8 @@ export class ProxyRuntime {
       detailTriggers: this.config.reply.detailTriggers,
     };
     this.ownerCommandService = new OwnerCommandService({
-      pending: this.pending,
-      tasks: this.tasks,
+      pending: this.pending as unknown as PendingStore,
+      tasks: this.tasks as unknown as TaskStore,
       audit: this.audit,
       platform: this.options.platform,
       sendLimiter: this.sendLimiter,
@@ -391,10 +394,10 @@ export class ProxyRuntime {
     this.replyService = new ReplyService({
       config: this.config,
       contextService: this.contextService,
-      chatContext: this.chatContext,
+      chatContext: this.chatContext as unknown as ChatContextStore,
       sessionManager: this.sessionManager,
-      tasks: this.tasks,
-      pending: this.pending,
+      tasks: this.tasks as unknown as TaskStore,
+      pending: this.pending as unknown as PendingStore,
       audit: this.audit,
       platform: this.options.platform,
       sendLimiter: this.sendLimiter,
@@ -423,7 +426,8 @@ export class ProxyRuntime {
     this.taskService = new TaskService({
       config: this.config,
       stateDir: this.stateDir,
-      tasks: this.tasks,
+      stateDirFor: (chatId) => this.groupState.dirFor(chatId),
+      tasks: this.tasks as unknown as TaskStore,
       audit: this.audit,
       contextService: this.contextService,
       sessionManager: this.sessionManager,
@@ -443,7 +447,7 @@ export class ProxyRuntime {
             : {}),
         };
       },
-      memory: this.memory,
+      memory: this.memory as unknown as MemoryStore,
       projectId: (chatId) => this.projectStore.get(chatId)?.projectId,
       startAnalysis: (task) => {
         this.track(this.taskService.analyzeTask(task)).catch((error) => {
@@ -464,8 +468,9 @@ export class ProxyRuntime {
     this.executionService = new ExecutionService({
       config: this.config,
       stateDir: this.stateDir,
-      tasks: this.tasks,
-      approvals: this.approvals,
+      stateDirFor: (chatId) => this.groupState.dirFor(chatId),
+      tasks: this.tasks as unknown as TaskStore,
+      approvals: this.approvals as unknown as ApprovalStore,
       audit: this.audit,
       executor: this.executor,
       bridge: this.options.bridge,
@@ -487,9 +492,9 @@ export class ProxyRuntime {
       platform: this.options.platform,
       bridge: this.options.bridge,
       sendLimiter: this.sendLimiter,
-      evidence: this.evidence,
+      evidence: this.evidence as unknown as EvidenceStore,
       outbound: this.outbound,
-      sentReplies: this.sentReplies,
+      sentReplies: this.sentReplies as unknown as SentReplyStore,
       chatNames: this.chatNames,
       ownerOpenId: () => this.ownerOpenId(),
     });
@@ -497,11 +502,11 @@ export class ProxyRuntime {
       config: this.config,
       logger: this.logger.child("recovery"),
       platform: this.options.platform,
-      pending: this.pending,
-      tasks: this.tasks,
+      pending: this.pending as unknown as PendingStore,
+      tasks: this.tasks as unknown as TaskStore,
       dedup: this.dedup,
       historyMentions: this.historyMentions,
-      sentReplies: this.sentReplies,
+      sentReplies: this.sentReplies as unknown as SentReplyStore,
       groupIds: this.groupIds,
       lastCursor: (_platform, chatId) => this.cursors.get(chatId),
       isMention: (message) => this.isMention(message),
@@ -514,7 +519,7 @@ export class ProxyRuntime {
     this.poller = new PollingService({
       enabled: this.config.polling.enabled,
       platform: options.platform,
-      cursors: this.cursors,
+      cursors: this.cursors as unknown as CursorStore,
       groups: this.config.platforms.feishu.groups,
       intervalMs: Math.max(60_000, this.config.polling.intervalSeconds * 1000),
       overlapMs: this.config.polling.overlapSeconds * 1000,
@@ -558,7 +563,7 @@ export class ProxyRuntime {
       relevance: () => this.relevance,
       llm,
       filterEnabled: this.filterEnabled,
-      chatContext: this.chatContext,
+      chatContext: this.chatContext as unknown as ChatContextStore,
       replyOptions: this.replyOptions,
       logger: this.logger.child("intent"),
     });
@@ -568,7 +573,7 @@ export class ProxyRuntime {
       intentService: this.intentService,
       replyService: this.replyService,
       taskService: this.taskService,
-      tasks: this.tasks,
+      tasks: this.tasks as unknown as TaskStore,
       audit: this.audit,
       prepare: async (message, signal) => {
         await this.waitForBurst(message, signal);
@@ -607,7 +612,7 @@ export class ProxyRuntime {
       platform: this.options.platform,
       ownerOpenId: () => this.ownerOpenId(),
       dispatcher: this.dispatcher,
-      chatContext: this.chatContext,
+      chatContext: this.chatContext as unknown as ChatContextStore,
       intentService: this.intentService,
       taskService: this.taskService,
       filterEnabled: this.filterEnabled,
@@ -723,6 +728,10 @@ export class ProxyRuntime {
   async start(): Promise<void> {
     if (this.started) return;
     await mkdir(join(this.stateDir, "scratch"), { recursive: true });
+    await this.groupState.load();
+    for (const group of this.config.platforms.feishu.groups) {
+      await this.groupState.ensure(group.chatId, group.name);
+    }
     await this.dedup.load();
     await this.historyMentions.load();
     await this.outbound.load();
@@ -806,6 +815,10 @@ export class ProxyRuntime {
   ): Promise<void> {
     if (message.senderType !== "user") return;
     const chatName = await this.chatLabel(message);
+    await this.groupState.ensure(
+      message.chat.id,
+      message.chat.kind === "direct" ? "私聊" : chatName,
+    );
     this.logger.info("inbound routing", {
       messageId: message.messageId,
       chatId: message.chat.id,
@@ -951,6 +964,7 @@ export class ProxyRuntime {
       const added = groups.filter((group) => !this.groupIds.has(group.chatId));
       for (const group of groups) {
         this.groupIds.add(group.chatId);
+        await this.groupState.ensure(group.chatId, group.name);
         if (group.name) this.notificationService.rememberChatName(group.chatId, group.name);
       }
       if (added.length > 0) {
@@ -1449,7 +1463,8 @@ export class ProxyRuntime {
   }
 
   private async latestAnalysis(taskId: string): Promise<TaskAnalysis | undefined> {
-    const dir = join(this.stateDir, "analyses", taskId);
+    const task = await this.tasks.get(taskId);
+    const dir = join(task ? this.groupState.dirFor(task.chatId) : this.stateDir, "analyses", taskId);
     const index = await readJsonFile<{ version: number } | undefined>(
       join(dir, "index.json"),
       undefined,

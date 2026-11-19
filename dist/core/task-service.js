@@ -29,8 +29,9 @@ export class TaskService {
             clearTimeout(timer);
         }
         await this.options.tasks.save(task);
-        await writeJsonAtomic(join(this.options.stateDir, "analyses", task.id, `${analysis.version}.json`), analysis);
-        await writeJsonAtomic(join(this.options.stateDir, "analyses", task.id, "index.json"), { version: analysis.version });
+        const stateDir = this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir;
+        await writeJsonAtomic(join(stateDir, "analyses", task.id, `${analysis.version}.json`), analysis);
+        await writeJsonAtomic(join(stateDir, "analyses", task.id, "index.json"), { version: analysis.version });
         this.rememberTaskOutcome(task, analysis);
         task.state = analysis.needsInfo ? "needs_info" : "awaiting_approval";
         task.updatedAt = Date.now();

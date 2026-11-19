@@ -30,7 +30,7 @@ export class ExecutionService {
             task.updatedAt = Date.now();
             await this.options.tasks.save(task);
             const execution = await this.runOpenCodeExecution(task, repo, analysis);
-            await writeJsonAtomic(join(this.options.stateDir, "executions", `${task.id}.json`), execution);
+            await writeJsonAtomic(join(this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir, "executions", `${task.id}.json`), execution);
             task.state = execution.status === "succeeded" ? "done" : "failed";
             task.updatedAt = Date.now();
             await this.options.tasks.save(task);
@@ -105,7 +105,7 @@ export class ExecutionService {
                 startedAt: Date.now(),
                 finishedAt: Date.now(),
             };
-            await writeJsonAtomic(join(this.options.stateDir, "executions", `${task.id}.json`), execution);
+            await writeJsonAtomic(join(this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir, "executions", `${task.id}.json`), execution);
             task.state = "done";
             task.updatedAt = Date.now();
             await this.options.tasks.save(task);

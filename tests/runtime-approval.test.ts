@@ -8,6 +8,7 @@ import type { LoadedConfig } from "../src/core/config.js";
 import type { PlatformAdapter } from "../src/core/ports.js";
 import type { CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget, ApprovalView, PlatformAction, PlatformActionResult } from "../src/core/types.js";
 import type { OpenCodeBridge } from "../src/core/opencode.js";
+import { readGroupStateFile, writeGroupStateFile } from "./group-state.js";
 
 function cfg(stateDir: string, autoReply = false, filterEnabled = false): LoadedConfig {
   return {
@@ -171,7 +172,7 @@ test("@me creates approval card, approval replies with label, wrong actor reject
     assert.equal(adapter.sent.length, 1);
     // find task id via pending file
     const { readFile } = await import("node:fs/promises");
-    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8"));
+    const pending = JSON.parse(await readGroupStateFile(dir, "pending.json"));
     const key = Object.keys(pending.cards)[0]!;
     const card = pending.cards[key];
     const denied = await adapter.act({ platform: "feishu", actionId: "a1", taskId: card.taskId, action: "approve", actor: { platform: "feishu", id: "stranger" } });
@@ -212,8 +213,10 @@ test("simple confirmation gets an ack draft without a model call", async () => {
 test("quoted reply includes the referenced message", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-appr-"));
   try {
-    await writeFile(
-      join(dir, "chat-context.json"),
+    await writeGroupStateFile(
+      dir,
+      "chat",
+      "chat-context.json",
       JSON.stringify({
         version: 1,
         chats: {
@@ -278,7 +281,7 @@ test("group summary is stored and injected into replies", async () => {
     });
     await new Promise((r) => setTimeout(r, 150));
     const { readFile } = await import("node:fs/promises");
-    const context = JSON.parse(await readFile(join(dir, "group-context.json"), "utf8"));
+    const context = JSON.parse(await readGroupStateFile(dir, "group-context.json"));
     assert.match(context.chats["feishu:chat"].summary, /第 3 步/);
     const groupSession = bridge.created.find((item) => item.title?.includes(":group:"));
     assert.ok(groupSession?.permission?.some((item) => item.permission === "edit" && item.action === "deny"));
@@ -330,7 +333,7 @@ test("stale plan hash is rejected", async () => {
     await runtime.ingest(mention("m1"));
     await new Promise((r) => setTimeout(r, 100));
     const { readFile } = await import("node:fs/promises");
-    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8"));
+    const pending = JSON.parse(await readGroupStateFile(dir, "pending.json"));
     const card = pending.cards[Object.keys(pending.cards)[0]!];
     const result = await adapter.act({ platform: "feishu", actionId: "a", taskId: card.taskId, planHash: "wrong", action: "approve", actor: { platform: "feishu", id: "me" } });
     assert.equal(result.ok, false);

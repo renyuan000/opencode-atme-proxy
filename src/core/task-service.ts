@@ -26,6 +26,7 @@ import { sha256, toErrorMessage, truncate, writeJsonAtomic } from "./util.js";
 export interface TaskServiceOptions {
   config: AppConfig;
   stateDir: string;
+  stateDirFor?(chatId: string): string;
   tasks: TaskStore;
   audit: AuditLog;
   contextService: ContextService;
@@ -65,12 +66,13 @@ export class TaskService {
       clearTimeout(timer);
     }
     await this.options.tasks.save(task);
+    const stateDir = this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir;
     await writeJsonAtomic(
-      join(this.options.stateDir, "analyses", task.id, `${analysis.version}.json`),
+      join(stateDir, "analyses", task.id, `${analysis.version}.json`),
       analysis,
     );
     await writeJsonAtomic(
-      join(this.options.stateDir, "analyses", task.id, "index.json"),
+      join(stateDir, "analyses", task.id, "index.json"),
       { version: analysis.version },
     );
     this.rememberTaskOutcome(task, analysis);

@@ -10,6 +10,7 @@ import type { GitExecutor } from "./executor.js";
 export interface ExecutionServiceOptions {
     config: AppConfig;
     stateDir: string;
+    stateDirFor?(chatId: string): string;
     tasks: TaskStore;
     approvals: ApprovalStore;
     audit: AuditLog;

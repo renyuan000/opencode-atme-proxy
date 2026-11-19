@@ -4,24 +4,14 @@ import { createLogger } from "./logger.js";
 import { OpenAiCompatibleClient, RelevanceService, parseJsonLoose, } from "./relevance.js";
 import { detectReplyStyle, enforceReplyLength, } from "./reply-style.js";
 import { DedupStore } from "./dedup.js";
-import { CursorStore } from "./cursor.js";
-import { SessionStore } from "./session-store.js";
-import { TaskStore } from "./task-store.js";
-import { ApprovalStore } from "./approval-store.js";
 import { AuditLog } from "./audit.js";
 import { ConcurrentDispatcher } from "./dispatcher.js";
 import { PollingService } from "./poller.js";
-import { PendingStore } from "./pending-store.js";
 import { TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
 import { selectBurstExtensions, mergeBurst } from "./burst.js";
-import { ProjectStore } from "./project-store.js";
-import { ChatContextStore } from "./chat-context.js";
-import { EvidenceStore } from "./evidence-store.js";
-import { GroupContextStore } from "./group-context.js";
-import { MemoryStore } from "./memory-store.js";
 import { SenderLimiter } from "./sender-limiter.js";
 import { SessionManager } from "./session-manager.js";
 import { ContextService } from "./context-service.js";
@@ -37,7 +27,7 @@ import { BotMentionFlow } from "./bot-mention-flow.js";
 import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
-import { SentReplyStore } from "./sent-reply-store.js";
+import { GroupStateLayout, ScopedApprovals, ScopedChatContext, ScopedCursors, ScopedEvidence, ScopedGroupContext, ScopedMemory, ScopedPending, ScopedProjects, ScopedSentReplies, ScopedSessions, ScopedTasks, } from "./group-state.js";
 import { parseOwnerCommand } from "./owner-command.js";
 import { OwnerStore } from "./owner-store.js";
 import { OwnerAccessService } from "./owner-access-service.js";
@@ -63,6 +53,7 @@ export class ProxyRuntime {
     dedup;
     historyMentions;
     outbound;
+    groupState;
     cursors;
     sessions;
     sessionManager;
@@ -118,6 +109,7 @@ export class ProxyRuntime {
         this.logger = options.logger ?? createLogger({ scope: "runtime" });
         this.config = options.loaded.config;
         this.stateDir = requireStateDir(this.config);
+        this.groupState = new GroupStateLayout(join(this.stateDir, "groups"), this.logger.child("group-state"));
         this.dedup = new DedupStore({
             file: join(this.stateDir, "dedup.json"),
             ttlMs: 7 * 24 * 3600 * 1000,
@@ -136,11 +128,8 @@ export class ProxyRuntime {
             maxEntries: 50_000,
             logger: this.logger.child("outbound"),
         });
-        this.cursors = new CursorStore({
-            file: join(this.stateDir, "cursors.json"),
-            logger: this.logger.child("cursor"),
-        });
-        this.sessions = new SessionStore(join(this.stateDir, "sessions.json"), this.logger.child("sessions"));
+        this.cursors = new ScopedCursors(this.groupState, this.logger.child("cursor"));
+        this.sessions = new ScopedSessions(this.groupState, this.logger.child("sessions"));
         this.sessionManager = new SessionManager({
             bridge: this.options.bridge,
             sessions: this.sessions,
@@ -148,11 +137,14 @@ export class ProxyRuntime {
             logger: this.logger.child("sessions"),
             readOnlyPermission: READ_ONLY_PERMISSION,
         });
-        this.tasks = new TaskStore(this.stateDir, this.logger.child("tasks"));
-        this.approvals = new ApprovalStore(this.stateDir);
+        this.tasks = new ScopedTasks(this.groupState, this.logger.child("tasks"));
+        this.approvals = new ScopedApprovals(this.groupState, async (taskId) => {
+            const task = await this.tasks.get(taskId);
+            return task?.chatId;
+        });
         this.audit = new AuditLog(AuditLog.defaultPath(this.stateDir));
-        this.pending = new PendingStore(join(this.stateDir, "pending.json"), this.logger.child("pending"));
-        this.sentReplies = new SentReplyStore(join(this.stateDir, "sent-replies.json"), 7 * 24 * 3600_000, 50, this.logger.child("sent-replies"));
+        this.pending = new ScopedPending(this.groupState, this.logger.child("pending"));
+        this.sentReplies = new ScopedSentReplies(this.groupState, 7 * 24 * 3600_000, 50, this.logger.child("sent-replies"));
         this.approvalService = new ApprovalService({
             config: this.config,
             pending: this.pending,
@@ -174,7 +166,7 @@ export class ProxyRuntime {
                 });
             },
         });
-        this.projectStore = new ProjectStore(join(this.stateDir, "projects.json"), this.logger.child("projects"));
+        this.projectStore = new ScopedProjects(this.groupState, this.logger.child("projects"));
         this.senderLimiter = new SenderLimiter({
             maxPerMinute: this.config.botReply.perSenderPerMinute,
             maxConcurrent: this.config.botReply.perSenderConcurrent,
@@ -189,30 +181,26 @@ export class ProxyRuntime {
             sendToOwner: (text) => this.sendToOwner(text),
         });
         this.ownerAccess.init();
-        this.chatContext = new ChatContextStore({
-            file: join(this.stateDir, "chat-context.json"),
+        this.chatContext = new ScopedChatContext(this.groupState, {
             maxMessagesPerChat: this.config.context.maxMessagesPerChat,
             maxCharsPerMessage: this.config.context.maxCharsPerMessage,
             maxChats: this.config.context.maxChats,
             ttlMs: this.config.context.ttlDays * 86_400_000,
             logger: this.logger.child("context"),
         });
-        this.memory = new MemoryStore({
-            file: join(this.stateDir, "memory.json"),
-            shardDir: join(this.stateDir, "memory"),
+        this.memory = new ScopedMemory(this.groupState, {
             maxEntries: this.config.memory.maxEntries,
             ttlMs: this.config.memory.ttlDays * 86_400_000,
             pinnedKinds: this.config.memory.pinnedKinds,
             logger: this.logger.child("memory"),
         });
-        this.evidence = new EvidenceStore({
-            dir: join(this.stateDir, "replies"),
+        this.evidence = new ScopedEvidence(this.groupState, {
             enabled: this.config.evidence?.enabled ?? true,
             retentionDays: this.config.evidence?.retentionDays ?? 720,
             maxChars: this.config.evidence?.maxChars ?? 4000,
             logger: this.logger.child("evidence"),
         });
-        this.groupContext = new GroupContextStore(join(this.stateDir, "group-context.json"), this.logger.child("group-context"));
+        this.groupContext = new ScopedGroupContext(this.groupState, this.logger.child("group-context"));
         this.contextService = new ContextService({
             config: this.config,
             chatContext: this.chatContext,
@@ -336,6 +324,7 @@ export class ProxyRuntime {
         this.taskService = new TaskService({
             config: this.config,
             stateDir: this.stateDir,
+            stateDirFor: (chatId) => this.groupState.dirFor(chatId),
             tasks: this.tasks,
             audit: this.audit,
             contextService: this.contextService,
@@ -377,6 +366,7 @@ export class ProxyRuntime {
         this.executionService = new ExecutionService({
             config: this.config,
             stateDir: this.stateDir,
+            stateDirFor: (chatId) => this.groupState.dirFor(chatId),
             tasks: this.tasks,
             approvals: this.approvals,
             audit: this.audit,
@@ -626,6 +616,10 @@ export class ProxyRuntime {
         if (this.started)
             return;
         await mkdir(join(this.stateDir, "scratch"), { recursive: true });
+        await this.groupState.load();
+        for (const group of this.config.platforms.feishu.groups) {
+            await this.groupState.ensure(group.chatId, group.name);
+        }
         await this.dedup.load();
         await this.historyMentions.load();
         await this.outbound.load();
@@ -706,6 +700,7 @@ export class ProxyRuntime {
         if (message.senderType !== "user")
             return;
         const chatName = await this.chatLabel(message);
+        await this.groupState.ensure(message.chat.id, message.chat.kind === "direct" ? "私聊" : chatName);
         this.logger.info("inbound routing", {
             messageId: message.messageId,
             chatId: message.chat.id,
@@ -839,6 +834,7 @@ export class ProxyRuntime {
             const added = groups.filter((group) => !this.groupIds.has(group.chatId));
             for (const group of groups) {
                 this.groupIds.add(group.chatId);
+                await this.groupState.ensure(group.chatId, group.name);
                 if (group.name)
                     this.notificationService.rememberChatName(group.chatId, group.name);
             }
@@ -1309,7 +1305,8 @@ export class ProxyRuntime {
         }
     }
     async latestAnalysis(taskId) {
-        const dir = join(this.stateDir, "analyses", taskId);
+        const task = await this.tasks.get(taskId);
+        const dir = join(task ? this.groupState.dirFor(task.chatId) : this.stateDir, "analyses", taskId);
         const index = await readJsonFile(join(dir, "index.json"), undefined);
         const version = index?.version ?? 1;
         return readJsonFile(join(dir, `${version}.json`), undefined);

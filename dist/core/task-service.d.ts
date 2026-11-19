@@ -9,6 +9,7 @@ import type { Classification, IncomingMessage, TaskAnalysis, TaskRecord } from "
 export interface TaskServiceOptions {
     config: AppConfig;
     stateDir: string;
+    stateDirFor?(chatId: string): string;
     tasks: TaskStore;
     audit: AuditLog;
     contextService: ContextService;

@@ -8,6 +8,7 @@ import type { LoadedConfig } from "../src/core/config.js";
 import type { PlatformAdapter } from "../src/core/ports.js";
 import type { ApprovalView, CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget } from "../src/core/types.js";
 import type { OpenCodeBridge, SessionCreateInput, SessionInfo } from "../src/core/opencode.js";
+import { readGroupStateFile } from "./group-state.js";
 
 function config(stateDir: string): LoadedConfig {
   return {
@@ -97,7 +98,7 @@ test("creates one reusable coordinator and a persistent reply worker", async () 
     assert.equal(coordinators.length, 1);
     assert.equal(workers.length, 1);
     assert.equal(workers[0]?.parentID, "ses_1");
-    const store = JSON.parse(await readFile(join(dir, "sessions.json"), "utf8"));
+    const store = JSON.parse(await readGroupStateFile(dir, "sessions.json"));
     const kinds = Object.values(store.sessions as Record<string, { kind: string }>).map((s) => s.kind);
     assert.ok(kinds.includes("coordinator"));
     assert.ok(kinds.includes("worker"));

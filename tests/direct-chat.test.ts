@@ -8,6 +8,7 @@ import type { LoadedConfig } from "../src/core/config.js";
 import type { PlatformAdapter } from "../src/core/ports.js";
 import type { ApprovalView, CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget } from "../src/core/types.js";
 import type { OpenCodeBridge } from "../src/core/opencode.js";
+import { readGroupStateFile, writeGroupStateFile } from "./group-state.js";
 
 function config(stateDir: string, enabled = true, onlyOwner = true): LoadedConfig {
   return {
@@ -145,8 +146,10 @@ test("non-owner direct message is answered when onlyOwner is false", async () =>
 test("owner can rewrite a pending reply draft", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
   try {
-    await writeFile(
-      join(dir, "pending.json"),
+    await writeGroupStateFile(
+      dir,
+      "chat",
+      "pending.json",
       JSON.stringify({
         version: 1,
         cards: {
@@ -172,7 +175,7 @@ test("owner can rewrite a pending reply draft", async () => {
     await runtime.ingest(dm("m1", "owner", "/改写 新草稿"));
     await new Promise((r) => setTimeout(r, 100));
     assert.ok(adapter.sent.some((text) => text.includes("新草稿")));
-    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as {
+    const pending = JSON.parse(await readGroupStateFile(dir, "pending.json")) as {
       cards: Record<string, { draft: string }>;
     };
     assert.equal(pending.cards["task_x:reply"]?.draft, "新草稿");
@@ -185,8 +188,10 @@ test("owner can rewrite a pending reply draft", async () => {
 test("owner can cancel a pending reply draft", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
   try {
-    await writeFile(
-      join(dir, "pending.json"),
+    await writeGroupStateFile(
+      dir,
+      "chat",
+      "pending.json",
       JSON.stringify({
         version: 1,
         cards: {
@@ -212,7 +217,7 @@ test("owner can cancel a pending reply draft", async () => {
     await runtime.ingest(dm("m1", "owner", "/取消"));
     await new Promise((r) => setTimeout(r, 100));
     assert.ok(adapter.replies.some((text) => text.includes("已取消")));
-    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as {
+    const pending = JSON.parse(await readGroupStateFile(dir, "pending.json")) as {
       cards: Record<string, unknown>;
     };
     assert.equal(Object.keys(pending.cards).length, 0);
@@ -239,8 +244,10 @@ test("owner can list and cancel a specific reply draft", async () => {
       draft,
       createdAt,
     });
-    await writeFile(
-      join(dir, "pending.json"),
+    await writeGroupStateFile(
+      dir,
+      "chat",
+      "pending.json",
       JSON.stringify({
         version: 1,
         cards: {
@@ -260,7 +267,7 @@ test("owner can list and cancel a specific reply draft", async () => {
     await runtime.ingest(dm("m2", "owner", "/取消 2"));
     await new Promise((r) => setTimeout(r, 100));
     assert.match(adapter.replies.at(-1) ?? "", /task_x/);
-    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as {
+    const pending = JSON.parse(await readGroupStateFile(dir, "pending.json")) as {
       cards: Record<string, unknown>;
     };
     assert.deepEqual(Object.keys(pending.cards), ["task_y:reply"]);
@@ -293,7 +300,7 @@ test("owner can view and recall a sent reply from the card", async () => {
     await runtime.start();
     await runtime.ingest(dm("m1", "owner", "hello"));
     await new Promise((r) => setTimeout(r, 100));
-    const stored = JSON.parse(await readFile(join(dir, "sent-replies.json"), "utf8")) as {
+    const stored = JSON.parse(await readGroupStateFile(dir, "sent-replies.json")) as {
       replies: Array<{ id: string; status: string }>;
     };
     assert.equal(stored.replies.length, 1);
@@ -320,7 +327,7 @@ test("owner can view and recall a sent reply from the card", async () => {
     });
     assert.equal(recall.ok, true);
     assert.deepEqual(adapter.recalled, ["r"]);
-    const after = JSON.parse(await readFile(join(dir, "sent-replies.json"), "utf8")) as {
+    const after = JSON.parse(await readGroupStateFile(dir, "sent-replies.json")) as {
       replies: Array<{ status: string }>;
     };
     assert.equal(after.replies[0]?.status, "recalled");

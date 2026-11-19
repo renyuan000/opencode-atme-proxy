@@ -8,6 +8,7 @@ import type { LoadedConfig } from "../src/core/config.js";
 import type { PlatformAdapter } from "../src/core/ports.js";
 import type { ApprovalView, CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget } from "../src/core/types.js";
 import type { OpenCodeBridge } from "../src/core/opencode.js";
+import { readGroupStateFile } from "./group-state.js";
 
 function config(stateDir: string, storeRelevantScan = true): LoadedConfig {
   return {
@@ -84,7 +85,7 @@ test("non-mention messages are stored for context continuity", async () => {
     await runtime.ingest(msg("m1", "午饭吃什么"));
     await new Promise((r) => setTimeout(r, 50));
     await runtime.stop();
-    const raw = await readFile(join(dir, "chat-context.json"), "utf8").catch(() => "{\"chats\":{}}");
+    const raw = await readGroupStateFile(dir, "chat-context.json").catch(() => "{\"chats\":{}}");
     const parsed = JSON.parse(raw) as { chats: Record<string, { messages: Array<{ origin?: string }> }> };
     const messages = Object.values(parsed.chats).flatMap((chat) => chat.messages);
     assert.equal(messages.length, 1);
@@ -102,7 +103,7 @@ test("pure acknowledgements are not stored", async () => {
     await runtime.ingest(msg("m1", "收到"));
     await new Promise((r) => setTimeout(r, 50));
     await runtime.stop();
-    const raw = await readFile(join(dir, "chat-context.json"), "utf8").catch(() => "{\"chats\":{}}");
+    const raw = await readGroupStateFile(dir, "chat-context.json").catch(() => "{\"chats\":{}}");
     const parsed = JSON.parse(raw) as { chats: Record<string, { messages: unknown[] }> };
     assert.equal(Object.values(parsed.chats).flatMap((chat) => chat.messages).length, 0);
   } finally {
@@ -122,7 +123,7 @@ test("non-mention media is stored as placeholder", async () => {
     });
     await new Promise((r) => setTimeout(r, 50));
     await runtime.stop();
-    const raw = await readFile(join(dir, "chat-context.json"), "utf8");
+    const raw = await readGroupStateFile(dir, "chat-context.json");
     const parsed = JSON.parse(raw) as { chats: Record<string, { messages: Array<{ text: string; origin?: string }> }> };
     const messages = Object.values(parsed.chats).flatMap((chat) => chat.messages);
     assert.equal(messages.length, 1);
@@ -141,7 +142,7 @@ test("mention messages are stored", async () => {
     await runtime.ingest(msg("m1", "支付灰度怎么配", ["bot"]));
     await new Promise((r) => setTimeout(r, 50));
     await runtime.stop();
-    const raw = await readFile(join(dir, "chat-context.json"), "utf8");
+    const raw = await readGroupStateFile(dir, "chat-context.json");
     const parsed = JSON.parse(raw) as { chats: Record<string, { messages: Array<{ messageId: string; origin?: string }> }> };
     const messages = Object.values(parsed.chats).flatMap((chat) => chat.messages);
     assert.equal(messages.length, 1);
