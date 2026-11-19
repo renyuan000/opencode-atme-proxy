@@ -128,7 +128,17 @@ export class ScanService {
             await this.digestWithoutFilter(messages);
             return;
         }
-        const { items, stats } = await this.options.relevance().classify(messages, signal);
+        const first = messages[0];
+        const history = first
+            ? this.options.chatContext
+                .recent(`${first.platform}:${first.chat.id}`, 12)
+                .map((item) => ({
+                sender: item.senderName ?? item.senderId,
+                text: item.text,
+                time: item.at,
+            }))
+            : [];
+        const { items, stats } = await this.options.relevance().classify(messages, signal, history);
         if (stats.totalTokens > this.options.config.budget.maxTokensPerRun) {
             await this.options.sendToApprover(`本轮筛选 token 超预算：${stats.totalTokens}/${this.options.config.budget.maxTokensPerRun}，已停止后续批次。`);
         }
@@ -153,7 +163,9 @@ export class ScanService {
             }
             await this.options.markProcessed(message);
         }
-        await this.sendOwnerDigest(messages, items);
+        if (items.some((item) => item.relevant)) {
+            await this.sendOwnerDigest(messages, items);
+        }
         this.options.logger.info("polled batch classified", {
             chatId: messages[0]?.chat.id,
             messages: stats.messages,

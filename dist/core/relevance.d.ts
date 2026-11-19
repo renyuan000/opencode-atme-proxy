@@ -1,5 +1,10 @@
 import type { BotIntent, Classification, FilterStats, IncomingMessage } from "./types.js";
 import type { Logger } from "./logger.js";
+export interface HistoryMessage {
+    sender: string;
+    text: string;
+    time: number;
+}
 export interface LlmMessage {
     role: "system" | "user";
     content: string;
@@ -71,7 +76,7 @@ export declare class RelevanceService {
         hit: boolean;
         matched: string[];
     };
-    classify(messages: IncomingMessage[], signal?: AbortSignal): Promise<{
+    classify(messages: IncomingMessage[], signal?: AbortSignal, history?: HistoryMessage[]): Promise<{
         items: Classification[];
         stats: FilterStats;
     }>;
