@@ -174,6 +174,56 @@ export class ReplyService {
         });
         await this.options.pending.flush();
     }
+    async respond(message, signal) {
+        const style = detectReplyStyle(message, this.options.replyOptions);
+        let raw;
+        try {
+            raw = await this.draft(message, style, signal, "answer", true);
+        }
+        catch (error) {
+            this.options.logger.warn("unified reply generation failed", {
+                messageId: message.messageId,
+                error: toErrorMessage(error),
+            });
+            return { action: "no_reply", reason: "unified decision failed" };
+        }
+        try {
+            const parsed = parseJsonLoose(raw);
+            const allowed = new Set(["answer", "no_reply", "need_decision", "notify_owner"]);
+            const action = typeof parsed.action === "string" && allowed.has(parsed.action)
+                ? parsed.action
+                : "answer";
+            const reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
+            const reason = typeof parsed.reason === "string" ? parsed.reason.trim() : "no reason";
+            if (action === "answer" && !reply) {
+                return { action: "no_reply", reason: `${reason} (empty reply)` };
+            }
+            return {
+                action,
+                ...(reply ? { reply: enforceReplyLength(reply, style, this.options.replyOptions) } : {}),
+                reason,
+                ...(typeof parsed.summary === "string" ? { summary: parsed.summary } : {}),
+                ...(typeof parsed.analysis === "string" ? { analysis: parsed.analysis } : {}),
+                ...(typeof parsed.kind === "string" ? { kind: parsed.kind } : {}),
+                style,
+            };
+        }
+        catch (error) {
+            this.options.logger.warn("unified reply decision parse failed; using raw text", {
+                messageId: message.messageId,
+                error: toErrorMessage(error),
+            });
+            const reply = raw.trim();
+            return reply
+                ? {
+                    action: "answer",
+                    reply: enforceReplyLength(reply, style, this.options.replyOptions),
+                    reason: "unified output was not JSON; used raw text",
+                    style,
+                }
+                : { action: "no_reply", reason: "empty unified output", style };
+        }
+    }
     async enrichWithQuoted(message) {
         if (!message.replyToMessageId) {
             const recent = await this.loadRecentDocuments(message);
@@ -229,7 +279,7 @@ export class ReplyService {
             return { message, found: false };
         }
     }
-    async draft(message, style, signal, depth = "answer") {
+    async draft(message, style, signal, depth = "answer", unified = false) {
         if (signal.aborted)
             throw signal.reason;
         const project = await this.options.resolveProject(message.chat.id);
@@ -278,6 +328,16 @@ export class ReplyService {
         const linkedDocuments = await this.loadLinkedDocuments(message, quoteBlock);
         const prompt = [
             styleInstruction,
+            ...(unified
+                ? [
+                    "这是一次合并决策+回复：请先判断是否需要回复；只输出严格 JSON，不要 Markdown 代码块，不要额外文字。",
+                    '{"action":"answer|no_reply|need_decision|notify_owner","kind":"question|task|reminder|notification|chat|other","reply":"最终群回复，只有 answer 才填","reason":"为什么这样处理","summary":"一句话摘要","analysis":"need_decision 时给主人的简短分析"}',
+                    "不需要回复时 action=no_reply，reply 必须为空，不要输出任何给群的解释。",
+                    "需要主人决策或知会时 action=need_decision/notify_owner，reply 必须为空。",
+                    "action=answer 时，reply 必须是可直接发群的最终答案；发送前自检：是否直接回答了原话、是否包含未核实的承诺、是否跑题。",
+                    "群聊默认不能联网；没有明确依据时不要编造。",
+                ]
+                : []),
             "你的角色：资深软件架构师与研发负责人，熟悉当前主项目。",
             ...(memoryBlock ? [memoryBlock] : []),
             ...(responsibility ? ["本群职责（判断是否相关时优先参考）：", responsibility] : []),

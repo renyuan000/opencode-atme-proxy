@@ -43,6 +43,15 @@ export interface ReplyServiceOptions {
     ownerOverview?(message: IncomingMessage): string | Promise<string>;
     responsibilityFor?(chatId: string): string;
 }
+export interface UnifiedReply {
+    action: "answer" | "no_reply" | "need_decision" | "notify_owner";
+    reply?: string;
+    reason: string;
+    summary?: string;
+    analysis?: string;
+    kind?: "question" | "task" | "reminder" | "notification" | "chat" | "other";
+    style?: ReplyStyle;
+}
 export declare class ReplyService {
     private readonly options;
     constructor(options: ReplyServiceOptions);
@@ -52,11 +61,12 @@ export declare class ReplyService {
     }>;
     createReplyTask(message: IncomingMessage, classification: Classification | undefined): Promise<TaskRecord>;
     sendReplyApproval(task: TaskRecord, message: IncomingMessage, draftSource?: IncomingMessage, depth?: ReplyDepth): Promise<void>;
+    respond(message: IncomingMessage, signal: AbortSignal): Promise<UnifiedReply>;
     enrichWithQuoted(message: IncomingMessage): Promise<{
         message: IncomingMessage;
         found: boolean;
     }>;
-    draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth): Promise<string>;
+    draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth, unified?: boolean): Promise<string>;
     private webMode;
     private runReplyWorker;
     private loadImageText;

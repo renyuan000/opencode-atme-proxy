@@ -53,6 +53,16 @@ export interface ReplyServiceOptions {
   responsibilityFor?(chatId: string): string;
 }
 
+export interface UnifiedReply {
+  action: "answer" | "no_reply" | "need_decision" | "notify_owner";
+  reply?: string;
+  reason: string;
+  summary?: string;
+  analysis?: string;
+  kind?: "question" | "task" | "reminder" | "notification" | "chat" | "other";
+  style?: ReplyStyle;
+}
+
 export class ReplyService {
   constructor(private readonly options: ReplyServiceOptions) {}
 
@@ -232,6 +242,55 @@ export class ReplyService {
     await this.options.pending.flush();
   }
 
+  async respond(message: IncomingMessage, signal: AbortSignal): Promise<UnifiedReply> {
+    const style = detectReplyStyle(message, this.options.replyOptions);
+    let raw: string;
+    try {
+      raw = await this.draft(message, style, signal, "answer", true);
+    } catch (error) {
+      this.options.logger.warn("unified reply generation failed", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
+      });
+      return { action: "no_reply", reason: "unified decision failed" };
+    }
+    try {
+      const parsed = parseJsonLoose(raw) as Record<string, unknown>;
+      const allowed = new Set(["answer", "no_reply", "need_decision", "notify_owner"]);
+      const action = typeof parsed.action === "string" && allowed.has(parsed.action)
+        ? (parsed.action as UnifiedReply["action"])
+        : "answer";
+      const reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
+      const reason = typeof parsed.reason === "string" ? parsed.reason.trim() : "no reason";
+      if (action === "answer" && !reply) {
+        return { action: "no_reply", reason: `${reason} (empty reply)` };
+      }
+      return {
+        action,
+        ...(reply ? { reply: enforceReplyLength(reply, style, this.options.replyOptions) } : {}),
+        reason,
+        ...(typeof parsed.summary === "string" ? { summary: parsed.summary } : {}),
+        ...(typeof parsed.analysis === "string" ? { analysis: parsed.analysis } : {}),
+        ...(typeof parsed.kind === "string" ? { kind: parsed.kind as UnifiedReply["kind"] } : {}),
+        style,
+      };
+    } catch (error) {
+      this.options.logger.warn("unified reply decision parse failed; using raw text", {
+        messageId: message.messageId,
+        error: toErrorMessage(error),
+      });
+      const reply = raw.trim();
+      return reply
+        ? {
+            action: "answer",
+            reply: enforceReplyLength(reply, style, this.options.replyOptions),
+            reason: "unified output was not JSON; used raw text",
+            style,
+          }
+        : { action: "no_reply", reason: "empty unified output", style };
+    }
+  }
+
   async enrichWithQuoted(
     message: IncomingMessage,
   ): Promise<{ message: IncomingMessage; found: boolean }> {
@@ -292,6 +351,7 @@ export class ReplyService {
     style: ReplyStyle,
     signal: AbortSignal,
     depth: ReplyDepth = "answer",
+    unified = false,
   ): Promise<string> {
     if (signal.aborted) throw signal.reason;
     const project = await this.options.resolveProject(message.chat.id);
@@ -356,6 +416,16 @@ export class ReplyService {
     const linkedDocuments = await this.loadLinkedDocuments(message, quoteBlock);
     const prompt = [
       styleInstruction,
+      ...(unified
+        ? [
+            "这是一次合并决策+回复：请先判断是否需要回复；只输出严格 JSON，不要 Markdown 代码块，不要额外文字。",
+            '{"action":"answer|no_reply|need_decision|notify_owner","kind":"question|task|reminder|notification|chat|other","reply":"最终群回复，只有 answer 才填","reason":"为什么这样处理","summary":"一句话摘要","analysis":"need_decision 时给主人的简短分析"}',
+            "不需要回复时 action=no_reply，reply 必须为空，不要输出任何给群的解释。",
+            "需要主人决策或知会时 action=need_decision/notify_owner，reply 必须为空。",
+            "action=answer 时，reply 必须是可直接发群的最终答案；发送前自检：是否直接回答了原话、是否包含未核实的承诺、是否跑题。",
+            "群聊默认不能联网；没有明确依据时不要编造。",
+          ]
+        : []),
       "你的角色：资深软件架构师与研发负责人，熟悉当前主项目。",
       ...(memoryBlock ? [memoryBlock] : []),
       ...(responsibility ? ["本群职责（判断是否相关时优先参考）：", responsibility] : []),

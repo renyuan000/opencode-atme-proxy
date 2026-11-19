@@ -38,7 +38,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **联网策略**：群聊默认禁用 `websearch/webfetch`；主人私聊默认允许 `websearch`，`webfetch` 需要私聊明确说“允许抓取/允许联网”。
 
 - **消息类型识别**：@机器人 先判断是询问、任务、提醒、通知还是闲聊，再决定动作。
-- **发言必要性评估**：@机器人 不必然回复。助手判断 `answer / need_decision / notify_owner / no_reply`；寒暄或无需介入就不回，避免刷屏。
+- **发言必要性评估**：@机器人 不必然回复。一次 LLM 同时判断 `answer / need_decision / notify_owner / no_reply` 并生成回复；无需介入就不吭声，避免刷屏。
 - **防刷屏**：按发送者限流、限并发、加冷却；同一人连续刷只警告一次，不同同事仍可并发处理。
 - **需要你决策时私聊请示**：涉及上线、排期、承诺、资源、风险或信息不足时，机器人私聊你，附来源、原因和建议；不在群里 @ 你，不代替你承诺。
 - **实时 @ 接管**：@机器人 按必要性直接回答或升级；@我 默认先私聊请示，批准后引用回复。

@@ -13,107 +13,96 @@ export class BotMentionFlow {
             this.missingContextNotified.add(message.messageId);
             await this.options.sendToOwner(`没回溯到这条消息的文件或引用内容，请补充文件/链接/路径：\n群：${message.chat.name ?? message.chat.id}\n消息：${message.text.slice(0, 300)}`, message.messageId);
         }
-        let intent;
+        let decision;
         try {
-            intent = await this.withTimeout(signal, this.options.config.concurrency.intentTimeoutMs ?? 60_000, "intent", (child) => this.options.intentService.decideBotIntent(enriched, child));
+            decision = await this.withTimeout(signal, this.options.config.concurrency.replyTimeoutMs ?? 120_000, "decision", (child) => this.options.replyService.respond(enriched, child));
         }
         catch (error) {
-            this.options.logger.error("bot intent failed", {
+            this.options.logger.error("bot decision failed", {
                 messageId: message.messageId,
                 error: toErrorMessage(error),
             });
-            await this.options.safeReply(message, "意图判断超时或失败，请稍后重试。");
+            await this.options.safeReply(message, "处理失败，请稍后重试或直接联系我。");
             return;
         }
-        this.options.logger.info("bot intent decided", {
+        const intent = {
+            action: decision.action,
+            kind: decision.kind ?? "question",
+            style: decision.style ?? "concise",
+            confidence: 1,
+            reason: decision.reason,
+            ...(decision.summary ? { summary: decision.summary } : {}),
+        };
+        this.options.logger.info("bot decision decided", {
             messageId: message.messageId,
-            action: intent.action,
+            action: decision.action,
             kind: intent.kind,
-            confidence: intent.confidence,
-            reason: intent.reason,
+            reason: decision.reason,
         });
-        if (intent.action === "no_reply") {
-            this.options.logger.info("bot mention skipped by necessity check", {
+        if (decision.action === "no_reply") {
+            this.options.logger.info("bot mention skipped by unified decision", {
                 messageId: message.messageId,
-                reason: intent.reason,
-                confidence: intent.confidence,
+                reason: decision.reason,
             });
             await this.options.markProcessed(message);
             await this.options.audit.append({
                 actor: { system: true },
                 action: "bot_mention_skipped",
-                details: { messageId: message.messageId, reason: intent.reason },
+                details: { messageId: message.messageId, reason: decision.reason },
             });
             return;
         }
-        if (intent.action === "notify_owner") {
-            const notified = await this.sendOwnerDecisionCard(message, intent, "notify");
+        if (decision.action === "notify_owner" || decision.action === "need_decision") {
+            const notified = await this.sendOwnerDecisionCard(message, intent, decision.action === "notify_owner" ? "notify" : "decision", decision.analysis);
             if (notified)
                 this.options.rememberOwnerTarget(message);
-            this.options.rememberFromMention(message, intent);
+            this.options.rememberFromMention(message, intent, decision.analysis);
             if (notified)
                 await this.options.markProcessed(message);
             await this.options.audit.append({
                 actor: { system: true },
-                action: "bot_mention_owner_notified",
-                details: { messageId: message.messageId, kind: intent.kind, reason: intent.reason },
-            });
-            return;
-        }
-        if (intent.action === "need_decision") {
-            const analysis = await this.withTimeout(signal, this.options.config.concurrency.replyTimeoutMs ?? 120_000, "analysis", (child) => this.analyzeBotRequest(message, intent, child));
-            const notified = await this.sendOwnerDecisionCard(message, intent, "decision", analysis);
-            if (notified)
-                this.options.rememberOwnerTarget(message);
-            this.options.rememberFromMention(message, intent, analysis);
-            if (notified)
-                await this.options.markProcessed(message);
-            await this.options.audit.append({
-                actor: { system: true },
-                action: "bot_mention_escalated",
+                action: decision.action === "notify_owner"
+                    ? "bot_mention_owner_notified"
+                    : "bot_mention_escalated",
                 details: {
                     messageId: message.messageId,
                     kind: intent.kind,
-                    reason: intent.reason,
-                    analysisHash: analysis ? sha256(analysis).slice(0, 12) : undefined,
+                    reason: decision.reason,
+                    ...(decision.analysis
+                        ? { analysisHash: sha256(decision.analysis).slice(0, 12) }
+                        : {}),
                 },
             });
             return;
         }
-        const style = intent.style;
-        const ackTimer = this.options.config.reply.acknowledgeLongTasks
-            ? setTimeout(() => {
-                void this.options.safeReply(message, this.options.config.reply.ackText);
-            }, this.options.config.reply.ackDelayMs)
-            : undefined;
-        if (ackTimer)
-            ackTimer.unref?.();
-        let replied = false;
+        const reply = decision.reply?.trim();
+        if (!reply) {
+            await this.options.markProcessed(message);
+            await this.options.audit.append({
+                actor: { system: true },
+                action: "bot_mention_skipped",
+                details: { messageId: message.messageId, reason: "empty unified reply" },
+            });
+            return;
+        }
         try {
-            const reply = await this.withTimeout(signal, this.options.config.concurrency.replyTimeoutMs ?? 120_000, "reply", (child) => this.options.replyService.draft(enriched, style, child));
-            if (ackTimer)
-                clearTimeout(ackTimer);
-            replied = await this.options.safeReply(message, this.sanitize(reply));
+            const replied = await this.options.safeReply(message, this.sanitize(reply));
             this.options.rememberFromMention(message, intent, reply);
+            if (replied)
+                await this.options.markProcessed(message);
+            await this.options.audit.append({
+                actor: { system: true },
+                action: "bot_mention_replied",
+                details: { messageId: message.messageId, style: intent.style, reason: decision.reason },
+            });
         }
         catch (error) {
-            this.options.logger.error("bot mention handling failed", {
+            this.options.logger.error("bot mention reply failed", {
                 messageId: message.messageId,
                 error: toErrorMessage(error),
             });
-            replied = await this.options.safeReply(message, "处理失败，请稍后重试或直接联系我。");
+            await this.options.safeReply(message, "处理失败，请稍后重试或直接联系我。");
         }
-        finally {
-            if (ackTimer)
-                clearTimeout(ackTimer);
-        }
-        if (replied)
-            await this.options.markProcessed(message);
-        await this.options.audit.append({
-            actor: { system: true },
-            action: "bot_mention_replied",
-            details: { messageId: message.messageId, style, reason: intent.reason },
-        });
     }
     expectsAttachment(message) {
         if (message.replyToMessageId)
