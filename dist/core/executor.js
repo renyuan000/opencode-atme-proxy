@@ -12,7 +12,7 @@ export class GitExecutor {
         this.options = options;
         this.logger = options.logger ?? createLogger({ scope: "executor" });
     }
-    async prepare(repo, taskId) {
+    async prepare(repo, taskId, options = {}) {
         const repoRoot = await realpath(repo.path);
         const info = await stat(repoRoot);
         if (!info.isDirectory())
@@ -24,8 +24,11 @@ export class GitExecutor {
         const baseCommit = (await this.git(repoRoot, ["rev-parse", repo.defaultBranch])).trim();
         const safeTaskId = taskId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
         const branch = `atme/${safeTaskId}-${Date.now().toString(36)}`;
-        const worktreePath = join(this.options.worktreeRoot, safeTaskId, Date.now().toString(36));
-        await mkdir(join(this.options.worktreeRoot, safeTaskId), { recursive: true });
+        const worktreeRoot = options.root ?? this.options.worktreeRoot;
+        const worktreePath = options.name
+            ? join(worktreeRoot, options.name.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 80))
+            : join(worktreeRoot, safeTaskId, Date.now().toString(36));
+        await mkdir(options.name ? worktreeRoot : join(worktreeRoot, safeTaskId), { recursive: true });
         await this.git(repoRoot, [
             "worktree",
             "add",

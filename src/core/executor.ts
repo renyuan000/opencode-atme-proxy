@@ -15,6 +15,11 @@ export interface Worktree {
   baseCommit: string;
 }
 
+export interface WorktreeOptions {
+  root?: string;
+  name?: string;
+}
+
 export interface CommandResult {
   passed: boolean;
   summary: string;
@@ -33,7 +38,11 @@ export class GitExecutor {
     this.logger = options.logger ?? createLogger({ scope: "executor" });
   }
 
-  async prepare(repo: RepoConfig, taskId: string): Promise<Worktree> {
+  async prepare(
+    repo: RepoConfig,
+    taskId: string,
+    options: WorktreeOptions = {},
+  ): Promise<Worktree> {
     const repoRoot = await realpath(repo.path);
     const info = await stat(repoRoot);
     if (!info.isDirectory()) throw new Error(`repo path is not a directory: ${repoRoot}`);
@@ -44,8 +53,11 @@ export class GitExecutor {
     const baseCommit = (await this.git(repoRoot, ["rev-parse", repo.defaultBranch])).trim();
     const safeTaskId = taskId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
     const branch = `atme/${safeTaskId}-${Date.now().toString(36)}`;
-    const worktreePath = join(this.options.worktreeRoot, safeTaskId, Date.now().toString(36));
-    await mkdir(join(this.options.worktreeRoot, safeTaskId), { recursive: true });
+    const worktreeRoot = options.root ?? this.options.worktreeRoot;
+    const worktreePath = options.name
+      ? join(worktreeRoot, options.name.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 80))
+      : join(worktreeRoot, safeTaskId, Date.now().toString(36));
+    await mkdir(options.name ? worktreeRoot : join(worktreeRoot, safeTaskId), { recursive: true });
     await this.git(repoRoot, [
       "worktree",
       "add",

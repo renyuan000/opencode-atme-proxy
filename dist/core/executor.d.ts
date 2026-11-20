@@ -5,6 +5,10 @@ export interface Worktree {
     branch: string;
     baseCommit: string;
 }
+export interface WorktreeOptions {
+    root?: string;
+    name?: string;
+}
 export interface CommandResult {
     passed: boolean;
     summary: string;
@@ -18,7 +22,7 @@ export declare class GitExecutor {
     private readonly options;
     private readonly logger;
     constructor(options: GitExecutorOptions);
-    prepare(repo: RepoConfig, taskId: string): Promise<Worktree>;
+    prepare(repo: RepoConfig, taskId: string, options?: WorktreeOptions): Promise<Worktree>;
     runConfiguredCommands(repo: RepoConfig, worktree: Worktree): Promise<CommandResult>;
     diffStat(worktree: Worktree): Promise<string>;
     commitState(worktree: Worktree): Promise<string>;

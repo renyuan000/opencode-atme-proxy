@@ -42,8 +42,10 @@ export declare class ExecutionService {
     private readonly slots;
     constructor(options: ExecutionServiceOptions);
     executeTask(task: TaskRecord, planHash: string): Promise<void>;
+    private executeInWorkspace;
     private executeInWorktree;
     private reviewExecution;
     private runOpenCodeExecution;
+    private workspaceExecutionPrompt;
     private executionPrompt;
 }

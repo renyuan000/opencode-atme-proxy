@@ -994,3 +994,29 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 ```
 
 修改后会立即持久化配置、刷新群工作空间，并升 `sessionEpoch`，下一轮使用新的工作空间上下文。
+
+### 25.2 多项目执行
+
+workspace 模式下，任务执行不再直接修改源仓库：
+
+```text
+<workspace>/execution/task-<id>-<rand>/
+└── repos/
+    ├── asd-engine/
+    └── asd-transform/
+```
+
+流程：
+
+1. 分析结果里的 `repos` 匹配 workspace 项目名
+2. 匹配不到时使用全部项目
+3. 每个项目从当前 HEAD 创建独立 git worktree
+4. OpenCode 在任务工作空间目录执行，能同时看到多个项目工作树
+5. 执行后分别输出各项目 `git diff --stat`
+6. 结果写回群状态和群工作空间的 `execution/`
+
+限制：
+
+- 目前没有项目级 test/lint 配置，执行只做 diff 统计
+- 多项目提交/合并还没有自动化
+- 失败时保留工作树用于排查
