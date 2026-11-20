@@ -46,6 +46,7 @@ export interface SessionManagerOptions {
   config: AppConfig;
   logger: Logger;
   readOnlyPermission: SessionPermission[];
+  epochFor?: (chatId: string) => number;
 }
 
 export class SessionManager {
@@ -58,13 +59,22 @@ export class SessionManager {
     this.childSlots = new Semaphore(options.config.subagents.maxChildrenGlobal);
   }
 
+  private epochFor(chatId: string): number {
+    const value = this.options.epochFor?.(chatId) ?? 1;
+    return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1;
+  }
+
+  private sessionKey(prefix: string, platform: string, chatId: string): string {
+    return `${prefix}:${platform}:${chatId}:e${this.epochFor(chatId)}`;
+  }
+
   async coordinatorSession(
     platform: string,
     chatId: string,
     directory: string,
     title: string,
   ): Promise<string> {
-    const key = `coordinator:${platform}:${chatId}`;
+    const key = this.sessionKey("coordinator", platform, chatId);
     const existing = this.options.sessions.get(key);
     if (existing) {
       const probe = this.options.bridge.getSession;
@@ -112,7 +122,7 @@ export class SessionManager {
     chatId: string,
     directory: string,
   ): Promise<string> {
-    const key = `group:${platform}:${chatId}`;
+    const key = this.sessionKey("group", platform, chatId);
     const existing = this.options.sessions.get(key);
     if (existing) {
       const probe = this.options.bridge.getSession;
@@ -146,7 +156,7 @@ export class SessionManager {
   }
 
   async createWorkerSession(input: WorkerInput): Promise<string> {
-    const key = `worker:${input.role}:${input.platform}:${input.chatId}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
+    const key = `${this.sessionKey(`worker:${input.role}`, input.platform, input.chatId)}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
     const existing = this.options.sessions.get(key);
     if (existing && existing.directory === input.directory) {
       const probe = this.options.bridge.getSession;
@@ -217,7 +227,7 @@ export class SessionManager {
         );
       }
     }
-    const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
+    const key = this.sessionKey(`worker:${input.role}`, input.platform, input.chatId);
     const run = async (): Promise<string> => {
       const sessionId = await this.createWorkerSession(input);
       return this.options.bridge.prompt(sessionId, {

@@ -260,6 +260,7 @@ export class ProxyRuntime {
       config: this.config,
       logger: this.logger.child("sessions"),
       readOnlyPermission: READ_ONLY_PERMISSION,
+      epochFor: (chatId) => this.groupKnowledge.get(chatId)?.sessionEpoch ?? 1,
     });
     this.tasks = new ScopedTasks(this.groupState, this.logger.child("tasks"));
     this.approvals = new ScopedApprovals(this.groupState, async (taskId) => {
@@ -522,6 +523,19 @@ export class ProxyRuntime {
                 }
               : null),
         );
+      },
+      groupKnowledgeFor: (chatId) => {
+        const profile = this.groupKnowledge.get(chatId);
+        if (!profile) return undefined;
+        return {
+          product: profile.product,
+          summary: profile.summary,
+          features: profile.features,
+          dependsOn: profile.dependsOn,
+          excludes: profile.excludes,
+          terms: profile.terms,
+          sessionEpoch: profile.sessionEpoch,
+        };
       },
     });
     this.taskService = new TaskService({
@@ -786,31 +800,46 @@ export class ProxyRuntime {
         ? explicit.owns
         : [...new Set([...(existing?.features ?? []), ...known])];
       const dependencies = explicit?.dependsOn?.length ? explicit.dependsOn : dependsOn;
+      const terms = {
+        ...inferTerms(product),
+        ...(existing?.terms ?? {}),
+      };
+      const summary = explicit?.summary || existing?.summary || `[推断] ${product}`;
+      const excludes = explicit?.excludes ?? existing?.excludes ?? [];
+      const semanticChanged = Boolean(
+        existing &&
+          (existing.product !== product ||
+            existing.summary !== summary ||
+            JSON.stringify(existing.features) !== JSON.stringify(features) ||
+            JSON.stringify(existing.dependsOn) !== JSON.stringify([...new Set(dependencies)]) ||
+            JSON.stringify(existing.excludes) !== JSON.stringify(excludes) ||
+            JSON.stringify(existing.terms) !== JSON.stringify(terms)),
+      );
       const profile: GroupKnowledge = {
         chatId: group.chatId,
         name,
         product,
-        summary: explicit?.summary || existing?.summary || `[推断] ${product}`,
+        summary,
         features,
         tasks: [...new Set([...(existing?.tasks ?? []), ...tasks])].slice(-20),
         dependsOn: [...new Set(dependencies)],
-        excludes: explicit?.excludes ?? existing?.excludes ?? [],
+        excludes,
+        terms,
+        sessionEpoch: (existing?.sessionEpoch ?? 1) + (semanticChanged ? 1 : 0),
         source: explicit ? "owner" : "inferred",
         confidence: explicit ? 1 : known.length > 0 ? 0.6 : 0.3,
         updatedAt: Date.now(),
       };
       if (
         !existing ||
-        existing.product !== profile.product ||
-        existing.summary !== profile.summary ||
-        JSON.stringify(existing.tasks) !== JSON.stringify(profile.tasks) ||
-        JSON.stringify(existing.features) !== JSON.stringify(profile.features) ||
-        JSON.stringify(existing.dependsOn) !== JSON.stringify(profile.dependsOn)
+        semanticChanged ||
+        JSON.stringify(existing.tasks) !== JSON.stringify(profile.tasks)
       ) {
         await this.groupKnowledge.set(profile);
-        this.logger.info("initial group profile inferred", {
+        this.logger.info("group profile refreshed", {
           chatId: group.chatId,
           product,
+          sessionEpoch: profile.sessionEpoch,
           confidence: profile.confidence,
         });
       }
@@ -1005,13 +1034,13 @@ export class ProxyRuntime {
     await this.memory.load();
     await this.memory.migrateShards();
     await this.groupContext.load();
+    await this.groupKnowledge.load();
     await this.refreshGroupKnowledge();
     this.evidence.prune();
     await this.ownerAccess.load();
     await this.ownerTargets.load();
     await this.documentCache.load();
     await this.documentRefs.load();
-    await this.groupKnowledge.load();
     this.ownerAccess.reconcile();
     await this.options.platform.start({
       onMessage: (message) => this.onMessage(message),
@@ -1417,6 +1446,10 @@ export class ProxyRuntime {
           `功能：${profile.features.join("、") || "待补充"}`,
           `依赖：${profile.dependsOn.join("、") || "无"}`,
           `排除：${profile.excludes.join("、") || "无"}`,
+          `术语：${Object.entries(profile.terms)
+            .map(([term, meaning]) => `${term}=${meaning}`)
+            .join("；") || "待补充"}`,
+          `会话代际：e${profile.sessionEpoch}`,
           `来源：${profile.source}｜置信度：${profile.confidence}｜更新：${new Date(profile.updatedAt).toLocaleString()}`,
         ].join("\n"),
       )
@@ -2298,4 +2331,24 @@ function inferFeatures(product: string): string[] {
     return ["协议解析", "会话缓存", "流分变换", "网络访问行为", "Kafka", "KD-ZMQ"];
   }
   return [];
+}
+
+function inferTerms(product: string): Record<string, string> {
+  if (/资产测绘/.test(product)) {
+    return {
+      资产测绘: "本群产品，围绕资产发现、识别与风险管理，不是通用地图测绘",
+      指纹: "资产指纹识别（协议/组件/版本），不是浏览器 fingerprint",
+      探测任务: "资产测绘发起的扫描/探测作业，不是通用定时任务",
+      引擎: "npb-engine，负责流量采集与协议解析",
+      流分: "npb-transform 流分装置，不是资产测绘模块",
+    };
+  }
+  if (/流分/.test(product)) {
+    return {
+      流分: "npb-transform 流分装置，负责流变换与分发",
+      引擎: "npb-engine，负责流量采集与协议解析",
+      资产测绘: "另一个产品群，不要把资产测绘需求混入本群",
+    };
+  }
+  return {};
 }

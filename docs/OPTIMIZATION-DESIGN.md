@@ -886,3 +886,27 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 ```
 
 三者都按 `GroupKey` 隔离，不允许跨群复用。
+
+## 24. 当前落地状态
+
+已落地：
+
+- `group-knowledge.json` 增加 `terms` 和 `sessionEpoch`
+- 旧 `group-profile.json` 自动迁移，缺省 `terms={}`、`sessionEpoch=1`
+- 产品画像自动生成基础术语，例如“指纹=资产指纹识别”
+- 群职责/画像语义变化时自动升 `sessionEpoch`
+- SessionKey 追加 `:e<epoch>`，新 epoch 使用新的 coordinator/worker session
+- 回复 prompt 分为：
+  - `可信系统上下文`
+  - `不可信数据`
+  - `回答规则`
+- prompt 注入群画像、术语表、Context manifest、session epoch
+- `/画像` 展示术语表和会话代际
+
+待落地：
+
+- 术语表 owner 编辑命令
+- 语义检索（当前仍是最近窗口 + 关键词证据）
+- 上下文 token 预算统一裁剪器
+- 旧 epoch session 自动归档
+- prompt 结构化和审计日志

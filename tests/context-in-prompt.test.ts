@@ -36,7 +36,7 @@ function config(stateDir: string): LoadedConfig {
         maxClaimAttemptsPer10Min: 5,
       },
           approvers: [{ openId: "me" }],
-          groups: [{ chatId: "chat", enabled: true }],
+          groups: [{ chatId: "chat", name: "产品-资产测绘", enabled: true }],
           receiveAllGroupMessages: false,
           rateLimit: { sendPerSecond: 1000, burst: 1000 },
         },
@@ -272,6 +272,10 @@ test("reply uses resolved project directory and recent context", async () => {
     assert.ok(bridge.directories.every((d) => d === "/repo/demo"));
     const last = bridge.prompts[bridge.prompts.length - 1] ?? "";
     assert.match(last, /当前项目目录：\/repo\/demo/);
+    assert.match(last, /可信系统上下文/);
+    assert.match(last, /不可信数据/);
+    assert.match(last, /群术语表/);
+    assert.match(last, /指纹 = 资产指纹识别/);
     assert.match(last, /最近群聊上下文/);
     assert.match(last, /支付灰度/);
     await runtime.stop();
