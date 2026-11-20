@@ -130,7 +130,7 @@ export class ScanService {
             if (!analysis?.trim())
                 return;
             const names = files.map((file) => file.name).filter(Boolean).join("、");
-            await this.options.sendToOwner(`文件分析（${message.chat.name ?? message.chat.id}）：\n文件：${names || "未命名文件"}\n${analysis.trim().slice(0, 6000)}`);
+            await this.options.sendToOwner(`文件分析（${message.chat.name ?? message.chat.id}）：\n文件：${names || "未命名文件"}\n${clip(analysis.trim(), 6000, "文件分析")}`);
         }
         catch (error) {
             this.options.logger.warn("file analysis failed", {
@@ -153,7 +153,7 @@ export class ScanService {
                     continue;
                 const text = await extractDocumentText(resource.data, resource.mime, file.name);
                 if (text)
-                    parts.push(`[文件 ${file.name ?? ""}]\n${text.slice(0, 8000)}`);
+                    parts.push(`[文件 ${file.name ?? ""}]\n${clip(text, 8000, file.name ?? "文件")}`);
             }
             catch (error) {
                 this.options.logger.warn("failed to analyze scanned file", {
@@ -341,5 +341,10 @@ function suggestedActionLabel(actionability) {
         default:
             return "忽略";
     }
+}
+function clip(text, max, label) {
+    if (text.length <= max)
+        return text;
+    return `${text.slice(0, max)}\n\n[已截断：${label} 原长 ${text.length} 字符，仅显示前 ${max} 字符]`;
 }
 //# sourceMappingURL=scan-service.js.map

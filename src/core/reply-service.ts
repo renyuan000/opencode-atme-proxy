@@ -576,7 +576,7 @@ export class ReplyService {
         });
       }
     }
-    return texts.length > 0 ? texts.join("\n\n---\n\n").slice(0, 6000) : undefined;
+    return texts.length > 0 ? clip(texts.join("\n\n---\n\n"), 6000, "OCR") : undefined;
   }
 
   private async loadRecentHistory(message: IncomingMessage): Promise<string[]> {
@@ -637,7 +637,7 @@ export class ReplyService {
               );
               if (text) {
                 lines.push(
-                  `- [引用文件 ${attachment.name ?? ""}] ${text.slice(0, 6000)}`,
+                  `- [引用文件 ${attachment.name ?? ""}] ${clip(text, 6000, attachment.name ?? "引用文件")}`,
                 );
               }
             } catch (error) {
@@ -759,7 +759,7 @@ export class ReplyService {
             });
           }
           docs.push(
-            `${doc.title ? `${doc.title}\n` : ""}${url}\n${doc.text.slice(0, 12_000)}`,
+            `${doc.title ? `${doc.title}\n` : ""}${url}\n${clip(doc.text, 12_000, doc.title ?? "在线文档")}`,
           );
         }
       } catch (error) {
@@ -798,4 +798,9 @@ export class ReplyService {
     }
     return images;
   }
+}
+
+function clip(text: string, max: number, label: string): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n\n[已截断：${label} 原长 ${text.length} 字符，仅显示前 ${max} 字符]`;
 }
