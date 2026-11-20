@@ -1,5 +1,5 @@
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import type {
   BotIntent,
   IncomingMessage,
@@ -440,6 +440,7 @@ export class ProxyRuntime {
       approveReply: (action, pending) => this.approveReply(action, pending),
       sendReplyManagementCard: () => this.approvalService.sendReplyManagementCard(),
       setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
+      manageWorkspace: (arg) => this.manageWorkspace(arg),
       listOwnerTargets: () => this.listOwnerTargets(),
       selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
       getGroupKnowledge: (arg) => this.getGroupKnowledge(arg),
@@ -1557,6 +1558,115 @@ export class ProxyRuntime {
     await this.ensureGroupWorkspace(group.chatId, group.name, group.project, group.workspace);
     await this.refreshGroupKnowledge();
     return `已设置「${group.name ?? group.chatId}」职责：${description}`;
+  }
+
+  private async manageWorkspace(arg: string): Promise<string> {
+    const match = arg.trim().match(/^(\S+)\s*([\s\S]*)$/);
+    if (!match) return "用法：/工作空间 <群名|chatId> [root|添加|删除|自动|清空]";
+    const key = match[1] ?? "";
+    const rest = (match[2] ?? "").trim();
+    const group = this.config.platforms.feishu.groups.find(
+      (item) => item.chatId === key || item.name === key,
+    );
+    if (!group) return `找不到群：${key}`;
+    if (!rest) return this.describeWorkspace(group);
+
+    if (rest === "清空") {
+      delete group.workspace;
+      await this.persistGroupWorkspace(group);
+      await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
+      const epoch = await this.groupKnowledge.bumpSessionEpoch(group.chatId);
+      return `已清空「${group.name ?? group.chatId}」工作空间配置。${epoch ? `当前会话代际 e${epoch}。` : ""}`;
+    }
+
+    const existing = group.workspace ?? { projects: [] };
+    const workspace: GroupWorkspaceLayout = {
+      ...(existing.root ? { root: existing.root } : {}),
+      projects: [...existing.projects],
+    };
+
+    if (rest === "自动" || rest === "auto") {
+      workspace.projects = [];
+    } else if (rest.startsWith("添加 ")) {
+      const add = rest.match(/^添加\s+(\S+)\s+(\S+)(?:\s+([\s\S]+))?$/);
+      if (!add) return "用法：/工作空间 <群名|chatId> 添加 <名称> <路径> [说明]";
+      const [, name, path, description] = add;
+      workspace.projects = workspace.projects.filter((project) => project.name !== name);
+      workspace.projects.push({
+        name: name!,
+        path: path!,
+        ...(description ? { description } : {}),
+      });
+    } else if (rest.startsWith("删除 ")) {
+      const name = rest.slice("删除 ".length).trim();
+      if (!name) return "用法：/工作空间 <群名|chatId> 删除 <名称>";
+      const before = workspace.projects.length;
+      workspace.projects = workspace.projects.filter((project) => project.name !== name);
+      if (workspace.projects.length === before) return `找不到项目：${name}`;
+    } else {
+      const root = rest.replace(/^设置\s+/, "").trim();
+      if (!root) return "工作空间根目录不能为空。";
+      const groupRoot = this.groupWorkspace.dirFor(group.chatId);
+      const resolved = resolve(
+        isAbsolute(root) ? root : join(groupRoot ?? process.cwd(), root),
+      );
+      const info = await stat(resolved).catch(() => undefined);
+      if (!info?.isDirectory()) return `工作空间目录不存在：${resolved}`;
+      workspace.root = resolved;
+      workspace.projects = [];
+    }
+
+    group.workspace = workspace;
+    await this.persistGroupWorkspace(group);
+    await this.ensureGroupWorkspace(group.chatId, group.name, group.project, group.workspace);
+    const epoch = await this.groupKnowledge.bumpSessionEpoch(group.chatId);
+    return `${this.describeWorkspace(group)}${epoch ? `\n会话代际：e${epoch}` : ""}`;
+  }
+
+  private describeWorkspace(group: AppConfig["platforms"]["feishu"]["groups"][number]): string {
+    const workspace = group.workspace;
+    if (!workspace) return `「${group.name ?? group.chatId}」还没有配置工作空间。
+用法：/工作空间 ${group.name ?? group.chatId} <root>`;
+    const provider = this.groupWorkspace.dirFor(group.chatId);
+    const lines = [
+      `群：${group.name ?? group.chatId}`,
+      `工作空间：${workspace.root ?? provider ?? "(未设置)"}`,
+    ];
+    if (workspace.projects.length > 0) {
+      lines.push("代码项目：");
+      workspace.projects.forEach((project, index) => {
+        lines.push(
+          `${index + 1}. ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`,
+        );
+      });
+    } else {
+      lines.push("代码项目：自动发现 worktrees/");
+    }
+    return lines.join("\n");
+  }
+
+  private async persistGroupWorkspace(
+    group: AppConfig["platforms"]["feishu"]["groups"][number],
+  ): Promise<void> {
+    const path = this.options.loaded.path;
+    if (!path) return;
+    try {
+      const raw = await readJsonFile<Record<string, any>>(path, {});
+      const groups = raw.platforms?.feishu?.groups;
+      if (Array.isArray(groups)) {
+        const target = groups.find((item: any) => item?.chatId === group.chatId);
+        if (target) {
+          if (group.workspace) target.workspace = group.workspace;
+          else delete target.workspace;
+        }
+      }
+      await writeJsonAtomic(path, raw);
+    } catch (error) {
+      this.logger.warn("failed to persist group workspace", {
+        chatId: group.chatId,
+        error: toErrorMessage(error),
+      });
+    }
   }
 
   private handleOwnerCommand(

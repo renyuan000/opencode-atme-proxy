@@ -23,6 +23,7 @@ export interface OwnerCommandServiceOptions {
     approveReply(action: PlatformAction, pending: PendingCard): Promise<boolean>;
     sendReplyManagementCard(): Promise<boolean>;
     setGroupResponsibility(arg: string): Promise<string>;
+    manageWorkspace(arg: string): Promise<string>;
     listOwnerTargets(): string;
     selectOwnerTarget(arg: string): string;
     getGroupKnowledge(arg: string): Promise<string>;

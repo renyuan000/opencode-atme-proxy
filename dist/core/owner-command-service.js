@@ -21,6 +21,10 @@ export class OwnerCommandService {
                 "/取消 [编号|taskId]    取消指定或最近一条",
                 "/回复管理              查看并撤回最近回复",
                 "/职责 <群名|chatId> <说明>  设置群职责画像",
+                "/工作空间 <群名|chatId> [root] 查看/设置工作空间",
+                "/工作空间 <群名|chatId> 添加 <名称> <路径> [说明]",
+                "/工作空间 <群名|chatId> 删除 <名称>",
+                "/工作空间 <群名|chatId> 自动 自动发现 worktrees 项目",
                 "/目标 [编号|chatId|messageId] 查看/选择私聊目标",
                 "/画像 [群名|chatId]      查看群初始画像",
             ].join("\n");
@@ -37,6 +41,11 @@ export class OwnerCommandService {
             if (!command.arg)
                 return "用法：/职责 <群名|chatId> <职责说明>";
             return this.options.setGroupResponsibility(command.arg);
+        }
+        if (command.command === "workspace") {
+            if (!command.arg)
+                return "用法：/工作空间 <群名|chatId> [root|添加|删除|自动|清空]";
+            return this.options.manageWorkspace(command.arg);
         }
         if (command.command === "replies") {
             const sent = await this.options.sendReplyManagementCard();

@@ -283,7 +283,9 @@ export class TaskService {
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
       task,
-      repositoryIds: this.options.config.repos.map((item) => item.id),
+      repositoryIds: workspaceProjects?.length
+        ? workspaceProjects.map((project) => project.name)
+        : this.options.config.repos.map((item) => item.id),
       directory: worktree,
       context: ctx,
       ...(workspaceProjects ? { workspaceProjects } : {}),
@@ -306,7 +308,7 @@ export class TaskService {
       prompt,
       signal,
     );
-    return parseAnalysis(raw, task, "auto");
+    return parseAnalysis(raw, task, workspaceProjects?.[0]?.name ?? "workspace");
   }
 
   private async verifyAnalysis(

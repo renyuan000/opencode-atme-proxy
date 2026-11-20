@@ -966,3 +966,26 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 ```
 
 这样 engine 采集、transform 加工这种上下游关系，可以由任务自己判断涉及哪些项目，而不是被人为拆成主次。
+
+### 25.1 私聊配置工作空间
+
+主人私聊机器人即可维护，不需要改代码：
+
+```text
+/工作空间 <群名|chatId>                         查看
+/工作空间 <群名|chatId> <root>                  设置根目录，并自动发现 worktrees/
+/工作空间 <群名|chatId> 添加 <名称> <路径> [说明]
+/工作空间 <群名|chatId> 删除 <名称>
+/工作空间 <群名|chatId> 自动                    清空 projects，改为自动发现
+/工作空间 <群名|chatId> 清空                    删除整个 workspace 配置
+```
+
+示例：
+
+```text
+/工作空间 产品-资产测绘 /mnt/d/Work/atme-groups/产品-资产测绘__oc_b24e6523
+/工作空间 产品-资产测绘 添加 asd-engine worktrees/asd-engine.git 流量采集与协议解析
+/工作空间 产品-资产测绘 添加 asd-transform worktrees/asd-transform.git 流分加工处理
+```
+
+修改后会立即持久化配置、刷新群工作空间，并升 `sessionEpoch`，下一轮使用新的工作空间上下文。
