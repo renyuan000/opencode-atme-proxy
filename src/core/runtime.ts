@@ -84,6 +84,7 @@ import { OwnerStore } from "./owner-store.js";
 import { OwnerTargetStore } from "./owner-target.js";
 import { ScopedDocumentCache } from "./document-cache.js";
 import { ScopedDocumentRefs } from "./document-ref-store.js";
+import { JobStore } from "./job-store.js";
 import { ScopedGroupKnowledge, type GroupKnowledge } from "./group-knowledge.js";
 import { OwnerAccessService } from "./owner-access-service.js";
 import {
@@ -193,6 +194,7 @@ export class ProxyRuntime {
   private readonly documentCache: ScopedDocumentCache;
   private readonly documentRefs: ScopedDocumentRefs;
   private readonly groupKnowledge: ScopedGroupKnowledge;
+  private readonly jobsByGroup = new Map<string, JobStore>();
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly blockedDirectAlerts = new Map<string, number>();
   private readonly messageControllers = new Map<string, AbortController>();
@@ -850,6 +852,38 @@ export class ProxyRuntime {
     });
   }
 
+  private jobStore(chatId: string): JobStore {
+    const existing = this.jobsByGroup.get(chatId);
+    if (existing) return existing;
+    const store = new JobStore(this.groupState.dirFor(chatId), this.logger.child("jobs"));
+    this.jobsByGroup.set(chatId, store);
+    return store;
+  }
+
+  private async recoverPendingJobs(): Promise<void> {
+    for (const [chatId, store] of this.jobsByGroup) {
+      for (const job of store.list()) {
+        if (job.status !== "queued" && job.status !== "running") continue;
+        if (!this.options.platform.fetchMessage) continue;
+        try {
+          const message = await this.options.platform.fetchMessage(job.messageId);
+          if (!message) {
+            await store.update(job.id, { status: "dead", error: "message unavailable on recovery" });
+            continue;
+          }
+          await store.update(job.id, { status: "queued" });
+          await this.ingest(message, true);
+        } catch (error) {
+          await store.update(job.id, {
+            status: "failed",
+            error: toErrorMessage(error),
+            attempts: job.attempts + 1,
+          });
+        }
+      }
+    }
+  }
+
   private ownerOpenId(): string | undefined {
     return this.ownerAccess.openId();
   }
@@ -956,6 +990,7 @@ export class ProxyRuntime {
     await this.groupState.load();
     for (const group of this.config.platforms.feishu.groups) {
       await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
+      await this.jobStore(group.chatId).load();
     }
     await this.dedup.load();
     await this.historyMentions.load();
@@ -987,6 +1022,7 @@ export class ProxyRuntime {
       onReconnected: () => this.onReconnected(),
     });
     await this.syncGroups();
+    await this.recoverPendingJobs();
     this.poller.start();
     this.sweepTimer = setInterval(() => {
       void this.sweepExpiredApprovals();
@@ -1130,6 +1166,15 @@ export class ProxyRuntime {
     force = false,
   ): Promise<void> {
     const dedupKey = `${message.platform}:${message.messageId}`;
+    const jobStore = this.jobStore(message.chat.id);
+    const jobRecord = await jobStore.create({
+      id: message.messageId,
+      chatId: message.chat.id,
+      messageId: message.messageId,
+      type: this.isMention(message) ? "chat" : "scan",
+      priority: this.isMention(message) ? 1 : 5,
+      status: "queued",
+    });
     this.logger.info("dispatch group message", {
       messageId: message.messageId,
       mention: this.isMention(message),
@@ -1160,9 +1205,11 @@ export class ProxyRuntime {
       run: async (signal) => {
         const unlink = this.linkAbort(controller, signal);
         try {
+          await jobStore.update(jobRecord.id, { status: "running", attempts: jobRecord.attempts + 1 });
           this.logger.info("dispatch job started", { messageId: message.messageId, force });
           if (controller.signal.aborted || (!force && this.dedup.has(dedupKey, message.chat.id))) return;
           await this.handleMessage(message, controller.signal);
+          await jobStore.update(jobRecord.id, { status: "done" });
           this.logger.info("dispatch job finished", { messageId: message.messageId });
         } finally {
           unlink();
@@ -1178,6 +1225,7 @@ export class ProxyRuntime {
       } catch (error) {
         this.activeMessageIds.delete(dedupKey);
         if (limited) this.senderLimiter.release(message.sender.id);
+        await jobStore.update(jobRecord.id, { status: "failed", error: toErrorMessage(error) });
         this.logger.error("failed to process message", {
           messageId: message.messageId,
           error: toErrorMessage(error),
@@ -1189,6 +1237,7 @@ export class ProxyRuntime {
     void job.catch((error) => {
       this.activeMessageIds.delete(dedupKey);
       if (limited) this.senderLimiter.release(message.sender.id);
+      void jobStore.update(jobRecord.id, { status: "failed", error: toErrorMessage(error) });
       this.logger.error("failed to process message", {
         messageId: message.messageId,
         error: toErrorMessage(error),

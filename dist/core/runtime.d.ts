@@ -66,6 +66,7 @@ export declare class ProxyRuntime {
     private readonly documentCache;
     private readonly documentRefs;
     private readonly groupKnowledge;
+    private readonly jobsByGroup;
     private readonly groupLocks;
     private readonly blockedDirectAlerts;
     private readonly messageControllers;
@@ -79,6 +80,8 @@ export declare class ProxyRuntime {
     constructor(options: RuntimeOptions);
     private refreshGroupKnowledge;
     private ensureGroupWorkspace;
+    private jobStore;
+    private recoverPendingJobs;
     private ownerOpenId;
     private ownerName;
     private claimOwner;
