@@ -326,6 +326,23 @@ export class ReplyService {
             ? (await this.options.ownerOverview?.(message) ?? "")
             : "";
         const linkedDocuments = await this.loadLinkedDocuments(message, quoteBlock);
+        const manifest = {
+            chatId: message.chat.id,
+            messageId: message.messageId,
+            replyToMessageId: message.replyToMessageId ?? null,
+            mentionIds: message.mentions.map((mention) => mention.id),
+            attachmentNames: (message.attachments ?? []).map((item) => item.name ?? item.kind),
+            recentMessages: recent.length,
+            quotedChain: quotedChain.length,
+            hasSummary: Boolean(summaryBlock),
+            hasMemory: Boolean(memoryBlock),
+            hasDocument: Boolean(documentText),
+            onlineDocuments: linkedDocuments.length,
+            hasResponsibility: Boolean(responsibility),
+            truncated: documentText?.includes("[已截断") ||
+                quotedChain.some((line) => line.includes("[已截断")) ||
+                linkedDocuments.some((line) => line.includes("[已截断")),
+        };
         const prompt = [
             styleInstruction,
             ...(unified
@@ -341,6 +358,7 @@ export class ReplyService {
                 : []),
             "你的角色：资深软件架构师与研发负责人，熟悉当前主项目。",
             ...(memoryBlock ? [memoryBlock] : []),
+            `Context manifest（只描述实际提供的事实源）：${JSON.stringify(manifest)}`,
             ...(responsibility ? ["本群职责（判断是否相关时优先参考）：", responsibility] : []),
             ...(ownerContext ? ["跨群上下文（仅供主人）：", ownerContext] : []),
             ...(summaryBlock ? ["群摘要（长期，优先参考）：", summaryBlock] : []),
