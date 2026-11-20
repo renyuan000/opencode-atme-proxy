@@ -10,8 +10,15 @@ export class SessionManager {
         this.options = options;
         this.childSlots = new Semaphore(options.config.subagents.maxChildrenGlobal);
     }
+    epochFor(chatId) {
+        const value = this.options.epochFor?.(chatId) ?? 1;
+        return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1;
+    }
+    sessionKey(prefix, platform, chatId) {
+        return `${prefix}:${platform}:${chatId}:e${this.epochFor(chatId)}`;
+    }
     async coordinatorSession(platform, chatId, directory, title) {
-        const key = `coordinator:${platform}:${chatId}`;
+        const key = this.sessionKey("coordinator", platform, chatId);
         const existing = this.options.sessions.get(key);
         if (existing) {
             const probe = this.options.bridge.getSession;
@@ -54,7 +61,7 @@ export class SessionManager {
         }
     }
     async createGroupSession(platform, chatId, directory) {
-        const key = `group:${platform}:${chatId}`;
+        const key = this.sessionKey("group", platform, chatId);
         const existing = this.options.sessions.get(key);
         if (existing) {
             const probe = this.options.bridge.getSession;
@@ -85,7 +92,7 @@ export class SessionManager {
         return sessionId;
     }
     async createWorkerSession(input) {
-        const key = `worker:${input.role}:${input.platform}:${input.chatId}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
+        const key = `${this.sessionKey(`worker:${input.role}`, input.platform, input.chatId)}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
         const existing = this.options.sessions.get(key);
         if (existing && existing.directory === input.directory) {
             const probe = this.options.bridge.getSession;
@@ -139,7 +146,7 @@ export class SessionManager {
                 await this.finishSession(sessionId, input.title, input.directory, "worker_fallback");
             }
         }
-        const key = `worker:${input.role}:${input.platform}:${input.chatId}`;
+        const key = this.sessionKey(`worker:${input.role}`, input.platform, input.chatId);
         const run = async () => {
             const sessionId = await this.createWorkerSession(input);
             return this.options.bridge.prompt(sessionId, {

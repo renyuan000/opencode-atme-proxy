@@ -9,6 +9,8 @@ export interface GroupKnowledge {
     tasks: string[];
     dependsOn: string[];
     excludes: string[];
+    terms: Record<string, string>;
+    sessionEpoch: number;
     source: "inferred" | "owner";
     confidence: number;
     updatedAt: number;
@@ -22,5 +24,6 @@ export declare class ScopedGroupKnowledge {
     get(chatId: string): GroupKnowledge | undefined;
     set(profile: GroupKnowledge): Promise<void>;
     list(): GroupKnowledge[];
+    bumpSessionEpoch(chatId: string): Promise<number>;
     flush(): Promise<void>;
 }

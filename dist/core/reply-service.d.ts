@@ -42,6 +42,15 @@ export interface ReplyServiceOptions {
     refreshSummary(platform: string, chatId: string): Promise<void>;
     ownerOverview?(message: IncomingMessage): string | Promise<string>;
     responsibilityFor?(chatId: string): string;
+    groupKnowledgeFor?(chatId: string): {
+        product?: string;
+        summary?: string;
+        features?: string[];
+        dependsOn?: string[];
+        excludes?: string[];
+        terms?: Record<string, string>;
+        sessionEpoch?: number;
+    } | undefined;
     documentCache?: {
         get(chatId: string, url: string): {
             title?: string;

@@ -45,6 +45,7 @@ export interface SessionManagerOptions {
     config: AppConfig;
     logger: Logger;
     readOnlyPermission: SessionPermission[];
+    epochFor?: (chatId: string) => number;
 }
 export declare class SessionManager {
     private readonly options;
@@ -53,6 +54,8 @@ export declare class SessionManager {
     private readonly taskChildCounts;
     private readonly childSlots;
     constructor(options: SessionManagerOptions);
+    private epochFor;
+    private sessionKey;
     coordinatorSession(platform: string, chatId: string, directory: string, title: string): Promise<string>;
     createGroupSession(platform: string, chatId: string, directory: string): Promise<string>;
     createWorkerSession(input: WorkerInput): Promise<string>;
