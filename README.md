@@ -482,6 +482,7 @@ groups/<群名__短ID>/
   replies/            本群证据
   evidence/           本群历史聊天证据
   tasks/              本群任务
+  jobs/               本群持久任务记录
   analyses/           本群分析
   approvals/          本群审批
   executions/         本群执行

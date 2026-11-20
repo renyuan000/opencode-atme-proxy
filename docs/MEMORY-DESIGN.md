@@ -110,6 +110,7 @@ A 解决“同一句话被拆成几条发”，B 解决“隔很久补充同一�
       replies/                    本群原文与回复（720 天）
       evidence/                   本群历史聊天 log
       tasks/                      本群任务
+      jobs/                       本群持久任务记录
       analyses/<taskId>/          本群分析
       approvals/                  本群审批
       executions/                 本群执行
