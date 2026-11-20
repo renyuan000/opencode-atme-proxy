@@ -933,6 +933,7 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 {
   "workspace": {
     "root": "/mnt/d/Work/atme-groups/<群名__短ID>",
+    "autoDiscover": false,
     "projects": [
       {
         "name": "asd-engine",
@@ -953,7 +954,8 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 
 - `workspace.root` 是 OpenCode 的主工作目录
 - `projects` 是平级代码项目，不设 primary/core 优先级
-- `projects` 为空时自动发现 `workspace.root/worktrees/` 下的目录
+- `projects` 为空且 `autoDiscover` 未关闭时，自动发现 `workspace.root/worktrees/` 下的目录
+- `/工作空间 ... 添加` 会关闭自动发现；`/工作空间 ... 自动` 会重新开启
 - 分析、文件、执行产物都放在工作空间内
 - 代码项目按任务相关性选择，不由配置强行规定主项目
 - `project.primary/core/reference` 仅作为旧配置兼容

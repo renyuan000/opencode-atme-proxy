@@ -1582,11 +1582,15 @@ export class ProxyRuntime {
     const existing = group.workspace ?? { projects: [] };
     const workspace: GroupWorkspaceLayout = {
       ...(existing.root ? { root: existing.root } : {}),
-      projects: [...existing.projects],
+      projects: [...(existing.projects ?? [])],
+      ...(existing.autoDiscover !== undefined
+        ? { autoDiscover: existing.autoDiscover }
+        : {}),
     };
 
     if (rest === "自动" || rest === "auto") {
       workspace.projects = [];
+      workspace.autoDiscover = true;
     } else if (rest.startsWith("添加 ")) {
       const add = rest.match(/^添加\s+(\S+)\s+(\S+)(?:\s+([\s\S]+))?$/);
       if (!add) return "用法：/工作空间 <群名|chatId> 添加 <名称> <路径> [说明]";
@@ -1597,12 +1601,14 @@ export class ProxyRuntime {
         path: path!,
         ...(description ? { description } : {}),
       });
+      workspace.autoDiscover = false;
     } else if (rest.startsWith("删除 ")) {
       const name = rest.slice("删除 ".length).trim();
       if (!name) return "用法：/工作空间 <群名|chatId> 删除 <名称>";
       const before = workspace.projects.length;
       workspace.projects = workspace.projects.filter((project) => project.name !== name);
       if (workspace.projects.length === before) return `找不到项目：${name}`;
+      workspace.autoDiscover = false;
     } else {
       const root = rest.replace(/^设置\s+/, "").trim();
       if (!root) return "工作空间根目录不能为空。";
@@ -1614,6 +1620,7 @@ export class ProxyRuntime {
       if (!info?.isDirectory()) return `工作空间目录不存在：${resolved}`;
       workspace.root = resolved;
       workspace.projects = [];
+      workspace.autoDiscover = true;
     }
 
     group.workspace = workspace;
@@ -1632,13 +1639,15 @@ export class ProxyRuntime {
       `群：${group.name ?? group.chatId}`,
       `工作空间：${workspace.root ?? provider ?? "(未设置)"}`,
     ];
-    if (workspace.projects.length > 0) {
+    if ((workspace.projects ?? []).length > 0) {
       lines.push("代码项目：");
-      workspace.projects.forEach((project, index) => {
+      (workspace.projects ?? []).forEach((project, index) => {
         lines.push(
           `${index + 1}. ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`,
         );
       });
+    } else if (workspace.autoDiscover === false) {
+      lines.push("代码项目：未配置");
     } else {
       lines.push("代码项目：自动发现 worktrees/");
     }
@@ -2275,7 +2284,8 @@ export class ProxyRuntime {
         const entries = await readdir(dir, { withFileTypes: true });
         const projects = entries
           .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-          .map((entry) => ({ name: entry.name, path: join(dir, entry.name) }));
+          .map((entry) => ({ name: entry.name, path: join(dir, entry.name) }))
+          .sort((a, b) => a.name.localeCompare(b.name));
         if (projects.length > 0) return projects;
       } catch {
         continue;
@@ -2309,6 +2319,7 @@ export class ProxyRuntime {
         ? resolve(isAbsolute(configuredRoot) ? configuredRoot : join(groupRoot, configuredRoot))
         : groupRoot;
       const configuredProjects = workspaceConfig.projects ?? [];
+      const autoDiscover = workspaceConfig.autoDiscover ?? configuredProjects.length === 0;
       const projects =
         configuredProjects.length > 0
           ? configuredProjects.map((project) => ({
@@ -2318,7 +2329,9 @@ export class ProxyRuntime {
               ),
               ...(project.description ? { description: project.description } : {}),
             }))
-          : await this.discoverWorkspaceProjects(root);
+          : autoDiscover
+            ? await this.discoverWorkspaceProjects(root)
+            : [];
       return {
         worktree: root,
         workspace: true,

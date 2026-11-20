@@ -110,6 +110,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }>, "many">>;
+                    autoDiscover: z.ZodOptional<z.ZodBoolean>;
                 }, "strip", z.ZodTypeAny, {
                     projects: {
                         path: string;
@@ -117,6 +118,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         description?: string | undefined;
                     }[];
                     root?: string | undefined;
+                    autoDiscover?: boolean | undefined;
                 }, {
                     root?: string | undefined;
                     projects?: {
@@ -124,6 +126,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    autoDiscover?: boolean | undefined;
                 }>>;
                 responsibility: z.ZodOptional<z.ZodDefault<z.ZodObject<{
                     summary: z.ZodDefault<z.ZodString>;
@@ -161,6 +164,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         description?: string | undefined;
                     }[];
                     root?: string | undefined;
+                    autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
                     summary: string;
@@ -186,6 +190,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
@@ -243,6 +248,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         description?: string | undefined;
                     }[];
                     root?: string | undefined;
+                    autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
                     summary: string;
@@ -298,6 +304,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
@@ -351,6 +358,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         description?: string | undefined;
                     }[];
                     root?: string | undefined;
+                    autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
                     summary: string;
@@ -408,6 +416,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
@@ -1118,6 +1127,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         description?: string | undefined;
                     }[];
                     root?: string | undefined;
+                    autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
                     summary: string;
@@ -1334,6 +1344,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
                     summary?: string | undefined;

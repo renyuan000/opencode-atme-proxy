@@ -21,6 +21,7 @@ export interface GroupWorkspaceCodeProject {
 export interface GroupWorkspaceLayout {
   root?: string;
   projects: GroupWorkspaceCodeProject[];
+  autoDiscover?: boolean;
 }
 
 export interface GroupWorkspaceInput {
