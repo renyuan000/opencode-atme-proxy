@@ -32,6 +32,7 @@ export interface ExecutionServiceOptions {
             path: string;
             description?: string;
         }>;
+        workspaceDocs?: string[];
     }>;
     sendToApprover(text: string): Promise<boolean>;
     sendToOwner(text: string): Promise<boolean>;

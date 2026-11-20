@@ -147,6 +147,7 @@ export declare class ProxyRuntime {
     private updateGroupSummary;
     private doUpdateGroupSummary;
     private discoverWorkspaceProjects;
+    private discoverWorkspaceDocs;
     private resolveProject;
     private askOpenCode;
     private safeReply;

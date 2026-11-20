@@ -33,6 +33,7 @@ export interface ExecutionServiceOptions {
     workspace?: boolean;
     workspaceRoot?: string;
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
+    workspaceDocs?: string[];
   }>;
   sendToApprover(text: string): Promise<boolean>;
   sendToOwner(text: string): Promise<boolean>;
@@ -60,6 +61,7 @@ export class ExecutionService {
         project.worktree,
         planHash,
         project.workspaceProjects,
+        project.workspaceDocs,
       );
     }
     const repo = repoById(this.options.config.repos, analysis.repos[0] ?? "");
@@ -123,6 +125,7 @@ export class ExecutionService {
     worktree: string,
     planHash: string,
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>,
+    workspaceDocs?: string[],
   ): Promise<void> {
     const approved = await this.options.approvals.latest(task.id, "develop");
     if (!approved || approved.decision !== "approved" || approved.planHash !== planHash) {
@@ -133,7 +136,13 @@ export class ExecutionService {
       task.state = "executing";
       task.updatedAt = Date.now();
       await this.options.tasks.save(task);
-      const prompt = this.executionPrompt(task, analysis, worktree, workspaceProjects);
+      const prompt = this.executionPrompt(
+        task,
+        analysis,
+        worktree,
+        workspaceProjects,
+        workspaceDocs,
+      );
       const executionAgent =
         this.options.config.opencode.executionAgent ?? this.options.config.opencode.agent;
       const { sessionId, release } = await this.options.sessionManager.createChildSession({
@@ -343,6 +352,7 @@ export class ExecutionService {
     analysis: TaskAnalysis,
     directory: string,
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>,
+    workspaceDocs?: string[],
   ): string {
     return [
       "你已获得用户批准，执行以下任务。",
@@ -357,6 +367,9 @@ export class ExecutionService {
                 `- ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`,
             ),
           ]
+        : []),
+      ...(workspaceDocs?.length
+        ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...workspaceDocs.map((path) => `- ${path}`)]
         : []),
       JSON.stringify({
         task: task.title,

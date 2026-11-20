@@ -17,5 +17,6 @@ export interface AnalysisPromptInput {
         path: string;
         description?: string;
     }>;
+    workspaceDocs?: string[];
 }
 export declare function buildAnalysisPrompt(input: AnalysisPromptInput): string;

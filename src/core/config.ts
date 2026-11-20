@@ -21,6 +21,7 @@ const GroupWorkspaceProjectSchema = z.object({
 const GroupWorkspaceSchema = z.object({
   root: z.string().optional(),
   projects: z.array(GroupWorkspaceProjectSchema).default([]),
+  docs: z.array(z.string()).default([]),
   autoDiscover: z.boolean().optional(),
 });
 

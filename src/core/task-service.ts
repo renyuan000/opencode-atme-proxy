@@ -41,6 +41,7 @@ export interface TaskServiceOptions {
     workspace?: boolean;
     workspaceRoot?: string;
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
+    workspaceDocs?: string[];
   }>;
   projectId(chatId: string): string | undefined;
   startAnalysis(task: TaskRecord): void;
@@ -236,6 +237,7 @@ export class TaskService {
         project.worktree,
         signal,
         project.workspaceProjects,
+        project.workspaceDocs,
       );
     }
     const repo = this.options.config.repos[0];
@@ -279,6 +281,7 @@ export class TaskService {
     worktree: string,
     signal?: AbortSignal,
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>,
+    workspaceDocs?: string[],
   ): Promise<TaskAnalysis> {
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
@@ -289,6 +292,7 @@ export class TaskService {
       directory: worktree,
       context: ctx,
       ...(workspaceProjects ? { workspaceProjects } : {}),
+      ...(workspaceDocs ? { workspaceDocs } : {}),
     });
     const analysisAgent =
       this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;

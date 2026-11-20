@@ -21,6 +21,7 @@ export class GroupWorkspaceManager {
                 mkdir(join(dir, "session"), { recursive: true }),
                 mkdir(join(dir, "files"), { recursive: true }),
                 mkdir(join(dir, "worktrees"), { recursive: true }),
+                mkdir(join(dir, "docs"), { recursive: true }),
                 mkdir(join(dir, "analysis"), { recursive: true }),
                 mkdir(join(dir, "execution"), { recursive: true }),
             ]);
@@ -45,6 +46,7 @@ export class GroupWorkspaceManager {
                     session: "session",
                     files: "files",
                     worktrees: "worktrees",
+                    docs: "docs",
                     analysis: "analysis",
                     execution: "execution",
                 },

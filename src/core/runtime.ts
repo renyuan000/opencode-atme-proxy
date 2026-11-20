@@ -220,6 +220,7 @@ export class ProxyRuntime {
       referenceProjects?: string[];
       workspaceRoot?: string;
       workspaceProjects?: WorkspaceProjectInfo[];
+      workspaceDocs?: string[];
       workspace?: boolean;
       resolved: boolean;
       reason: string;
@@ -498,6 +499,7 @@ export class ProxyRuntime {
           ...(project.workspaceProjects
             ? { workspaceProjects: project.workspaceProjects }
             : {}),
+          ...(project.workspaceDocs ? { workspaceDocs: project.workspaceDocs } : {}),
         };
       },
       refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
@@ -581,6 +583,7 @@ export class ProxyRuntime {
           ...(project.workspaceProjects
             ? { workspaceProjects: project.workspaceProjects }
             : {}),
+          ...(project.workspaceDocs ? { workspaceDocs: project.workspaceDocs } : {}),
         };
       },
       memory: this.memory as unknown as MemoryStore,
@@ -626,6 +629,7 @@ export class ProxyRuntime {
           ...(project.workspaceProjects
             ? { workspaceProjects: project.workspaceProjects }
             : {}),
+          ...(project.workspaceDocs ? { workspaceDocs: project.workspaceDocs } : {}),
         };
       },
       sendToApprover: (text) => this.sendToApprover(text),
@@ -1579,10 +1583,11 @@ export class ProxyRuntime {
       return `已清空「${group.name ?? group.chatId}」工作空间配置。${epoch ? `当前会话代际 e${epoch}。` : ""}`;
     }
 
-    const existing = group.workspace ?? { projects: [] };
+    const existing: GroupWorkspaceLayout = group.workspace ?? { projects: [], docs: [] };
     const workspace: GroupWorkspaceLayout = {
       ...(existing.root ? { root: existing.root } : {}),
       projects: [...(existing.projects ?? [])],
+      docs: [...(existing.docs ?? [])],
       ...(existing.autoDiscover !== undefined
         ? { autoDiscover: existing.autoDiscover }
         : {}),
@@ -2294,6 +2299,26 @@ export class ProxyRuntime {
     return [];
   }
 
+  private async discoverWorkspaceDocs(root: string): Promise<string[]> {
+    const docs: string[] = [];
+    for (const dir of [join(root, "docs")]) {
+      try {
+        const entries = await readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile() || entry.name.startsWith(".")) continue;
+          if (!/\.(md|markdown|txt|pdf|docx|doc|html?|xlsx?|csv|json|ya?ml)$/i.test(entry.name)) {
+            continue;
+          }
+          docs.push(join(dir, entry.name));
+          if (docs.length >= 30) return docs.sort();
+        }
+      } catch {
+        continue;
+      }
+    }
+    return docs.sort();
+  }
+
   private async resolveProject(chatId: string): Promise<{
     worktree: string;
     projectId?: string;
@@ -2302,6 +2327,7 @@ export class ProxyRuntime {
     referenceProjects?: string[];
     workspaceRoot?: string;
     workspaceProjects?: WorkspaceProjectInfo[];
+    workspaceDocs?: string[];
     workspace?: boolean;
     resolved: boolean;
     reason: string;
@@ -2332,11 +2358,19 @@ export class ProxyRuntime {
           : autoDiscover
             ? await this.discoverWorkspaceProjects(root)
             : [];
+      const configuredDocs = workspaceConfig.docs ?? [];
+      const docs =
+        configuredDocs.length > 0
+          ? configuredDocs.map((doc) =>
+              resolve(isAbsolute(doc) ? doc : join(root, doc)),
+            )
+          : await this.discoverWorkspaceDocs(root);
       return {
         worktree: root,
         workspace: true,
         workspaceRoot: root,
         workspaceProjects: projects,
+        workspaceDocs: docs,
         coreProjects: projects.map((project) => project.path),
         resolved: true,
         reason: "group workspace config",

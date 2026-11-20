@@ -28,6 +28,7 @@ export interface TaskServiceOptions {
             path: string;
             description?: string;
         }>;
+        workspaceDocs?: string[];
     }>;
     projectId(chatId: string): string | undefined;
     startAnalysis(task: TaskRecord): void;

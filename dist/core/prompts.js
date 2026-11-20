@@ -14,6 +14,9 @@ export function buildAnalysisPrompt(input) {
                 ...input.workspaceProjects.map((project) => `- ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`),
             ]
             : []),
+        ...(input.workspaceDocs?.length
+            ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...input.workspaceDocs.map((path) => `- ${path}`)]
+            : []),
         "任务：",
         JSON.stringify({
             title: task.title,

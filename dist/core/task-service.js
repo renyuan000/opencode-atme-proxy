@@ -159,7 +159,7 @@ export class TaskService {
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs);
         }
         const repo = this.options.config.repos[0];
         if (!repo) {
@@ -191,7 +191,7 @@ export class TaskService {
         }, prompt, signal);
         return parseAnalysis(raw, task, repo.id);
     }
-    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects) {
+    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs) {
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
             task,
@@ -201,6 +201,7 @@ export class TaskService {
             directory: worktree,
             context: ctx,
             ...(workspaceProjects ? { workspaceProjects } : {}),
+            ...(workspaceDocs ? { workspaceDocs } : {}),
         });
         const analysisAgent = this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;
         const raw = await this.options.sessionManager.runWorker({

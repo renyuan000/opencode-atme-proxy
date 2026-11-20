@@ -110,6 +110,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }>, "many">>;
+                    docs: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
                     autoDiscover: z.ZodOptional<z.ZodBoolean>;
                 }, "strip", z.ZodTypeAny, {
                     projects: {
@@ -117,6 +118,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[];
+                    docs: string[];
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
                 }, {
@@ -126,6 +128,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
                 }>>;
                 responsibility: z.ZodOptional<z.ZodDefault<z.ZodObject<{
@@ -163,6 +166,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[];
+                    docs: string[];
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
@@ -190,6 +194,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
@@ -247,6 +252,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[];
+                    docs: string[];
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
@@ -304,6 +310,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
@@ -357,6 +364,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[];
+                    docs: string[];
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
@@ -416,6 +424,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {
@@ -1126,6 +1135,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[];
+                    docs: string[];
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
@@ -1344,6 +1354,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: string;
                         description?: string | undefined;
                     }[] | undefined;
+                    docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
                 responsibility?: {

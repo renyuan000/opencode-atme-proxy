@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -297,7 +297,10 @@ test("workspace model uses workspace root and lists sibling code projects", asyn
         { name: "asd-engine", path: engine, description: "流量采集与协议解析" },
         { name: "asd-transform", path: transform, description: "流分加工处理" },
       ],
+      docs: [],
     };
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "docs", "architecture.md"), "# 采集到加工\n");
     const bridge = new Bridge();
     const runtime = new ProxyRuntime({ platform: new Adapter(), bridge, loaded });
     await runtime.start();
@@ -308,6 +311,8 @@ test("workspace model uses workspace root and lists sibling code projects", asyn
     assert.match(last, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(last, /asd-engine/);
     assert.match(last, /asd-transform/);
+    assert.match(last, /关键开发公共文档/);
+    assert.match(last, /architecture\.md/);
     assert.doesNotMatch(last, /当前项目目录：\/repo\/demo/);
     await runtime.stop();
   } finally {

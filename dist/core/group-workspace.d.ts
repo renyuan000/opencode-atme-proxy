@@ -13,6 +13,7 @@ export interface GroupWorkspaceCodeProject {
 export interface GroupWorkspaceLayout {
     root?: string;
     projects: GroupWorkspaceCodeProject[];
+    docs: string[];
     autoDiscover?: boolean;
 }
 export interface GroupWorkspaceInput {

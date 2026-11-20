@@ -45,6 +45,7 @@ export interface ReplyServiceOptions {
             path: string;
             description?: string;
         }>;
+        workspaceDocs?: string[];
     }>;
     refreshSummary(platform: string, chatId: string): Promise<void>;
     ownerOverview?(message: IncomingMessage): string | Promise<string>;

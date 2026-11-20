@@ -50,6 +50,7 @@ export interface ReplyServiceOptions {
     workspace?: boolean;
     workspaceRoot?: string;
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
+    workspaceDocs?: string[];
   }>;
   refreshSummary(platform: string, chatId: string): Promise<void>;
   ownerOverview?(message: IncomingMessage): string | Promise<string>;
@@ -464,6 +465,12 @@ export class ReplyService {
                 ),
               ]
             : []),
+          ...(project.workspaceDocs?.length
+            ? [
+                "关键开发公共文档（可读取，未读不要编造内容）：",
+                ...project.workspaceDocs.map((path) => `- ${path}`),
+              ]
+            : []),
         ].join("\n")
       : "";
     const ownerContext =
@@ -490,6 +497,7 @@ export class ReplyService {
       sessionEpoch: groupProfile?.sessionEpoch ?? 1,
       workspace: Boolean(project.workspace),
       workspaceProjects: project.workspaceProjects?.length ?? 0,
+      workspaceDocs: project.workspaceDocs?.length ?? 0,
       truncated:
         documentText?.includes("[已截断") ||
         quotedChain.some((line) => line.includes("[已截断")) ||

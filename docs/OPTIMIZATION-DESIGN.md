@@ -919,6 +919,7 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 /mnt/d/Work/atme-groups/<群名__短ID>/
 ├── group.json
 ├── files/          # 群文件
+├── docs/           # 关键开发公共文档
 ├── analysis/       # 分析产物
 ├── execution/      # 执行产物
 ├── session/        # 会话资料
@@ -934,6 +935,7 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
   "workspace": {
     "root": "/mnt/d/Work/atme-groups/<群名__短ID>",
     "autoDiscover": false,
+    "docs": [],
     "projects": [
       {
         "name": "asd-engine",
@@ -957,6 +959,7 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 - `projects` 为空且 `autoDiscover` 未关闭时，自动发现 `workspace.root/worktrees/` 下的目录
 - `/工作空间 ... 添加` 会关闭自动发现；`/工作空间 ... 自动` 会重新开启
 - 分析、文件、执行产物都放在工作空间内
+- `docs/` 下的文件会作为关键开发公共文档注入 prompt（只列路径，不自动读全文）
 - 代码项目按任务相关性选择，不由配置强行规定主项目
 - `project.primary/core/reference` 仅作为旧配置兼容
 

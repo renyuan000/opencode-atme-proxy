@@ -15,6 +15,7 @@ export interface AnalysisPromptInput {
   directory: string;
   context: AnalysisContextPayload;
   workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
+  workspaceDocs?: string[];
 }
 
 export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
@@ -35,6 +36,9 @@ export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
               `- ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`,
           ),
         ]
+      : []),
+    ...(input.workspaceDocs?.length
+      ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...input.workspaceDocs.map((path) => `- ${path}`)]
       : []),
     "任务：",
     JSON.stringify({

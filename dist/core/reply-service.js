@@ -350,6 +350,12 @@ export class ReplyService {
                         ...project.workspaceProjects.map((item) => `- ${item.name}: ${item.path}${item.description ? `（${item.description}）` : ""}`),
                     ]
                     : []),
+                ...(project.workspaceDocs?.length
+                    ? [
+                        "关键开发公共文档（可读取，未读不要编造内容）：",
+                        ...project.workspaceDocs.map((path) => `- ${path}`),
+                    ]
+                    : []),
             ].join("\n")
             : "";
         const ownerContext = message.chat.kind === "direct" &&
@@ -375,6 +381,7 @@ export class ReplyService {
             sessionEpoch: groupProfile?.sessionEpoch ?? 1,
             workspace: Boolean(project.workspace),
             workspaceProjects: project.workspaceProjects?.length ?? 0,
+            workspaceDocs: project.workspaceDocs?.length ?? 0,
             truncated: documentText?.includes("[已截断") ||
                 quotedChain.some((line) => line.includes("[已截断")) ||
                 linkedDocuments.some((line) => line.includes("[已截断")),
