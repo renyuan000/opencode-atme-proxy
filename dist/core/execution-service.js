@@ -13,6 +13,13 @@ export class ExecutionService {
         const analysis = await this.options.latestAnalysis(task.id);
         if (!analysis)
             throw new Error("analysis missing");
+        const workspaceConfig = this.options.config.platforms.feishu.groups.find((group) => group.chatId === task.chatId)?.workspace;
+        if (workspaceConfig) {
+            const project = await this.options.resolveProject(task.chatId);
+            if (!project.resolved)
+                throw new Error("no workspace resolved; refusing to execute");
+            return this.executeInWorktree(task, analysis, project.worktree, planHash, project.workspaceProjects);
+        }
         const repo = repoById(this.options.config.repos, analysis.repos[0] ?? "");
         if (!repo) {
             const project = await this.options.resolveProject(task.chatId);
@@ -61,7 +68,7 @@ export class ExecutionService {
             release();
         }
     }
-    async executeInWorktree(task, analysis, worktree, planHash) {
+    async executeInWorktree(task, analysis, worktree, planHash, workspaceProjects) {
         const approved = await this.options.approvals.latest(task.id, "develop");
         if (!approved || approved.decision !== "approved" || approved.planHash !== planHash) {
             throw new Error("approval missing or stale");
@@ -71,7 +78,7 @@ export class ExecutionService {
             task.state = "executing";
             task.updatedAt = Date.now();
             await this.options.tasks.save(task);
-            const prompt = this.executionPrompt(task, analysis, worktree);
+            const prompt = this.executionPrompt(task, analysis, worktree, workspaceProjects);
             const executionAgent = this.options.config.opencode.executionAgent ?? this.options.config.opencode.agent;
             const { sessionId, release } = await this.options.sessionManager.createChildSession({
                 platform: task.platform,
@@ -246,12 +253,18 @@ export class ExecutionService {
             };
         }
     }
-    executionPrompt(task, analysis, directory) {
+    executionPrompt(task, analysis, directory, workspaceProjects) {
         return [
             "你已获得用户批准，执行以下任务。",
             "只允许在指定工作目录内修改；不要 push，不要合并，不要 force push，不要删除仓库。",
             "完成后运行测试与 lint（如已配置），并报告 diff 摘要。",
-            `当前项目目录：${directory}`,
+            workspaceProjects?.length ? `当前工作空间：${directory}` : `当前项目目录：${directory}`,
+            ...(workspaceProjects?.length
+                ? [
+                    "工作空间内代码项目（平级，按任务选择涉及项目）：",
+                    ...workspaceProjects.map((project) => `- ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`),
+                ]
+                : []),
             JSON.stringify({
                 task: task.title,
                 goal: analysis.goal,

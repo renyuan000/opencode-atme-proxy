@@ -283,3 +283,34 @@ test("reply uses resolved project directory and recent context", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("workspace model uses workspace root and lists sibling code projects", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-workspace-prompt-"));
+  try {
+    const loaded = config(dir);
+    const root = join(dir, "workspace");
+    const engine = join(root, "asd-engine.git");
+    const transform = join(root, "asd-transform.git");
+    loaded.config.platforms.feishu.groups[0]!.workspace = {
+      root,
+      projects: [
+        { name: "asd-engine", path: engine, description: "流量采集与协议解析" },
+        { name: "asd-transform", path: transform, description: "流分加工处理" },
+      ],
+    };
+    const bridge = new Bridge();
+    const runtime = new ProxyRuntime({ platform: new Adapter(), bridge, loaded });
+    await runtime.start();
+    await runtime.ingest(msg("w1", "流量采集后到加工处理这段怎么串起来的？"));
+    await new Promise((r) => setTimeout(r, 150));
+    const last = bridge.prompts[bridge.prompts.length - 1] ?? "";
+    assert.match(last, /当前工作空间：/);
+    assert.match(last, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(last, /asd-engine/);
+    assert.match(last, /asd-transform/);
+    assert.doesNotMatch(last, /当前项目目录：\/repo\/demo/);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

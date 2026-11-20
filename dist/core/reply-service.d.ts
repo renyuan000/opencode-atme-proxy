@@ -38,6 +38,13 @@ export interface ReplyServiceOptions {
         secondaryWorktrees?: string[];
         coreProjects?: string[];
         referenceProjects?: string[];
+        workspace?: boolean;
+        workspaceRoot?: string;
+        workspaceProjects?: Array<{
+            name: string;
+            path: string;
+            description?: string;
+        }>;
     }>;
     refreshSummary(platform: string, chatId: string): Promise<void>;
     ownerOverview?(message: IncomingMessage): string | Promise<string>;

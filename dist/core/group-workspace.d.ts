@@ -5,10 +5,20 @@ export interface GroupWorkspaceProject {
     reference?: string[];
     secondary?: string[];
 }
+export interface GroupWorkspaceCodeProject {
+    name: string;
+    path: string;
+    description?: string;
+}
+export interface GroupWorkspaceLayout {
+    root?: string;
+    projects: GroupWorkspaceCodeProject[];
+}
 export interface GroupWorkspaceInput {
     chatId: string;
     name: string;
     project?: GroupWorkspaceProject;
+    workspace?: GroupWorkspaceLayout;
     responsibility?: {
         summary?: string;
         owns?: string[];

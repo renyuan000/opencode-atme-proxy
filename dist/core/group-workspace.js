@@ -30,6 +30,7 @@ export class GroupWorkspaceManager {
                 .catch(() => undefined);
             const now = new Date().toISOString();
             const project = input.project ?? (previous?.project ?? null);
+            const workspace = input.workspace ?? (previous?.workspace ?? null);
             const next = {
                 groupKey: `feishu:${input.chatId}`,
                 chatId: input.chatId,
@@ -38,6 +39,7 @@ export class GroupWorkspaceManager {
                 createdAt: previous?.createdAt ?? now,
                 updatedAt: now,
                 project,
+                workspace,
                 responsibility: input.responsibility ?? (previous?.responsibility ?? null),
                 paths: {
                     session: "session",
@@ -50,6 +52,7 @@ export class GroupWorkspaceManager {
             };
             const changed = !previous ||
                 JSON.stringify(previous.project ?? null) !== JSON.stringify(next.project) ||
+                JSON.stringify(previous.workspace ?? null) !== JSON.stringify(next.workspace) ||
                 previous.name !== next.name ||
                 previous.stateGroupDir !== next.stateGroupDir ||
                 JSON.stringify(previous.responsibility ?? null) !== JSON.stringify(next.responsibility);

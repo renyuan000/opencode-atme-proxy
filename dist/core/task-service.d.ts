@@ -21,6 +21,13 @@ export interface TaskServiceOptions {
     resolveProject(chatId: string): Promise<{
         worktree: string;
         resolved: boolean;
+        workspace?: boolean;
+        workspaceRoot?: string;
+        workspaceProjects?: Array<{
+            name: string;
+            path: string;
+            description?: string;
+        }>;
     }>;
     projectId(chatId: string): string | undefined;
     startAnalysis(task: TaskRecord): void;
@@ -37,4 +44,5 @@ export declare class TaskService {
     private buildAnalysisInWorktree;
     private verifyAnalysis;
     private analysisDirectory;
+    private missingProjectAnalysis;
 }

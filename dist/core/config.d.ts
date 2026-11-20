@@ -95,6 +95,36 @@ export declare const AppConfigSchema: z.ZodObject<{
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 }>>;
+                workspace: z.ZodOptional<z.ZodObject<{
+                    root: z.ZodOptional<z.ZodString>;
+                    projects: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                        name: z.ZodString;
+                        path: z.ZodString;
+                        description: z.ZodOptional<z.ZodString>;
+                    }, "strip", z.ZodTypeAny, {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }, {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }>, "many">>;
+                }, "strip", z.ZodTypeAny, {
+                    projects: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[];
+                    root?: string | undefined;
+                }, {
+                    root?: string | undefined;
+                    projects?: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[] | undefined;
+                }>>;
                 responsibility: z.ZodOptional<z.ZodDefault<z.ZodObject<{
                     summary: z.ZodDefault<z.ZodString>;
                     owns: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -124,6 +154,14 @@ export declare const AppConfigSchema: z.ZodObject<{
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
+                workspace?: {
+                    projects: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[];
+                    root?: string | undefined;
+                } | undefined;
                 responsibility?: {
                     summary: string;
                     owns: string[];
@@ -140,6 +178,14 @@ export declare const AppConfigSchema: z.ZodObject<{
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
+                } | undefined;
+                workspace?: {
+                    root?: string | undefined;
+                    projects?: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[] | undefined;
                 } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
@@ -190,6 +236,14 @@ export declare const AppConfigSchema: z.ZodObject<{
                     secondary: string[];
                     primary?: string | undefined;
                 } | undefined;
+                workspace?: {
+                    projects: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[];
+                    root?: string | undefined;
+                } | undefined;
                 responsibility?: {
                     summary: string;
                     owns: string[];
@@ -237,6 +291,14 @@ export declare const AppConfigSchema: z.ZodObject<{
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 } | undefined;
+                workspace?: {
+                    root?: string | undefined;
+                    projects?: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[] | undefined;
+                } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
                     owns?: string[] | undefined;
@@ -281,6 +343,14 @@ export declare const AppConfigSchema: z.ZodObject<{
                     reference: string[];
                     secondary: string[];
                     primary?: string | undefined;
+                } | undefined;
+                workspace?: {
+                    projects: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[];
+                    root?: string | undefined;
                 } | undefined;
                 responsibility?: {
                     summary: string;
@@ -330,6 +400,14 @@ export declare const AppConfigSchema: z.ZodObject<{
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
+                } | undefined;
+                workspace?: {
+                    root?: string | undefined;
+                    projects?: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[] | undefined;
                 } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
@@ -428,17 +506,17 @@ export declare const AppConfigSchema: z.ZodObject<{
             tasks: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         }, "strip", z.ZodTypeAny, {
             name: string;
+            projects: string[];
             role: string;
             keywords: string[];
             excludeKeywords: string[];
-            projects: string[];
             tasks: string[];
         }, {
             name?: string | undefined;
+            projects?: string[] | undefined;
             role?: string | undefined;
             keywords?: string[] | undefined;
             excludeKeywords?: string[] | undefined;
-            projects?: string[] | undefined;
             tasks?: string[] | undefined;
         }>>;
     }, "strip", z.ZodTypeAny, {
@@ -454,10 +532,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         minReviewConfidence: number;
         profile: {
             name: string;
+            projects: string[];
             role: string;
             keywords: string[];
             excludeKeywords: string[];
-            projects: string[];
             tasks: string[];
         };
         baseUrl?: string | undefined;
@@ -477,10 +555,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         minReviewConfidence?: number | undefined;
         profile?: {
             name?: string | undefined;
+            projects?: string[] | undefined;
             role?: string | undefined;
             keywords?: string[] | undefined;
             excludeKeywords?: string[] | undefined;
-            projects?: string[] | undefined;
             tasks?: string[] | undefined;
         } | undefined;
     }>>;
@@ -960,10 +1038,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         minReviewConfidence: number;
         profile: {
             name: string;
+            projects: string[];
             role: string;
             keywords: string[];
             excludeKeywords: string[];
-            projects: string[];
             tasks: string[];
         };
         baseUrl?: string | undefined;
@@ -1032,6 +1110,14 @@ export declare const AppConfigSchema: z.ZodObject<{
                     reference: string[];
                     secondary: string[];
                     primary?: string | undefined;
+                } | undefined;
+                workspace?: {
+                    projects: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[];
+                    root?: string | undefined;
                 } | undefined;
                 responsibility?: {
                     summary: string;
@@ -1241,6 +1327,14 @@ export declare const AppConfigSchema: z.ZodObject<{
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
                 } | undefined;
+                workspace?: {
+                    root?: string | undefined;
+                    projects?: {
+                        path: string;
+                        name: string;
+                        description?: string | undefined;
+                    }[] | undefined;
+                } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
                     owns?: string[] | undefined;
@@ -1272,10 +1366,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         minReviewConfidence?: number | undefined;
         profile?: {
             name?: string | undefined;
+            projects?: string[] | undefined;
             role?: string | undefined;
             keywords?: string[] | undefined;
             excludeKeywords?: string[] | undefined;
-            projects?: string[] | undefined;
             tasks?: string[] | undefined;
         } | undefined;
     } | undefined;
@@ -1290,6 +1384,9 @@ export declare const AppConfigSchema: z.ZodObject<{
         cacheSeconds?: number | undefined;
         bindChat?: boolean | undefined;
         includeRecentSessionTitles?: number | undefined;
+    } | undefined;
+    workspace?: {
+        root?: string | undefined;
     } | undefined;
     opencode?: {
         baseUrl?: string | undefined;
@@ -1312,9 +1409,6 @@ export declare const AppConfigSchema: z.ZodObject<{
         logLevel?: "debug" | "info" | "warn" | "error" | undefined;
         logFile?: string | undefined;
         logToFile?: boolean | undefined;
-    } | undefined;
-    workspace?: {
-        root?: string | undefined;
     } | undefined;
     polling?: {
         enabled?: boolean | undefined;

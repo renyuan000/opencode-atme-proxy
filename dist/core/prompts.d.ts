@@ -12,5 +12,10 @@ export interface AnalysisPromptInput {
     repositoryIds: string[];
     directory: string;
     context: AnalysisContextPayload;
+    workspaceProjects?: Array<{
+        name: string;
+        path: string;
+        description?: string;
+    }>;
 }
 export declare function buildAnalysisPrompt(input: AnalysisPromptInput): string;

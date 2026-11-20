@@ -10,6 +10,15 @@ const GroupProjectSchema = z.object({
     reference: z.array(z.string()).default([]),
     secondary: z.array(z.string()).default([]),
 });
+const GroupWorkspaceProjectSchema = z.object({
+    name: z.string().min(1),
+    path: z.string().min(1),
+    description: z.string().optional(),
+});
+const GroupWorkspaceSchema = z.object({
+    root: z.string().optional(),
+    projects: z.array(GroupWorkspaceProjectSchema).default([]),
+});
 const GroupResponsibilitySchema = z
     .object({
     summary: z.string().default(""),
@@ -24,6 +33,7 @@ const GroupSchema = z.object({
     name: z.string().optional(),
     enabled: z.boolean().default(true),
     project: GroupProjectSchema.optional(),
+    workspace: GroupWorkspaceSchema.optional(),
     responsibility: GroupResponsibilitySchema.optional(),
 });
 const FeishuSchema = z.object({

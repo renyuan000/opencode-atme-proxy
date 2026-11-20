@@ -25,6 +25,13 @@ export interface ExecutionServiceOptions {
     resolveProject(chatId: string): Promise<{
         worktree: string;
         resolved: boolean;
+        workspace?: boolean;
+        workspaceRoot?: string;
+        workspaceProjects?: Array<{
+            name: string;
+            path: string;
+            description?: string;
+        }>;
     }>;
     sendToApprover(text: string): Promise<boolean>;
     sendToOwner(text: string): Promise<boolean>;

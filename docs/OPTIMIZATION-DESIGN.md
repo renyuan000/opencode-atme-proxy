@@ -910,3 +910,59 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 - 上下文 token 预算统一裁剪器
 - 旧 epoch session 自动归档
 - prompt 结构化和审计日志
+
+## 25. 工作空间模型
+
+一个群对应一个工作空间；工作空间是主工作目录，代码项目是工作空间里的平级目录，不再使用“一个 primary + 若干关联仓”的主次模型。
+
+```text
+/mnt/d/Work/atme-groups/<群名__短ID>/
+├── group.json
+├── files/          # 群文件
+├── analysis/       # 分析产物
+├── execution/      # 执行产物
+├── session/        # 会话资料
+└── worktrees/      # 代码项目
+    ├── asd-engine.git
+    └── asd-transform.git
+```
+
+配置：
+
+```json
+{
+  "workspace": {
+    "root": "/mnt/d/Work/atme-groups/<群名__短ID>",
+    "projects": [
+      {
+        "name": "asd-engine",
+        "path": "worktrees/asd-engine.git",
+        "description": "流量采集与协议解析"
+      },
+      {
+        "name": "asd-transform",
+        "path": "worktrees/asd-transform.git",
+        "description": "流分加工处理"
+      }
+    ]
+  }
+}
+```
+
+规则：
+
+- `workspace.root` 是 OpenCode 的主工作目录
+- `projects` 是平级代码项目，不设 primary/core 优先级
+- `projects` 为空时自动发现 `workspace.root/worktrees/` 下的目录
+- 分析、文件、执行产物都放在工作空间内
+- 代码项目按任务相关性选择，不由配置强行规定主项目
+- `project.primary/core/reference` 仅作为旧配置兼容
+
+任务分析 prompt 会同时注入：
+
+```text
+当前工作空间
+工作空间内代码项目（平级，无主次）
+```
+
+这样 engine 采集、transform 加工这种上下游关系，可以由任务自己判断涉及哪些项目，而不是被人为拆成主次。

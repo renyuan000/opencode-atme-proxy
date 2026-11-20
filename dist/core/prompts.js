@@ -8,6 +8,12 @@ export function buildAnalysisPrompt(input) {
         "repos 只能从以下白名单选择：",
         JSON.stringify(input.repositoryIds),
         `当前项目目录：${input.directory}`,
+        ...(input.workspaceProjects?.length
+            ? [
+                "工作空间内代码项目（平级，无主次）：",
+                ...input.workspaceProjects.map((project) => `- ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`),
+            ]
+            : []),
         "任务：",
         JSON.stringify({
             title: task.title,

@@ -1,5 +1,5 @@
-import { dirname, join } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { mkdir, readdir } from "node:fs/promises";
 import { createLogger } from "./logger.js";
 import { OpenAiCompatibleClient, RelevanceService, parseJsonLoose, } from "./relevance.js";
 import { detectReplyStyle, enforceReplyLength, } from "./reply-style.js";
@@ -342,6 +342,11 @@ export class ProxyRuntime {
                     ...(project.referenceProjects
                         ? { referenceProjects: project.referenceProjects }
                         : {}),
+                    ...(project.workspace ? { workspace: true } : {}),
+                    ...(project.workspaceRoot ? { workspaceRoot: project.workspaceRoot } : {}),
+                    ...(project.workspaceProjects
+                        ? { workspaceProjects: project.workspaceProjects }
+                        : {}),
                 };
             },
             refreshSummary: (platform, chatId) => this.updateGroupSummary(platform, chatId),
@@ -417,6 +422,11 @@ export class ProxyRuntime {
                     ...(project.referenceProjects
                         ? { referenceProjects: project.referenceProjects }
                         : {}),
+                    ...(project.workspace ? { workspace: true } : {}),
+                    ...(project.workspaceRoot ? { workspaceRoot: project.workspaceRoot } : {}),
+                    ...(project.workspaceProjects
+                        ? { workspaceProjects: project.workspaceProjects }
+                        : {}),
                 };
             },
             memory: this.memory,
@@ -454,7 +464,15 @@ export class ProxyRuntime {
             latestAnalysis: (taskId) => this.latestAnalysis(taskId),
             resolveProject: async (chatId) => {
                 const project = await this.resolveProject(chatId);
-                return { worktree: project.worktree, resolved: project.resolved };
+                return {
+                    worktree: project.worktree,
+                    resolved: project.resolved,
+                    ...(project.workspace ? { workspace: true } : {}),
+                    ...(project.workspaceRoot ? { workspaceRoot: project.workspaceRoot } : {}),
+                    ...(project.workspaceProjects
+                        ? { workspaceProjects: project.workspaceProjects }
+                        : {}),
+                };
             },
             sendToApprover: (text) => this.sendToApprover(text),
             sendToOwner: (text) => this.sendToOwner(text),
@@ -691,12 +709,13 @@ export class ProxyRuntime {
             }
         }
     }
-    async ensureGroupWorkspace(chatId, name, project) {
+    async ensureGroupWorkspace(chatId, name, project, workspace) {
         const info = await this.groupState.ensure(chatId, name);
         await this.groupWorkspace.ensure({
             chatId,
             name: info.name,
             stateGroupDir: info.dir,
+            ...(workspace ? { workspace } : {}),
             ...(this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility
                 ? {
                     responsibility: this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.responsibility,
@@ -849,7 +868,7 @@ export class ProxyRuntime {
         await mkdir(join(this.stateDir, "scratch"), { recursive: true });
         await this.groupState.load();
         for (const group of this.config.platforms.feishu.groups) {
-            await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
+            await this.ensureGroupWorkspace(group.chatId, group.name, group.project, group.workspace);
             await this.jobStore(group.chatId).load();
         }
         await this.dedup.load();
@@ -957,7 +976,8 @@ export class ProxyRuntime {
         if (message.senderType !== "user")
             return;
         const chatName = await this.chatLabel(message);
-        await this.ensureGroupWorkspace(message.chat.id, message.chat.kind === "direct" ? "私聊" : chatName, this.config.platforms.feishu.groups.find((group) => group.chatId === message.chat.id)?.project);
+        const groupConfig = this.config.platforms.feishu.groups.find((group) => group.chatId === message.chat.id);
+        await this.ensureGroupWorkspace(message.chat.id, message.chat.kind === "direct" ? "私聊" : chatName, groupConfig?.project, groupConfig?.workspace);
         this.logger.info("inbound routing", {
             messageId: message.messageId,
             chatId: message.chat.id,
@@ -1124,7 +1144,8 @@ export class ProxyRuntime {
             const added = groups.filter((group) => !this.groupIds.has(group.chatId));
             for (const group of groups) {
                 this.groupIds.add(group.chatId);
-                await this.ensureGroupWorkspace(group.chatId, group.name, this.config.platforms.feishu.groups.find((item) => item.chatId === group.chatId)?.project);
+                const groupConfig = this.config.platforms.feishu.groups.find((item) => item.chatId === group.chatId);
+                await this.ensureGroupWorkspace(group.chatId, group.name, groupConfig?.project, groupConfig?.workspace);
                 if (group.name)
                     this.notificationService.rememberChatName(group.chatId, group.name);
             }
@@ -1180,8 +1201,8 @@ export class ProxyRuntime {
     async onChatUpdated(event) {
         if (!event.name)
             return;
-        const project = this.config.platforms.feishu.groups.find((group) => group.chatId === event.chatId)?.project;
-        await this.ensureGroupWorkspace(event.chatId, event.name, project);
+        const groupConfig = this.config.platforms.feishu.groups.find((group) => group.chatId === event.chatId);
+        await this.ensureGroupWorkspace(event.chatId, event.name, groupConfig?.project, groupConfig?.workspace);
         this.notificationService.rememberChatName(event.chatId, event.name);
         await this.audit.append({
             actor: { system: true },
@@ -1304,7 +1325,7 @@ export class ProxyRuntime {
                 });
             }
         }
-        await this.ensureGroupWorkspace(group.chatId, group.name, group.project);
+        await this.ensureGroupWorkspace(group.chatId, group.name, group.project, group.workspace);
         await this.refreshGroupKnowledge();
         return `已设置「${group.name ?? group.chatId}」职责：${description}`;
     }
@@ -1862,8 +1883,52 @@ export class ProxyRuntime {
             details: { chatId, messages: messages.length },
         });
     }
+    async discoverWorkspaceProjects(root) {
+        const roots = [join(root, "worktrees"), root];
+        for (const dir of roots) {
+            try {
+                const entries = await readdir(dir, { withFileTypes: true });
+                const projects = entries
+                    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+                    .map((entry) => ({ name: entry.name, path: join(dir, entry.name) }));
+                if (projects.length > 0)
+                    return projects;
+            }
+            catch {
+                continue;
+            }
+        }
+        return [];
+    }
     async resolveProject(chatId) {
-        const groupProject = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.project;
+        const groupConfig = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId);
+        const workspaceConfig = groupConfig?.workspace;
+        if (workspaceConfig) {
+            const groupRoot = this.groupWorkspace.dirFor(chatId) ??
+                (this.config.project.worktree ?? join(this.stateDir, "scratch"));
+            const configuredRoot = workspaceConfig.root?.trim();
+            const root = configuredRoot
+                ? resolve(isAbsolute(configuredRoot) ? configuredRoot : join(groupRoot, configuredRoot))
+                : groupRoot;
+            const configuredProjects = workspaceConfig.projects ?? [];
+            const projects = configuredProjects.length > 0
+                ? configuredProjects.map((project) => ({
+                    name: project.name,
+                    path: resolve(isAbsolute(project.path) ? project.path : join(root, project.path)),
+                    ...(project.description ? { description: project.description } : {}),
+                }))
+                : await this.discoverWorkspaceProjects(root);
+            return {
+                worktree: root,
+                workspace: true,
+                workspaceRoot: root,
+                workspaceProjects: projects,
+                coreProjects: projects.map((project) => project.path),
+                resolved: true,
+                reason: "group workspace config",
+            };
+        }
+        const groupProject = groupConfig?.project;
         if (groupProject) {
             const primary = groupProject.primary?.trim();
             if (!primary) {

@@ -35,7 +35,13 @@ export interface TaskServiceOptions {
   logger: Logger;
   readOnlyPermission: SessionPermission[];
   memory: MemoryStore;
-  resolveProject(chatId: string): Promise<{ worktree: string; resolved: boolean }>;
+  resolveProject(chatId: string): Promise<{
+    worktree: string;
+    resolved: boolean;
+    workspace?: boolean;
+    workspaceRoot?: string;
+    workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
+  }>;
   projectId(chatId: string): string | undefined;
   startAnalysis(task: TaskRecord): void;
   sendToApprover(text: string): Promise<boolean>;
@@ -217,27 +223,26 @@ export class TaskService {
     task: TaskRecord,
     signal?: AbortSignal,
   ): Promise<TaskAnalysis> {
+    const workspaceConfig = this.options.config.platforms.feishu.groups.find(
+      (group) => group.chatId === task.chatId,
+    )?.workspace;
+    if (workspaceConfig) {
+      const project = await this.options.resolveProject(task.chatId);
+      if (!project.resolved) {
+        return this.missingProjectAnalysis(task);
+      }
+      return this.buildAnalysisInWorktree(
+        task,
+        project.worktree,
+        signal,
+        project.workspaceProjects,
+      );
+    }
     const repo = this.options.config.repos[0];
     if (!repo) {
       const project = await this.options.resolveProject(task.chatId);
       if (!project.resolved) {
-        return {
-          taskId: task.id,
-          version: 1,
-          needsInfo: true,
-          goal: task.title,
-          scope: [],
-          outOfScope: [],
-          repos: [],
-          plan: [],
-          commands: [],
-          risks: [],
-          openQuestions: ["未定位到当前主项目，请配置 project.worktree 或 repos"],
-          acceptanceCriteria: [],
-          model: "none",
-          createdAt: Date.now(),
-          planHash: "",
-        };
+        return this.missingProjectAnalysis(task);
       }
       return this.buildAnalysisInWorktree(task, project.worktree, signal);
     }
@@ -273,6 +278,7 @@ export class TaskService {
     task: TaskRecord,
     worktree: string,
     signal?: AbortSignal,
+    workspaceProjects?: Array<{ name: string; path: string; description?: string }>,
   ): Promise<TaskAnalysis> {
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
@@ -280,6 +286,7 @@ export class TaskService {
       repositoryIds: this.options.config.repos.map((item) => item.id),
       directory: worktree,
       context: ctx,
+      ...(workspaceProjects ? { workspaceProjects } : {}),
     });
     const analysisAgent =
       this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;
@@ -360,9 +367,35 @@ export class TaskService {
   }
 
   private async analysisDirectory(task: TaskRecord): Promise<string> {
+    const workspaceConfig = this.options.config.platforms.feishu.groups.find(
+      (group) => group.chatId === task.chatId,
+    )?.workspace;
+    if (workspaceConfig) {
+      return (await this.options.resolveProject(task.chatId)).worktree;
+    }
     const repo = this.options.config.repos[0];
     if (repo) return repo.path;
     const project = await this.options.resolveProject(task.chatId);
     return project.worktree;
+  }
+
+  private missingProjectAnalysis(task: TaskRecord): TaskAnalysis {
+    return {
+      taskId: task.id,
+      version: 1,
+      needsInfo: true,
+      goal: task.title,
+      scope: [],
+      outOfScope: [],
+      repos: [],
+      plan: [],
+      commands: [],
+      risks: [],
+      openQuestions: ["未定位到当前工作空间，请配置 group.workspace 或 project.worktree"],
+      acceptanceCriteria: [],
+      model: "none",
+      createdAt: Date.now(),
+      planHash: "",
+    };
   }
 }

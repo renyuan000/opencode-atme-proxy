@@ -14,6 +14,7 @@ export interface AnalysisPromptInput {
   repositoryIds: string[];
   directory: string;
   context: AnalysisContextPayload;
+  workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
 }
 
 export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
@@ -26,6 +27,15 @@ export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
     "repos 只能从以下白名单选择：",
     JSON.stringify(input.repositoryIds),
     `当前项目目录：${input.directory}`,
+    ...(input.workspaceProjects?.length
+      ? [
+          "工作空间内代码项目（平级，无主次）：",
+          ...input.workspaceProjects.map(
+            (project) =>
+              `- ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`,
+          ),
+        ]
+      : []),
     "任务：",
     JSON.stringify({
       title: task.title,
