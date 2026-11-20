@@ -1207,7 +1207,10 @@ export class ProxyRuntime {
         try {
           await jobStore.update(jobRecord.id, { status: "running", attempts: jobRecord.attempts + 1 });
           this.logger.info("dispatch job started", { messageId: message.messageId, force });
-          if (controller.signal.aborted || (!force && this.dedup.has(dedupKey, message.chat.id))) return;
+          if (controller.signal.aborted || (!force && this.dedup.has(dedupKey, message.chat.id))) {
+            await jobStore.update(jobRecord.id, { status: "done" });
+            return;
+          }
           await this.handleMessage(message, controller.signal);
           await jobStore.update(jobRecord.id, { status: "done" });
           this.logger.info("dispatch job finished", { messageId: message.messageId });
