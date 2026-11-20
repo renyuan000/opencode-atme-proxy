@@ -62,6 +62,33 @@ test("prepares sibling project worktrees under one task workspace", async () => 
     assert.equal(transformTree.path, join(root, "asd-transform"));
     assert.equal((await stat(engineTree.path)).isDirectory(), true);
     assert.equal((await stat(transformTree.path)).isDirectory(), true);
+
+    const passed = await executor.runConfiguredCommands(
+      {
+        id: "asd-engine",
+        path: engine,
+        defaultBranch: "HEAD",
+        testCommand: [["node", "-e", "process.exit(0)"]],
+        lintCommand: [],
+        allowPush: false,
+        allowMerge: false,
+      },
+      engineTree,
+    );
+    assert.equal(passed.passed, true);
+    const failed = await executor.runConfiguredCommands(
+      {
+        id: "asd-engine",
+        path: engine,
+        defaultBranch: "HEAD",
+        testCommand: [["node", "-e", "process.exit(1)"]],
+        lintCommand: [],
+        allowPush: false,
+        allowMerge: false,
+      },
+      engineTree,
+    );
+    assert.equal(failed.passed, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

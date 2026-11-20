@@ -91,9 +91,9 @@ export class ExecutionService {
                 const repo = {
                     id: project.name,
                     path: project.path,
-                    defaultBranch: "HEAD",
-                    testCommand: [],
-                    lintCommand: [],
+                    defaultBranch: project.defaultBranch ?? "HEAD",
+                    testCommand: project.testCommand ?? [],
+                    lintCommand: project.lintCommand ?? [],
                     allowPush: false,
                     allowMerge: false,
                 };
@@ -127,10 +127,20 @@ export class ExecutionService {
                 releaseChild();
                 await this.options.sessionManager.finishSession(sessionId, `${this.options.config.opencode.sessionTitlePrefix}:exec:${task.id}`, taskWorkspace, "workspace_execution");
             }
-            const diffs = await Promise.all(worktrees.map(async (item) => {
+            const checks = await Promise.all(worktrees.map(async (item) => {
                 const diff = await this.options.executor.diffStat(item.worktree);
-                return `${item.project.name}:\n${diff}`;
+                const check = await this.options.executor.runConfiguredCommands(item.repo, item.worktree);
+                return {
+                    name: item.project.name,
+                    diff,
+                    ...check,
+                };
             }));
+            const passed = checks.every((check) => check.passed);
+            const diffs = checks.map((check) => `${check.name}:\n${check.diff}`);
+            const checkSummary = checks
+                .map((check) => `${check.name}: ${check.passed ? "passed" : "failed"}${check.summary ? ` - ${check.summary}` : ""}`)
+                .join("\n");
             const diffStat = truncate(diffs.join("\n\n"), 4000);
             const execution = {
                 taskId: task.id,
@@ -139,33 +149,44 @@ export class ExecutionService {
                 worktree: taskWorkspace,
                 branch: worktrees.map((item) => item.worktree.branch).join(","),
                 baseCommit: worktrees.map((item) => item.worktree.baseCommit).join(","),
-                status: "succeeded",
-                commands: [],
-                testResult: { passed: true, summary: "workspace execution has no configured test commands" },
+                status: passed ? "succeeded" : "failed",
+                commands: targets.flatMap((project) => [
+                    ...(project.lintCommand ?? []),
+                    ...(project.testCommand ?? []),
+                ]).map((command) => command.join(" ")),
+                testResult: { passed, summary: checkSummary || "no test/lint command configured" },
                 diffStat: diffStat || truncate(output, 1000),
                 startedAt,
                 finishedAt: Date.now(),
+                ...(passed ? {} : { error: checkSummary }),
             };
             await writeJsonAtomic(join(this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir, "executions", `${task.id}.json`), execution);
             const workspaceDir = this.options.workspaceDirFor?.(task.chatId);
             if (workspaceDir) {
                 await writeJsonAtomic(join(workspaceDir, "execution", `${task.id}.json`), execution);
             }
-            task.state = "done";
+            task.state = passed ? "done" : "failed";
             task.updatedAt = Date.now();
             await this.options.tasks.save(task);
-            await this.options.sendToApprover(`任务完成：${task.title}\n工作空间：${taskWorkspace}\n${execution.diffStat}`);
-            await this.reviewExecution({
-                task,
-                directory: taskWorkspace,
-                summary: execution.diffStat ?? "",
-                ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
-            });
+            await this.options.sendToApprover(passed
+                ? `任务完成：${task.title}\n工作空间：${taskWorkspace}\n${checkSummary}\n${execution.diffStat}`
+                : `任务失败：${task.title}\n${checkSummary}\n${execution.diffStat}`);
+            if (passed) {
+                await this.reviewExecution({
+                    task,
+                    directory: taskWorkspace,
+                    summary: execution.diffStat ?? "",
+                    ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
+                });
+            }
             await this.options.audit.append({
                 actor: { system: true },
-                action: "execution_succeeded",
+                action: passed ? "execution_succeeded" : "execution_failed",
                 taskId: task.id,
-                details: { workspace: taskWorkspace, projects: targets.map((project) => project.name) },
+                details: {
+                    workspace: taskWorkspace,
+                    projects: targets.map((project) => project.name),
+                },
             });
             await this.options.sessionManager.archiveTaskChildren(task.id);
         }
@@ -374,6 +395,15 @@ export class ExecutionService {
             `当前执行目录：${directory}`,
             "本次项目工作树：",
             ...worktrees.map((item) => `- ${item.project.name}: ${item.worktree.path}（base=${item.worktree.baseCommit}${item.project.description ? `，${item.project.description}` : ""}）`),
+            ...worktrees.flatMap((item) => {
+                const commands = [
+                    ...(item.project.lintCommand ?? []).map((command) => `lint: ${command.join(" ")}`),
+                    ...(item.project.testCommand ?? []).map((command) => `test: ${command.join(" ")}`),
+                ];
+                return commands.length > 0
+                    ? [`${item.project.name} 执行命令：`, ...commands.map((command) => `- ${command}`)]
+                    : [];
+            }),
             ...(workspaceDocs?.length
                 ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...workspaceDocs.map((path) => `- ${path}`)]
                 : []),

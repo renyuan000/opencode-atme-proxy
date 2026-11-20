@@ -31,6 +31,9 @@ export interface ExecutionServiceOptions {
             name: string;
             path: string;
             description?: string;
+            defaultBranch?: string;
+            testCommand?: string[][];
+            lintCommand?: string[][];
         }>;
         workspaceDocs?: string[];
     }>;

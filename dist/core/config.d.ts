@@ -101,14 +101,23 @@ export declare const AppConfigSchema: z.ZodObject<{
                         name: z.ZodString;
                         path: z.ZodString;
                         description: z.ZodOptional<z.ZodString>;
+                        defaultBranch: z.ZodDefault<z.ZodString>;
+                        testCommand: z.ZodDefault<z.ZodArray<z.ZodArray<z.ZodString, "many">, "many">>;
+                        lintCommand: z.ZodDefault<z.ZodArray<z.ZodArray<z.ZodString, "many">, "many">>;
                     }, "strip", z.ZodTypeAny, {
                         path: string;
                         name: string;
+                        defaultBranch: string;
+                        testCommand: string[][];
+                        lintCommand: string[][];
                         description?: string | undefined;
                     }, {
                         path: string;
                         name: string;
                         description?: string | undefined;
+                        defaultBranch?: string | undefined;
+                        testCommand?: string[][] | undefined;
+                        lintCommand?: string[][] | undefined;
                     }>, "many">>;
                     docs: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
                     autoDiscover: z.ZodOptional<z.ZodBoolean>;
@@ -116,6 +125,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                     projects: {
                         path: string;
                         name: string;
+                        defaultBranch: string;
+                        testCommand: string[][];
+                        lintCommand: string[][];
                         description?: string | undefined;
                     }[];
                     docs: string[];
@@ -127,6 +139,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                         path: string;
                         name: string;
                         description?: string | undefined;
+                        defaultBranch?: string | undefined;
+                        testCommand?: string[][] | undefined;
+                        lintCommand?: string[][] | undefined;
                     }[] | undefined;
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
@@ -164,6 +179,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                     projects: {
                         path: string;
                         name: string;
+                        defaultBranch: string;
+                        testCommand: string[][];
+                        lintCommand: string[][];
                         description?: string | undefined;
                     }[];
                     docs: string[];
@@ -193,6 +211,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                         path: string;
                         name: string;
                         description?: string | undefined;
+                        defaultBranch?: string | undefined;
+                        testCommand?: string[][] | undefined;
+                        lintCommand?: string[][] | undefined;
                     }[] | undefined;
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
@@ -250,6 +271,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                     projects: {
                         path: string;
                         name: string;
+                        defaultBranch: string;
+                        testCommand: string[][];
+                        lintCommand: string[][];
                         description?: string | undefined;
                     }[];
                     docs: string[];
@@ -309,6 +333,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                         path: string;
                         name: string;
                         description?: string | undefined;
+                        defaultBranch?: string | undefined;
+                        testCommand?: string[][] | undefined;
+                        lintCommand?: string[][] | undefined;
                     }[] | undefined;
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
@@ -362,6 +389,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                     projects: {
                         path: string;
                         name: string;
+                        defaultBranch: string;
+                        testCommand: string[][];
+                        lintCommand: string[][];
                         description?: string | undefined;
                     }[];
                     docs: string[];
@@ -423,6 +453,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                         path: string;
                         name: string;
                         description?: string | undefined;
+                        defaultBranch?: string | undefined;
+                        testCommand?: string[][] | undefined;
+                        lintCommand?: string[][] | undefined;
                     }[] | undefined;
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
@@ -980,10 +1013,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         allowMerge: z.ZodDefault<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
         path: string;
-        id: string;
         defaultBranch: string;
         testCommand: string[][];
         lintCommand: string[][];
+        id: string;
         allowPush: boolean;
         allowMerge: boolean;
     }, {
@@ -1133,6 +1166,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                     projects: {
                         path: string;
                         name: string;
+                        defaultBranch: string;
+                        testCommand: string[][];
+                        lintCommand: string[][];
                         description?: string | undefined;
                     }[];
                     docs: string[];
@@ -1276,10 +1312,10 @@ export declare const AppConfigSchema: z.ZodObject<{
     };
     repos: {
         path: string;
-        id: string;
         defaultBranch: string;
         testCommand: string[][];
         lintCommand: string[][];
+        id: string;
         allowPush: boolean;
         allowMerge: boolean;
     }[];
@@ -1353,6 +1389,9 @@ export declare const AppConfigSchema: z.ZodObject<{
                         path: string;
                         name: string;
                         description?: string | undefined;
+                        defaultBranch?: string | undefined;
+                        testCommand?: string[][] | undefined;
+                        lintCommand?: string[][] | undefined;
                     }[] | undefined;
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;

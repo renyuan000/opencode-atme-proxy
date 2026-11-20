@@ -32,7 +32,14 @@ export interface ExecutionServiceOptions {
     resolved: boolean;
     workspace?: boolean;
     workspaceRoot?: string;
-    workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
+    workspaceProjects?: Array<{
+      name: string;
+      path: string;
+      description?: string;
+      defaultBranch?: string;
+      testCommand?: string[][];
+      lintCommand?: string[][];
+    }>;
     workspaceDocs?: string[];
   }>;
   sendToApprover(text: string): Promise<boolean>;
@@ -124,7 +131,14 @@ export class ExecutionService {
     analysis: TaskAnalysis,
     workspaceRoot: string,
     planHash: string,
-    workspaceProjects?: Array<{ name: string; path: string; description?: string }>,
+    workspaceProjects?: Array<{
+      name: string;
+      path: string;
+      description?: string;
+      defaultBranch?: string;
+      testCommand?: string[][];
+      lintCommand?: string[][];
+    }>,
     workspaceDocs?: string[],
   ): Promise<void> {
     const approved = await this.options.approvals.latest(task.id, "develop");
@@ -158,9 +172,9 @@ export class ExecutionService {
         const repo: RepoConfig = {
           id: project.name,
           path: project.path,
-          defaultBranch: "HEAD",
-          testCommand: [],
-          lintCommand: [],
+          defaultBranch: project.defaultBranch ?? "HEAD",
+          testCommand: project.testCommand ?? [],
+          lintCommand: project.lintCommand ?? [],
           allowPush: false,
           allowMerge: false,
         };
@@ -208,12 +222,22 @@ export class ExecutionService {
         );
       }
 
-      const diffs = await Promise.all(
+      const checks = await Promise.all(
         worktrees.map(async (item) => {
           const diff = await this.options.executor.diffStat(item.worktree);
-          return `${item.project.name}:\n${diff}`;
+          const check = await this.options.executor.runConfiguredCommands(item.repo, item.worktree);
+          return {
+            name: item.project.name,
+            diff,
+            ...check,
+          };
         }),
       );
+      const passed = checks.every((check) => check.passed);
+      const diffs = checks.map((check) => `${check.name}:\n${check.diff}`);
+      const checkSummary = checks
+        .map((check) => `${check.name}: ${check.passed ? "passed" : "failed"}${check.summary ? ` - ${check.summary}` : ""}`)
+        .join("\n");
       const diffStat = truncate(diffs.join("\n\n"), 4000);
       const execution: ExecutionRecord = {
         taskId: task.id,
@@ -222,12 +246,16 @@ export class ExecutionService {
         worktree: taskWorkspace,
         branch: worktrees.map((item) => item.worktree.branch).join(","),
         baseCommit: worktrees.map((item) => item.worktree.baseCommit).join(","),
-        status: "succeeded",
-        commands: [],
-        testResult: { passed: true, summary: "workspace execution has no configured test commands" },
+        status: passed ? "succeeded" : "failed",
+        commands: targets.flatMap((project) => [
+          ...(project.lintCommand ?? []),
+          ...(project.testCommand ?? []),
+        ]).map((command) => command.join(" ")),
+        testResult: { passed, summary: checkSummary || "no test/lint command configured" },
         diffStat: diffStat || truncate(output, 1000),
         startedAt,
         finishedAt: Date.now(),
+        ...(passed ? {} : { error: checkSummary }),
       };
       await writeJsonAtomic(
         join(
@@ -241,23 +269,30 @@ export class ExecutionService {
       if (workspaceDir) {
         await writeJsonAtomic(join(workspaceDir, "execution", `${task.id}.json`), execution);
       }
-      task.state = "done";
+      task.state = passed ? "done" : "failed";
       task.updatedAt = Date.now();
       await this.options.tasks.save(task);
       await this.options.sendToApprover(
-        `任务完成：${task.title}\n工作空间：${taskWorkspace}\n${execution.diffStat}`,
+        passed
+          ? `任务完成：${task.title}\n工作空间：${taskWorkspace}\n${checkSummary}\n${execution.diffStat}`
+          : `任务失败：${task.title}\n${checkSummary}\n${execution.diffStat}`,
       );
-      await this.reviewExecution({
-        task,
-        directory: taskWorkspace,
-        summary: execution.diffStat ?? "",
-        ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
-      });
+      if (passed) {
+        await this.reviewExecution({
+          task,
+          directory: taskWorkspace,
+          summary: execution.diffStat ?? "",
+          ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
+        });
+      }
       await this.options.audit.append({
         actor: { system: true },
-        action: "execution_succeeded",
+        action: passed ? "execution_succeeded" : "execution_failed",
         taskId: task.id,
-        details: { workspace: taskWorkspace, projects: targets.map((project) => project.name) },
+        details: {
+          workspace: taskWorkspace,
+          projects: targets.map((project) => project.name),
+        },
       });
       await this.options.sessionManager.archiveTaskChildren(task.id);
     } catch (error) {
@@ -506,7 +541,13 @@ export class ExecutionService {
     analysis: TaskAnalysis,
     directory: string,
     worktrees: Array<{
-      project: { name: string; path: string; description?: string };
+      project: {
+        name: string;
+        path: string;
+        description?: string;
+        lintCommand?: string[][];
+        testCommand?: string[][];
+      };
       worktree: { path: string; branch: string; baseCommit: string };
     }>,
     workspaceDocs?: string[],
@@ -522,6 +563,15 @@ export class ExecutionService {
         (item) =>
           `- ${item.project.name}: ${item.worktree.path}（base=${item.worktree.baseCommit}${item.project.description ? `，${item.project.description}` : ""}）`,
       ),
+      ...worktrees.flatMap((item) => {
+        const commands = [
+          ...(item.project.lintCommand ?? []).map((command) => `lint: ${command.join(" ")}`),
+          ...(item.project.testCommand ?? []).map((command) => `test: ${command.join(" ")}`),
+        ];
+        return commands.length > 0
+          ? [`${item.project.name} 执行命令：`, ...commands.map((command) => `- ${command}`)]
+          : [];
+      }),
       ...(workspaceDocs?.length
         ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...workspaceDocs.map((path) => `- ${path}`)]
         : []),

@@ -294,8 +294,22 @@ test("workspace model uses workspace root and lists sibling code projects", asyn
     loaded.config.platforms.feishu.groups[0]!.workspace = {
       root,
       projects: [
-        { name: "asd-engine", path: engine, description: "流量采集与协议解析" },
-        { name: "asd-transform", path: transform, description: "流分加工处理" },
+        {
+          name: "asd-engine",
+          path: engine,
+          description: "流量采集与协议解析",
+          defaultBranch: "HEAD",
+          testCommand: [],
+          lintCommand: [],
+        },
+        {
+          name: "asd-transform",
+          path: transform,
+          description: "流分加工处理",
+          defaultBranch: "HEAD",
+          testCommand: [],
+          lintCommand: [],
+        },
       ],
       docs: [],
     };

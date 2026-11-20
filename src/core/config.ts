@@ -16,6 +16,9 @@ const GroupWorkspaceProjectSchema = z.object({
   name: z.string().min(1),
   path: z.string().min(1),
   description: z.string().optional(),
+  defaultBranch: z.string().default("HEAD"),
+  testCommand: z.array(z.array(z.string()).min(1)).default([]),
+  lintCommand: z.array(z.array(z.string()).min(1)).default([]),
 });
 
 const GroupWorkspaceSchema = z.object({

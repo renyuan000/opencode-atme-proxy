@@ -9,6 +9,9 @@ export interface GroupWorkspaceCodeProject {
     name: string;
     path: string;
     description?: string;
+    defaultBranch: string;
+    testCommand: string[][];
+    lintCommand: string[][];
 }
 export interface GroupWorkspaceLayout {
     root?: string;

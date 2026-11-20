@@ -1374,6 +1374,9 @@ export class ProxyRuntime {
                 name: name,
                 path: path,
                 ...(description ? { description } : {}),
+                defaultBranch: "HEAD",
+                testCommand: [],
+                lintCommand: [],
             });
             workspace.autoDiscover = false;
         }
@@ -1386,6 +1389,23 @@ export class ProxyRuntime {
             if (workspace.projects.length === before)
                 return `找不到项目：${name}`;
             workspace.autoDiscover = false;
+        }
+        else if (rest.startsWith("测试 ") || rest.startsWith("检查 ")) {
+            const matchCommand = rest.match(/^(测试|检查)\s+(\S+)\s+([\s\S]+)$/);
+            if (!matchCommand) {
+                return "用法：/工作空间 <群名|chatId> 测试|检查 <项目名> <命令>";
+            }
+            const [, kind, name, commandText] = matchCommand;
+            const project = workspace.projects.find((item) => item.name === name);
+            if (!project)
+                return `找不到项目：${name}`;
+            const command = commandText.trim().split(/\s+/).filter(Boolean);
+            if (command.length === 0)
+                return "命令不能为空。";
+            if (kind === "测试")
+                project.testCommand = [command];
+            else
+                project.lintCommand = [command];
         }
         else {
             const root = rest.replace(/^设置\s+/, "").trim();
@@ -1420,6 +1440,12 @@ export class ProxyRuntime {
             lines.push("代码项目：");
             (workspace.projects ?? []).forEach((project, index) => {
                 lines.push(`${index + 1}. ${project.name}: ${project.path}${project.description ? `（${project.description}）` : ""}`);
+                for (const command of project.lintCommand ?? []) {
+                    lines.push(`   lint: ${command.join(" ")}`);
+                }
+                for (const command of project.testCommand ?? []) {
+                    lines.push(`   test: ${command.join(" ")}`);
+                }
             });
         }
         else if (workspace.autoDiscover === false) {
@@ -2066,6 +2092,9 @@ export class ProxyRuntime {
                     name: project.name,
                     path: resolve(isAbsolute(project.path) ? project.path : join(root, project.path)),
                     ...(project.description ? { description: project.description } : {}),
+                    defaultBranch: project.defaultBranch,
+                    testCommand: project.testCommand,
+                    lintCommand: project.lintCommand,
                 }))
                 : autoDiscover
                     ? await this.discoverWorkspaceProjects(root)

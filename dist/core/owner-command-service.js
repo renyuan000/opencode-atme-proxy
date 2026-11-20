@@ -24,6 +24,7 @@ export class OwnerCommandService {
                 "/工作空间 <群名|chatId> [root] 查看/设置工作空间",
                 "/工作空间 <群名|chatId> 添加 <名称> <路径> [说明]",
                 "/工作空间 <群名|chatId> 删除 <名称>",
+                "/工作空间 <群名|chatId> 测试|检查 <名称> <命令>",
                 "/工作空间 <群名|chatId> 自动 自动发现 worktrees 项目",
                 "/目标 [编号|chatId|messageId] 查看/选择私聊目标",
                 "/画像 [群名|chatId]      查看群初始画像",
