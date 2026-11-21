@@ -23,6 +23,10 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **群职责画像**：私聊 `/职责 <群名|chatId> <说明>` 设置本群主职责、依赖和排除项，并注入筛选、回复和分析上下文；`/画像 [群名|chatId]` 查看初始/当前群画像。
 - **私聊目标选择**：私聊 `/目标` 查看最近目标，`/目标 <编号|chatId|messageId>` 选择当前目标。
 - **私聊目标绑定**：群内待确认消息会记录 `chatId/chatName/messageId`；私聊跟进未引用时自动带上最近目标；多个目标只列候选，不猜。
+- **群工作空间**：一个群对应一个工作空间，代码项目平级放在 `worktrees/`，分析/文件/执行产物都留在群工作空间；不再强制“一个主仓 + 关联仓”。
+- **工作空间管理**：主人私聊 `/工作空间 <群名|chatId> ...` 即可查看、设置根目录、添加/删除项目、配置 test/lint、自动发现；不需要改代码。
+- **多项目开发**：任务分析会列出工作空间内项目；执行时为涉及项目分别创建独立 git worktree，避免直接修改源仓库。
+- **会话代际**：群职责/画像/术语变化时自动升 `sessionEpoch`，新会话不复用旧上下文。
 - **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
 - **卡片回复管理**：代答审批卡和开发审批卡都有「回复管理」，可看待审批草稿和最近 5 条可撤回回复；每条带群/发送人/时间/内容，取消或撤回前可辨认。撤回受飞书权限和企业撤回时限限制（默认 24 小时）。
 - **回执优先**：对方只是确认或同意时，只回“收到”，不分析、不查资料、不追问。
@@ -53,10 +57,11 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 
 机器人在飞书里是“机器人助手”，在 OpenCode 里是“架构师 + 研发负责人”：
 
-- 它需要知道当前主项目在哪个代码目录，而不是在 `/mnt/c/Users/...` 里凭空回答。
-- 项目解析优先级：`project.worktree`（显式）→ `project.id` → 最近有会话的 git 项目 → 最近更新的 git 项目 → `repos[0].path` → `fallbackWorktree`。
+- 它需要知道当前工作空间/代码目录，而不是在 `/mnt/c/Users/...` 里凭空回答。
+- 优先级：群 `workspace` → 群 `project.primary/core` → `project.worktree`（显式）→ `project.id` → 最近有会话的 git 项目 → 最近更新的 git 项目 → `repos[0].path` → `fallbackWorktree`。
+- `workspace` 模式下，OpenCode 主目录是群工作空间；`worktrees/` 下代码项目平级，没有 primary/core 主次。
 - 默认会忽略 `global` 项目（worktree 为 `/` 或 home 目录），避免在用户目录下开发。
-- 每个飞书群会绑定解析到的项目（`projects.json`），后续同一群的对话与任务使用同一目录。
+- 群 `workspace` 模式下，后续同一群的对话、分析、执行都使用该工作空间；旧模式才会把群绑定到单个项目（`projects.json`）。
 - 可用 `project.allowlist` 限制只能在哪些仓库下工作，防止越界。
 - 解析结果写入日志：`projectId / worktree / reason / score`，便于排查“为什么选了这个项目”。
 - 群聊上下文默认保留最近 50 条逻辑消息、7 天，用于回答、任务分析与历史关联，不写进群；可在 `context` 中关闭。
@@ -209,8 +214,9 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 | `platforms.feishu.groups[].chatId`     | 群 chat_id（`oc_` 开头），可多个            |
 | `filter.baseUrl/model`                 | OpenAI 兼容的低成本模型                  |
 | `opencode.baseUrl`                     | `http://127.0.0.1:19876`                 |
-| `project.worktree`                     | 主项目代码目录；不填则自动解析            |
-| `repos[]`                              | 可选；开发执行的仓库白名单、测试/lint 命令 |
+| `groups[].workspace`                   | 群工作空间：root/projects/docs；优先于 project |
+| `project.worktree`                     | 旧模式主项目代码目录；不填则自动解析      |
+| `repos[]`                              | 旧模式开发执行仓库白名单、测试/lint 命令  |
 | `context.storeMediaPlaceholders`       | 非 @ 的图片/文件等也存占位符，默认 true   |
 | `evidence.retentionDays`               | 群证据保留天数，默认 720                  |
 | `groupSession.summaryEveryMessages`    | 每 N 条消息更新群摘要，默认 8             |
@@ -238,9 +244,9 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 
 项目上下文：
 
-- 最稳的方式是显式配置 `project.worktree` 为目标仓库绝对路径。
-- 不配置时自动选择：最近有会话的 git 项目 → 最近更新项目 → `repos[0].path`；会忽略 `global`（`/` 或 home）。
-- 建议配置 `project.allowlist`，限制只能在指定仓库下工作。
+- 推荐用群 `workspace` 指定工作空间和代码项目；旧模式可显式配置 `project.worktree`。
+- 旧模式不配置时自动选择：最近有会话的 git 项目 → 最近更新项目 → `repos[0].path`；会忽略 `global`（`/` 或 home）。
+- 旧模式建议配置 `project.allowlist`，限制只能在指定仓库下工作；workspace 模式由项目列表限定。
 
 回复与并发：
 
@@ -497,7 +503,7 @@ groups/<群名__短ID>/
   audit.jsonl         本群审计
 ```
 
-全局只保留 `owner.json`、`owner-target.json`、`groups/` 和运行锁/日志。群业务根目录在 `/mnt/d/Work/atme-groups/<群名__短ID>/`，包含 `session/`、`files/`、`worktrees/`、`analysis/`、`execution/`；群名变更只更新 `group.json` 和 `aliases/`，不改目录。
+全局只保留 `owner.json`、`owner-target.json`、`groups/` 和运行锁/日志。群业务根目录在 `/mnt/d/Work/atme-groups/<群名__短ID>/`，包含 `session/`、`files/`、`docs/`、`worktrees/`、`analysis/`、`execution/`；群名变更只更新 `group.json` 和 `aliases/`，不改目录。
 
 ### 关键配置
 
@@ -554,7 +560,7 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 当前只实现飞书适配器；其他平台通过 `PlatformAdapter` 扩展。
 - 个人微信无官方 Bot API，不做。
 - 飞书“群全量消息”依赖敏感权限，需 M0 实测确认。
-- 首期不解析图片/文件内容，只做占位摘要。
+- 真实飞书/真实 OpenCode 的完整闭环仍需持续验证；大仓库分析仍可能超时。
 
 ### 运行方式与目录
 
@@ -564,18 +570,20 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 配置默认在 `~/.config/opencode-atme-proxy/config.json`；状态默认在 `~/.local/state/opencode-atme-proxy`。
 - 进程 cwd 不强制切换；但每个 OpenCode 会话都显式使用项目代码目录 `directory`，所以会话归属项目，不归属启动目录。
 - 会话默认保留（`opencode.keepSessions=true`），可在 OpenCode session 列表里看到；标题前缀 `atme:`。设为 `false` 才会用完即删。
-- 项目目录解析：显式 `project.worktree` → `project.id` → 最近有会话的 git 项目 → 最近更新项目 → `repos[0].path` → `fallbackWorktree`；不会用 home/cwd 代替项目。
+- 目录解析：群 `workspace` → 旧群 `project` → 显式 `project.worktree` → `project.id` → 最近有会话的 git 项目 → 最近更新项目 → `repos[0].path` → `fallbackWorktree`；不会用 home/cwd 代替项目。
 
 ### 开发状态
 
 已完成：
 
 - 飞书适配器（WS 事件 + 历史消息 + 发送/回复 + 卡片）
+- 群工作空间、多项目分析、按项目 worktree 执行、项目级 test/lint
 - 并发 @ 调度（同群 4 并发、跨群并行、有界队列、超时/重试）
 - 群聊上下文记忆、项目解析与群绑定
+- 群工作空间、代码项目平级、workspace 私聊管理
 - 去重、游标、任务、分析、审批、执行、审计骨架
 - 简洁/详细回复策略、审批门禁、失败降级
-- 140 个单元/集成测试
+- 144 个单元/集成测试
 
 未完成 / 下一步：
 
@@ -795,8 +803,9 @@ Required `config.json` fields:
 | `platforms.feishu.groups[].chatId`     | Group `chat_id` (`oc_...`); use `atme-proxy chats` to list |
 | `filter.baseUrl/model`                 | OpenAI-compatible low-cost model                           |
 | `opencode.baseUrl`                     | `http://127.0.0.1:19876`                                   |
-| `project.worktree`                     | Main repo path; optional if auto-resolution works          |
-| `repos[]`                              | Optional repo allowlist plus test/lint commands            |
+| `groups[].workspace`                   | Group workspace: root/projects/docs; preferred over project |
+| `project.worktree`                     | Legacy main repo path; optional if auto-resolution works   |
+| `repos[]`                              | Legacy repo allowlist plus test/lint commands              |
 
 Feishu console:
 
@@ -820,7 +829,7 @@ If your console offers `im.chat.member.bot.added_v1`, the bot also auto-allowlis
 - Config defaults to `~/.config/opencode-atme-proxy/config.json`; state defaults to `~/.local/state/opencode-atme-proxy`.
 - The process does not `chdir`; each OpenCode session is created with an explicit project `directory`, so sessions belong to the project, not the launch directory.
 - Sessions are kept by default (`opencode.keepSessions=true`) with title prefix `atme:`; set it to `false` to delete after use.
-- Project resolution: explicit `project.worktree` → `project.id` → recent-session git project → most recently updated project → `repos[0].path` → `fallbackWorktree`. It never falls back to home/cwd.
+- Project resolution: group `workspace` → legacy group `project` → explicit `project.worktree` → `project.id` → recent-session git project → most recently updated project → `repos[0].path` → `fallbackWorktree`. It never falls back to home/cwd.
 
 Standalone daemon (recommended):
 
@@ -888,9 +897,11 @@ Minimum acceptance:
 
 The bot speaks as a chat assistant in Feishu and as an architect/lead engineer in OpenCode. It must work in the right repository, not in a user home directory.
 
-Resolution order: explicit `project.worktree` → `project.id` → project with recent sessions → most recently updated git project → `repos[0].path` → `fallbackWorktree`.
+Resolution order: group `workspace` → legacy group `project.primary/core` → explicit `project.worktree` → `project.id` → project with recent sessions → most recently updated git project → `repos[0].path` → `fallbackWorktree`.
 
-It ignores the `global` project (worktree `/` or home), binds each chat to a resolved project (`projects.json`), and can be constrained with `project.allowlist`.
+In workspace mode, one group maps to one workspace; code projects are siblings under `worktrees/` and have no primary/core hierarchy. Analysis, files, docs, and execution artifacts stay in the group workspace. Owners can manage it from DM with `/工作空间`.
+
+It ignores the `global` project (worktree `/` or home), can bind legacy chats to a resolved project (`projects.json`), and can be constrained with `project.allowlist`.
 
 Recent chat context (20 messages, 7 days by default) is used only for answering and task analysis; it is configurable under `context`.
 

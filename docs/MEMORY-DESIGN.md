@@ -132,10 +132,17 @@ A 解决“同一句话被拆成几条发”，B 解决“隔很久补充同一�
   group.json
   session/
   files/
+  docs/
   worktrees/
   analysis/
   execution/
 ```
+
+工作空间规则：
+
+- 一个群一个工作空间；`docs/` 放关键开发公共文档，`worktrees/` 放代码项目。
+- `workspace.projects` 是平级项目，不再用 primary/core 表达主次。
+- 分析、文件、执行产物都写在工作空间内；长期群记忆仍在 state 目录。
 
 命名规则：
 
