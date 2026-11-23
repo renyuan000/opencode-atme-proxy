@@ -124,7 +124,10 @@ export declare class ReplyService {
     draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth, unified?: boolean): Promise<string>;
     private webMode;
     private runReplyWorker;
-    loadTaskAttachments(task: TaskRecord): Promise<PromptAttachment[]>;
+    loadTaskMedia(task: TaskRecord): Promise<{
+        attachments: PromptAttachment[];
+        documents: string[];
+    }>;
     private loadMediaContext;
     private collectMediaCandidates;
     private loadFilesFrom;

@@ -19,5 +19,6 @@ export interface AnalysisPromptInput {
     }>;
     workspaceDocs?: string[];
     attachmentNames?: string[];
+    attachmentTexts?: string[];
 }
 export declare function buildAnalysisPrompt(input: AnalysisPromptInput): string;

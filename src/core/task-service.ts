@@ -36,7 +36,10 @@ export interface TaskServiceOptions {
   logger: Logger;
   readOnlyPermission: SessionPermission[];
   conversationIdFor?(platform: string, chatId: string): string;
-  loadAttachments?(task: TaskRecord): Promise<PromptAttachment[]>;
+  loadMedia?(task: TaskRecord): Promise<{
+    attachments: PromptAttachment[];
+    documents: string[];
+  }>;
   memory: MemoryStore;
   resolveProject(chatId: string): Promise<{
     worktree: string;
@@ -238,7 +241,12 @@ export class TaskService {
     task: TaskRecord,
     signal?: AbortSignal,
   ): Promise<TaskAnalysis> {
-    const attachments = (await this.options.loadAttachments?.(task)) ?? [];
+    const media = (await this.options.loadMedia?.(task)) ?? {
+      attachments: [],
+      documents: [],
+    };
+    const attachments = media.attachments;
+    const mediaDocuments = media.documents;
     const workspaceConfig = this.options.config.platforms.feishu.groups.find(
       (group) => group.chatId === task.chatId,
     )?.workspace;
@@ -254,6 +262,7 @@ export class TaskService {
         project.workspaceProjects,
         project.workspaceDocs,
         attachments,
+        mediaDocuments,
       );
     }
     const repo = this.options.config.repos[0];
@@ -262,7 +271,15 @@ export class TaskService {
       if (!project.resolved) {
         return this.missingProjectAnalysis(task);
       }
-      return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments);
+      return this.buildAnalysisInWorktree(
+        task,
+        project.worktree,
+        signal,
+        undefined,
+        undefined,
+        attachments,
+        mediaDocuments,
+      );
     }
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
@@ -270,6 +287,7 @@ export class TaskService {
       repositoryIds: this.options.config.repos.map((item) => item.id),
       directory: repo.path,
       context: ctx,
+      ...(mediaDocuments.length > 0 ? { attachmentTexts: mediaDocuments } : {}),
     });
     const analysisAgent =
       this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;
@@ -303,6 +321,7 @@ export class TaskService {
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>,
     workspaceDocs?: string[],
     attachments: PromptAttachment[] = [],
+    mediaDocuments: string[] = [],
   ): Promise<TaskAnalysis> {
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
@@ -317,6 +336,7 @@ export class TaskService {
       ...(task.attachments?.length
         ? { attachmentNames: task.attachments.map((item) => item.name ?? item.kind) }
         : {}),
+      ...(mediaDocuments.length > 0 ? { attachmentTexts: mediaDocuments } : {}),
     });
     const analysisAgent =
       this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;

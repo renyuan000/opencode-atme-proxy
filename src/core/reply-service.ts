@@ -700,7 +700,10 @@ export class ReplyService {
     }
   }
 
-  async loadTaskAttachments(task: TaskRecord): Promise<PromptAttachment[]> {
+  async loadTaskMedia(task: TaskRecord): Promise<{
+    attachments: PromptAttachment[];
+    documents: string[];
+  }> {
     const message: IncomingMessage = {
       platform: task.platform,
       messageId: task.messageIds[task.messageIds.length - 1] ?? task.id,
@@ -713,7 +716,11 @@ export class ReplyService {
       rawType: "text",
       ...(task.attachments ? { attachments: task.attachments } : {}),
     };
-    return (await this.loadMediaContext(message)).images;
+    const media = await this.loadMediaContext(message);
+    return {
+      attachments: media.images,
+      documents: media.documents ? [media.documents] : [],
+    };
   }
 
   private async loadMediaContext(message: IncomingMessage): Promise<{

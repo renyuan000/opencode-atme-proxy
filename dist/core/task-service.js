@@ -160,14 +160,19 @@ export class TaskService {
         void this.options.memory.flush();
     }
     async buildAnalysis(task, signal) {
-        const attachments = (await this.options.loadAttachments?.(task)) ?? [];
+        const media = (await this.options.loadMedia?.(task)) ?? {
+            attachments: [],
+            documents: [],
+        };
+        const attachments = media.attachments;
+        const mediaDocuments = media.documents;
         const workspaceConfig = this.options.config.platforms.feishu.groups.find((group) => group.chatId === task.chatId)?.workspace;
         if (workspaceConfig) {
             const project = await this.options.resolveProject(task.chatId);
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs, attachments);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs, attachments, mediaDocuments);
         }
         const repo = this.options.config.repos[0];
         if (!repo) {
@@ -175,7 +180,7 @@ export class TaskService {
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments, mediaDocuments);
         }
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
@@ -183,6 +188,7 @@ export class TaskService {
             repositoryIds: this.options.config.repos.map((item) => item.id),
             directory: repo.path,
             context: ctx,
+            ...(mediaDocuments.length > 0 ? { attachmentTexts: mediaDocuments } : {}),
         });
         const analysisAgent = this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;
         const raw = await this.options.sessionManager.runWorker({
@@ -202,7 +208,7 @@ export class TaskService {
         }, prompt, signal, attachments);
         return parseAnalysis(raw, task, repo.id);
     }
-    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs, attachments = []) {
+    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs, attachments = [], mediaDocuments = []) {
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
             task,
@@ -216,6 +222,7 @@ export class TaskService {
             ...(task.attachments?.length
                 ? { attachmentNames: task.attachments.map((item) => item.name ?? item.kind) }
                 : {}),
+            ...(mediaDocuments.length > 0 ? { attachmentTexts: mediaDocuments } : {}),
         });
         const analysisAgent = this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;
         const raw = await this.options.sessionManager.runWorker({

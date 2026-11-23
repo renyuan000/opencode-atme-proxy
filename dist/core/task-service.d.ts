@@ -19,7 +19,10 @@ export interface TaskServiceOptions {
     logger: Logger;
     readOnlyPermission: SessionPermission[];
     conversationIdFor?(platform: string, chatId: string): string;
-    loadAttachments?(task: TaskRecord): Promise<PromptAttachment[]>;
+    loadMedia?(task: TaskRecord): Promise<{
+        attachments: PromptAttachment[];
+        documents: string[];
+    }>;
     memory: MemoryStore;
     resolveProject(chatId: string): Promise<{
         worktree: string;

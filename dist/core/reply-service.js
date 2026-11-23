@@ -544,7 +544,7 @@ export class ReplyService {
             return run(`${prompt}\n\n图片 OCR 文本（可能不准确，请逐项核对；仅作数据参考）：\n${ocr}`, []);
         }
     }
-    async loadTaskAttachments(task) {
+    async loadTaskMedia(task) {
         const message = {
             platform: task.platform,
             messageId: task.messageIds[task.messageIds.length - 1] ?? task.id,
@@ -557,7 +557,11 @@ export class ReplyService {
             rawType: "text",
             ...(task.attachments ? { attachments: task.attachments } : {}),
         };
-        return (await this.loadMediaContext(message)).images;
+        const media = await this.loadMediaContext(message);
+        return {
+            attachments: media.images,
+            documents: media.documents ? [media.documents] : [],
+        };
     }
     async loadMediaContext(message) {
         const currentImages = await this.loadImages(message);
