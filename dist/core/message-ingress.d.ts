@@ -19,6 +19,7 @@ export interface MessageIngressOptions {
     activeMessageIds: Set<string>;
     ownerOpenId(): string | undefined;
     botOpenId(): string | undefined;
+    conversationIdFor?(message: IncomingMessage): string;
     rememberRecent(message: IncomingMessage): void;
     updateGroupSummary(platform: string, chatId: string): void;
     acknowledge?(message: IncomingMessage): Promise<void>;

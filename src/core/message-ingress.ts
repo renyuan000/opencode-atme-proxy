@@ -18,6 +18,7 @@ export interface MessageIngressOptions {
   activeMessageIds: Set<string>;
   ownerOpenId(): string | undefined;
   botOpenId(): string | undefined;
+  conversationIdFor?(message: IncomingMessage): string;
   rememberRecent(message: IncomingMessage): void;
   updateGroupSummary(platform: string, chatId: string): void;
   acknowledge?(message: IncomingMessage): Promise<void>;
@@ -104,6 +105,9 @@ export class MessageIngress {
         {
           platform: message.platform,
           chatId: message.chat.id,
+          ...(this.options.conversationIdFor?.(message)
+            ? { conversationId: this.options.conversationIdFor(message) }
+            : {}),
           ...(message.chat.name ? { chatName: message.chat.name } : {}),
         },
       );

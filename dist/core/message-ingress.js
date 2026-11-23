@@ -69,6 +69,9 @@ export class MessageIngress {
             }, {
                 platform: message.platform,
                 chatId: message.chat.id,
+                ...(this.options.conversationIdFor?.(message)
+                    ? { conversationId: this.options.conversationIdFor(message) }
+                    : {}),
                 ...(message.chat.name ? { chatName: message.chat.name } : {}),
             });
             this.options.evidence.append({

@@ -24,6 +24,7 @@ export interface ScanServiceOptions {
   dedup: { has(key: string, chatId?: string): boolean };
   activeMessageIds: Set<string>;
   ownerOpenId(): string | undefined;
+  conversationIdFor?(message: IncomingMessage): string;
   isMention(message: IncomingMessage): boolean;
   isFileRelevant?(message: IncomingMessage, fileName: string, content?: string): boolean | undefined;
   onMessage(message: IncomingMessage, wait: boolean): Promise<void>;
