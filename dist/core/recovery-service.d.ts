@@ -31,6 +31,10 @@ export interface RecoveryServiceOptions {
     analyzeTask(task: TaskRecord): Promise<void>;
     track<T>(promise: Promise<T>): Promise<T>;
     sendToOwner(text: string): Promise<boolean>;
+    describeTask?(task: TaskRecord): Promise<{
+        chatLabel: string;
+        senderLabel: string;
+    }>;
 }
 export declare class RecoveryService {
     private readonly options;

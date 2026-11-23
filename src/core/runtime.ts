@@ -704,6 +704,7 @@ export class ProxyRuntime {
       analyzeTask: (task) => this.analyzeTask(task),
       track: (promise) => this.track(promise),
       sendToOwner: (text) => this.sendToOwner(text),
+      describeTask: (task) => this.describeTask(task),
     });
     this.poller = new PollingService({
       enabled: this.config.polling.enabled,
@@ -1038,6 +1039,32 @@ export class ProxyRuntime {
 
   private claimOwner(message: IncomingMessage): Promise<boolean> {
     return this.ownerAccess.claim(message);
+  }
+
+  private async describeTask(task: TaskRecord): Promise<{ chatLabel: string; senderLabel: string }> {
+    const configured = this.config.platforms.feishu.groups.find(
+      (group) => group.chatId === task.chatId,
+    );
+    const chatLabel =
+      task.chatName && task.chatName !== task.chatId
+        ? task.chatName
+        : configured?.name ?? (await this.notificationService.fetchChatName(task.chatId)) ?? "群";
+    let senderLabel = task.requester.displayName ?? "";
+    if (!senderLabel) {
+      try {
+        senderLabel = (await this.options.platform.fetchUserName?.(task.requester.id)) ?? "";
+      } catch {
+        senderLabel = "";
+      }
+    }
+    if (!senderLabel && task.messageIds[0] && this.options.platform.fetchMessage) {
+      try {
+        senderLabel = (await this.options.platform.fetchMessage(task.messageIds[0]))?.sender.displayName ?? "";
+      } catch {
+        senderLabel = "";
+      }
+    }
+    return { chatLabel, senderLabel: senderLabel || "成员" };
   }
 
   private sendToOwner(text: string, sourceMessageId?: string): Promise<boolean> {

@@ -28,6 +28,7 @@ export interface RecoveryServiceOptions {
   analyzeTask(task: TaskRecord): Promise<void>;
   track<T>(promise: Promise<T>): Promise<T>;
   sendToOwner(text: string): Promise<boolean>;
+  describeTask?(task: TaskRecord): Promise<{ chatLabel: string; senderLabel: string }>;
 }
 
 export class RecoveryService {
@@ -158,8 +159,12 @@ export class RecoveryService {
         task.updatedAt = now;
         await this.options.tasks.save(task);
         interrupted++;
+        const labels = (await this.options.describeTask?.(task)) ?? {
+          chatLabel: task.chatName ?? "群",
+          senderLabel: task.requester.displayName ?? "成员",
+        };
         await this.options.sendToOwner(
-          `上次执行被中断，已暂停等待你重新批准：\n群：${task.chatName ?? task.chatId}\n${task.title}\n不会自动重放代码修改。`,
+          `上次执行被中断，已暂停等待你重新批准：\n群：${labels.chatLabel}\n${task.title}\n不会自动重放代码修改。`,
         );
         continue;
       }
@@ -190,11 +195,16 @@ export class RecoveryService {
         task.lastNudgeAt = now;
         task.updatedAt = now;
         await this.options.tasks.save(task);
+        const labels = (await this.options.describeTask?.(task)) ?? {
+          chatLabel: task.chatName ?? "群",
+          senderLabel: task.requester.displayName ?? "成员",
+        };
         await this.options.sendToOwner(
           [
-            `未完成任务提醒（${task.chatName ?? task.chatId}）：${task.title}`,
+            `未完成任务提醒（${labels.chatLabel}）：${task.title}`,
             `状态：${task.state}`,
-            `来源：${task.chatName ?? task.chatId} / ${task.requester.displayName ?? task.requester.id}`,
+            `来源：${labels.chatLabel} / ${labels.senderLabel}`,
+            `群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
             "请在原审批卡或群里处理。",
           ].join("\n"),
         );
