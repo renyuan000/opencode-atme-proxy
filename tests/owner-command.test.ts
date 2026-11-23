@@ -27,6 +27,10 @@ test("parses slash commands", () => {
     command: "keywords",
     arg: "产品-资产测绘 管理面,IP管理",
   });
+  assert.deepEqual(parseOwnerCommand("/分析 task_123"), {
+    command: "analyze",
+    arg: "task_123",
+  });
   assert.deepEqual(parseOwnerCommand("/回复管理"), { command: "replies", arg: "" });
   assert.deepEqual(parseOwnerCommand("/取消 2"), { command: "cancel", arg: "2" });
   assert.deepEqual(parseOwnerCommand("／帮助"), { command: "help", arg: "" });

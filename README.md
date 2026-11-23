@@ -28,7 +28,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **工作空间管理**：主人私聊 `/工作空间 <群名|chatId> ...` 即可查看、设置根目录、添加/删除项目、配置 test/lint、自动发现；不需要改代码。
 - **多项目开发**：任务分析会列出工作空间内项目；执行时为涉及项目分别创建独立 git worktree，避免直接修改源仓库。
 - **会话代际**：群职责/画像/术语变化、私聊偏好/决策变化时自动升 `sessionEpoch`，新会话不复用旧上下文。
-- **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
+- **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`、`/分析`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
 - **卡片回复管理**：代答审批卡和开发审批卡都有「回复管理」，可看待审批草稿和最近 5 条可撤回回复；每条带群/发送人/时间/内容，取消或撤回前可辨认。撤回受飞书权限和企业撤回时限限制（默认 24 小时）。
 - **回执优先**：对方只是确认或同意时，只回“收到”，不分析、不查资料、不追问。
 - **快速回执**：@机器人/@我/owner 私聊收到后，机器人先给消息加一个表情（默认 `OK`，`reply.ackReaction` 可改；设为空字符串关闭）。
@@ -40,7 +40,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **私聊长期上下文**：owner 私聊独立保存摘要、偏好、决策、目标、未解决问题和 `sessionEpoch`，并注入私聊回复。
 - **证据回查**：普通群消息按日期存 `groups/<群名__短ID>/replies/<date>.jsonl`，AI 按需 grep 最近 7 天原文。
 - **图片理解**：@我/@机器人 的图片会下载为视觉附件交给支持图片的 OpenCode 模型；最多 2 张、单张 3MB。非 @ 群消息扫描也会对图片做 OCR；模型不支持图片时回退 `tesseract`（需安装 `tesseract` 和 `chi_sim` 语言包）。
-- **文件关联**：引用链最多回溯 5 层；最近 24 小时群文件不限定发送人，最多读取 2 个。支持 docx/pdf/doc/html/xlsx/xls/txt/md/csv/json 等；doc 用 `antiword`，xlsx/xls 用 SheetJS，docx 优先 `pandoc` 再回退 `unzip`。群文件无 @ 也会按群知识画像判断文件名/内容；明显不相关的文件不进入上下文；相关文件会分析并私聊结果，而不是在群里刷屏。
+- **文件关联**：引用链最多回溯 5 层；最近 24 小时群文件不限定发送人，最多读取 2 个。支持 docx/pdf/doc/html/xlsx/xls/txt/md/csv/json 等；doc 用 `antiword`，xlsx/xls 用 SheetJS，docx 优先 `pandoc` 再回退 `unzip`。非 @ 群媒体先本地 OCR/文本提取并判断相关性，深层分析需私聊 `/分析 <taskId>` 批准，不自动执行。
 - **在线文档**：按 @消息/引用里的 `/docx/`、`/wiki/`、`/docs/`、`/sheets/` 读取正文；wiki 下的 sheet 也支持。
 - **联网策略**：群聊默认禁用 `websearch/webfetch`；主人私聊默认允许 `websearch`，`webfetch` 需要私聊明确说“允许抓取/允许联网”。
 

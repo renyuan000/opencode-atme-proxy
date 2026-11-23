@@ -233,6 +233,14 @@ export class ScanService {
     if (await this.skipIrrelevantFile(message, enriched.text)) return;
     const classification = await this.options.intentService.classifyOne(enriched, signal);
     if (!classification?.relevant) return;
+    if (
+      this.hasMedia(message) &&
+      (classification.ownerAttention || classification.actionability === "task")
+    ) {
+      await this.queueMediaApproval(enriched, classification);
+      await this.options.markProcessed(message);
+      return;
+    }
     await this.analyzeFile(message, signal);
     let handled = false;
     if (
@@ -310,6 +318,14 @@ export class ScanService {
         continue;
       }
       this.appendContextForScan(message);
+      if (
+        this.hasMedia(message) &&
+        (item.ownerAttention || item.actionability === "task")
+      ) {
+        await this.queueMediaApproval(message, item);
+        await this.options.markProcessed(message);
+        continue;
+      }
       await this.analyzeFile(message, signal);
       if (
         item.actionability === "task" &&
@@ -414,6 +430,32 @@ export class ScanService {
       // keep id as last resort
     }
     return message.sender.id;
+  }
+
+  private hasMedia(message: IncomingMessage): boolean {
+    return (message.attachments ?? []).some(
+      (attachment) => attachment.kind === "image" || attachment.kind === "file",
+    );
+  }
+
+  private async queueMediaApproval(
+    message: IncomingMessage,
+    classification: Classification,
+  ): Promise<void> {
+    const taskHint = classification.task ?? {
+      title: truncate(message.text.replace(/\s+/g, " ").trim() || "待分析群媒体", 60),
+    };
+    await this.options.taskService.ensureTask(
+      message,
+      {
+        ...classification,
+        actionability: "task",
+        confidence: Math.max(classification.confidence, this.options.config.filter.minTaskConfidence),
+        task: taskHint,
+      },
+      "group_scan",
+      { autoAnalyze: false },
+    );
   }
 
   private appendContextForScan(message: IncomingMessage): void {

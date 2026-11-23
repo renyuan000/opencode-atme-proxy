@@ -125,6 +125,7 @@ export class TaskService {
     message: IncomingMessage,
     classification: Classification | undefined,
     source: TaskRecord["source"],
+    options?: { autoAnalyze?: boolean },
   ): Promise<TaskRecord | undefined> {
     const taskHint = classification?.task;
     const title = taskHint?.title ?? truncate(message.text.split("\n")[0] ?? message.text, 60);
@@ -188,12 +189,13 @@ export class TaskService {
       taskId: task.id,
       details: { source, messageId: message.messageId },
     });
-    if (!this.options.config.policy.autoAnalyzeTasks) {
+    const autoAnalyze = options?.autoAnalyze ?? this.options.config.policy.autoAnalyzeTasks;
+    if (!autoAnalyze) {
       task.state = "needs_info";
       task.updatedAt = Date.now();
       await this.options.tasks.save(task);
       await this.options.sendToApprover(
-        `已记录任务，请回复补充信息或手动触发分析：${task.title}`,
+        `已记录候选任务，暂不自动分析：${task.title}\n如需分析，回复 /分析 ${task.id}`,
       );
       return task;
     }

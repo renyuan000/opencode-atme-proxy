@@ -25,6 +25,7 @@ export interface OwnerCommandServiceOptions {
     setGroupResponsibility(arg: string): Promise<string>;
     manageWorkspace(arg: string): Promise<string>;
     setOwnerFocus(arg: string, kind: "direction" | "keywords"): Promise<string>;
+    analyzeTask(arg: string): Promise<string>;
     listOwnerTargets(): string;
     selectOwnerTarget(arg: string): string;
     getGroupKnowledge(arg: string): Promise<string>;

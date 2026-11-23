@@ -451,6 +451,7 @@ export class ProxyRuntime {
       setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
       manageWorkspace: (arg) => this.manageWorkspace(arg),
       setOwnerFocus: (arg, kind) => this.setOwnerFocus(arg, kind),
+      analyzeTask: (arg) => this.analyzePendingTask(arg),
       listOwnerTargets: () => this.listOwnerTargets(),
       selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
       getGroupKnowledge: (arg) => this.getGroupKnowledge(arg),
@@ -1653,6 +1654,22 @@ export class ProxyRuntime {
     await this.ensureGroupWorkspace(group.chatId, group.name, group.project, group.workspace);
     await this.refreshGroupKnowledge();
     return `已设置「${group.name ?? group.chatId}」职责：${description}`;
+  }
+
+  private async analyzePendingTask(arg: string): Promise<string> {
+    const taskId = arg.trim();
+    const task = await this.tasks.get(taskId);
+    if (!task) return `找不到任务：${taskId}`;
+    if (["analyzing", "executing", "verifying"].includes(task.state)) {
+      return `任务正在处理中：${task.id} [${task.state}]`;
+    }
+    this.track(this.taskService.analyzeTask(task)).catch((error) => {
+      this.logger.error("manual task analysis failed", {
+        taskId: task.id,
+        error: toErrorMessage(error),
+      });
+    });
+    return `已开始分析任务：${task.title}\n${task.id}`;
   }
 
   private async setOwnerFocus(

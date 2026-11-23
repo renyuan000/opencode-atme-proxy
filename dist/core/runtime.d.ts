@@ -116,6 +116,7 @@ export declare class ProxyRuntime {
     private listOwnerTargets;
     private selectOwnerTarget;
     private setGroupResponsibility;
+    private analyzePendingTask;
     private setOwnerFocus;
     private persistGroupOwnerFocus;
     private manageWorkspace;
