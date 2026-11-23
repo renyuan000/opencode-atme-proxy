@@ -1110,6 +1110,12 @@ export class ProxyRuntime {
     if (this.started) return;
     await mkdir(join(this.stateDir, "scratch"), { recursive: true });
     await this.groupState.load();
+    for (const info of this.groupState.all()) {
+      if (info.name !== "私聊" || info.conversationId) continue;
+      await this.groupState.ensure(info.chatId, info.name, {
+        conversationId: this.conversationIdFor("feishu", info.chatId, "dm"),
+      });
+    }
     await this.dmContext.load();
     for (const group of this.config.platforms.feishu.groups) {
       await this.ensureGroupWorkspace(group.chatId, group.name, group.project, group.workspace);
