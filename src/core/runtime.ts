@@ -1546,7 +1546,7 @@ export class ProxyRuntime {
       allowlisted: true,
     });
     await this.sendToOwner(
-      `机器人已被加入群：${name}\nchat_id：${event.chatId}\n已自动加入处理白名单；后续启动会自动同步群列表。`,
+      `机器人已被加入群：${name}\n已自动加入处理白名单；后续启动会自动同步群列表。`,
     );
     await this.audit.append({
       actor: { system: true },
