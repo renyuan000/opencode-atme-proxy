@@ -117,7 +117,7 @@ test("non-mention media is stored as placeholder", async () => {
     const runtime = new ProxyRuntime({ platform: new Adapter(), bridge: new Bridge(), loaded: config(dir) });
     await runtime.start();
     await runtime.ingest({
-      ...msg("m1", "[图片，未解析]"),
+      ...msg("m1", "[图片]"),
       rawType: "image",
       attachments: [{ kind: "image" }],
     });
@@ -128,7 +128,7 @@ test("non-mention media is stored as placeholder", async () => {
     const messages = Object.values(parsed.chats).flatMap((chat) => chat.messages);
     assert.equal(messages.length, 1);
     assert.equal(messages[0]?.origin, "media_placeholder");
-    assert.match(messages[0]?.text ?? "", /未解析/);
+    assert.match(messages[0]?.text ?? "", /\[图片\]/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -1,4 +1,5 @@
 import { extractDocumentText } from "./document.js";
+import { ocrImage } from "./ocr.js";
 import { formatLocalTime, toErrorMessage, truncate } from "./util.js";
 export class ScanService {
     options;
@@ -143,8 +144,10 @@ export class ScanService {
     }
     async enrichFile(message) {
         const files = (message.attachments ?? []).filter((item) => item.kind === "file" && item.key);
-        if (files.length === 0 || !this.options.platform.fetchResource)
+        const images = (message.attachments ?? []).filter((item) => item.kind === "image" && item.key);
+        if ((files.length === 0 && images.length === 0) || !this.options.platform.fetchResource) {
             return message;
+        }
         const parts = [];
         for (const file of files.slice(0, 2)) {
             try {
@@ -157,6 +160,23 @@ export class ScanService {
             }
             catch (error) {
                 this.options.logger.warn("failed to analyze scanned file", {
+                    messageId: message.messageId,
+                    error: toErrorMessage(error),
+                });
+            }
+        }
+        for (const image of images.slice(0, 2)) {
+            try {
+                const resource = await this.options.platform.fetchResource(message.messageId, image.key, "image");
+                if (resource.data.length > 8 * 1024 * 1024)
+                    continue;
+                const text = await ocrImage(resource.data, resource.mime);
+                if (text) {
+                    parts.push(`[图片 OCR，仅作文字参考]\n${clip(text, 8000, "图片 OCR")}`);
+                }
+            }
+            catch (error) {
+                this.options.logger.warn("failed to OCR scanned image", {
                     messageId: message.messageId,
                     error: toErrorMessage(error),
                 });

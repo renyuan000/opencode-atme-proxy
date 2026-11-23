@@ -363,7 +363,7 @@ test("owner image is passed to the model as a file attachment", async () => {
     const runtime = new ProxyRuntime({ platform: adapter, bridge, loaded: config(dir) });
     await runtime.start();
     await runtime.ingest({
-      ...dm("m1", "owner", "[图片，未解析]"),
+      ...dm("m1", "owner", "[图片]"),
       rawType: "image",
       attachments: [{ kind: "image", key: "img_1" }],
     });

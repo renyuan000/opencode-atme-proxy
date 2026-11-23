@@ -112,10 +112,10 @@ function normalizeSenderType(value: string | undefined): "user" | "bot" | "syste
 function extractText(raw: FeishuRawMessage, mentions: ActorRef[]): string {
   const type = raw.message_type ?? "";
   if (!raw.content) return type ? `[${type}]` : "";
-  if (type === "image") return "[图片，未解析]";
-  if (type === "file") return "[文件，未解析]";
-  if (type === "audio") return "[音频，未解析]";
-  if (type === "media" || type === "video") return "[视频，未解析]";
+  if (type === "image") return "[图片]";
+  if (type === "file") return "[文件]";
+  if (type === "audio") return "[音频]";
+  if (type === "media" || type === "video") return "[视频]";
   if (type !== "text" && type !== "post") return `[${type}]`;
   try {
     const parsed = JSON.parse(raw.content) as Record<string, unknown>;
@@ -152,17 +152,17 @@ function extractPostText(content: unknown[]): string {
         const width = typeof record.width === "number" ? record.width : undefined;
         const height = typeof record.height === "number" ? record.height : undefined;
         parts.push(
-          width && height ? `[图片 ${width}x${height}，未解析]` : "[图片，未解析]",
+          width && height ? `[图片 ${width}x${height}]` : "[图片]",
         );
         continue;
       }
       if (record.tag === "media") {
-        parts.push("[视频，未解析]");
+        parts.push("[视频]");
         continue;
       }
       if (record.tag === "file") {
         const name = typeof record.file_name === "string" ? record.file_name : "";
-        parts.push(name ? `[文件 ${name}，未解析]` : "[文件，未解析]");
+        parts.push(name ? `[文件 ${name}]` : "[文件]");
       }
     }
   }

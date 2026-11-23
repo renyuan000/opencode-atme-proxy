@@ -5,6 +5,7 @@ import type { IntentService } from "./intent-service.js";
 import type { Logger } from "./logger.js";
 import type { PlatformAdapter } from "./ports.js";
 import { extractDocumentText } from "./document.js";
+import { ocrImage } from "./ocr.js";
 import type { RelevanceService } from "./relevance.js";
 import type { TaskService } from "./task-service.js";
 import type { Classification, IncomingMessage } from "./types.js";
@@ -176,7 +177,12 @@ export class ScanService {
     const files = (message.attachments ?? []).filter(
       (item) => item.kind === "file" && item.key,
     );
-    if (files.length === 0 || !this.options.platform.fetchResource) return message;
+    const images = (message.attachments ?? []).filter(
+      (item) => item.kind === "image" && item.key,
+    );
+    if ((files.length === 0 && images.length === 0) || !this.options.platform.fetchResource) {
+      return message;
+    }
     const parts: string[] = [];
     for (const file of files.slice(0, 2)) {
       try {
@@ -190,6 +196,25 @@ export class ScanService {
         if (text) parts.push(`[文件 ${file.name ?? ""}]\n${clip(text, 8000, file.name ?? "文件")}`);
       } catch (error) {
         this.options.logger.warn("failed to analyze scanned file", {
+          messageId: message.messageId,
+          error: toErrorMessage(error),
+        });
+      }
+    }
+    for (const image of images.slice(0, 2)) {
+      try {
+        const resource = await this.options.platform.fetchResource(
+          message.messageId,
+          image.key!,
+          "image",
+        );
+        if (resource.data.length > 8 * 1024 * 1024) continue;
+        const text = await ocrImage(resource.data, resource.mime);
+        if (text) {
+          parts.push(`[图片 OCR，仅作文字参考]\n${clip(text, 8000, "图片 OCR")}`);
+        }
+      } catch (error) {
+        this.options.logger.warn("failed to OCR scanned image", {
           messageId: message.messageId,
           error: toErrorMessage(error),
         });
