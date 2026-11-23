@@ -324,6 +324,21 @@ export class FeishuAdapter implements PlatformAdapter {
     return typeof name === "string" && name ? name : undefined;
   }
 
+  async forwardMessage(
+    messageId: string,
+    target: OutboundTarget,
+  ): Promise<{ messageId: string }> {
+    const receiveIdType = target.kind === "chat" ? "chat_id" : "open_id";
+    const receiveId = target.kind === "chat" ? target.chatId : target.userId;
+    const response = await this.client.request({
+      method: "POST",
+      url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/forward`,
+      params: { receive_id_type: receiveIdType },
+      data: { receive_id: receiveId },
+    });
+    return this.requireMessageId(response, "forward");
+  }
+
   async fetchMessage(messageId: string): Promise<IncomingMessage | undefined> {
     const response = await this.client.request({
       method: "GET",

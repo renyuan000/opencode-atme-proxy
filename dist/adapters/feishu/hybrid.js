@@ -32,6 +32,9 @@ export class HybridFeishuAdapter {
     fetchUserName(openId) {
         return this.adapter.fetchUserName(openId);
     }
+    forwardMessage(messageId, target) {
+        return this.adapter.forwardMessage(messageId, target);
+    }
     send(target, message) {
         return this.adapter.send(target, message);
     }

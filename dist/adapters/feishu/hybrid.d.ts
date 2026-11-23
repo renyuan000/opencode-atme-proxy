@@ -24,6 +24,9 @@ export declare class HybridFeishuAdapter implements PlatformAdapter {
     }>>;
     fetchMessage(messageId: string): Promise<IncomingMessage | undefined>;
     fetchUserName(openId: string): Promise<string | undefined>;
+    forwardMessage(messageId: string, target: OutboundTarget): Promise<{
+        messageId: string;
+    }>;
     send(target: OutboundTarget, message: OutboundMessage): Promise<{
         messageId: string;
     }>;

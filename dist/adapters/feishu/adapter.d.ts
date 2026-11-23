@@ -75,6 +75,9 @@ export declare class FeishuAdapter implements PlatformAdapter {
         name?: string;
     }>>;
     fetchUserName(openId: string): Promise<string | undefined>;
+    forwardMessage(messageId: string, target: OutboundTarget): Promise<{
+        messageId: string;
+    }>;
     fetchMessage(messageId: string): Promise<IncomingMessage | undefined>;
     listMessages(input: Parameters<PlatformAdapter["listMessages"]>[0]): Promise<{
         nextCursor?: string | undefined;

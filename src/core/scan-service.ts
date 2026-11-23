@@ -32,6 +32,7 @@ export interface ScanServiceOptions {
   sendToApprover(text: string): Promise<boolean>;
   sendToOwner(text: string): Promise<boolean>;
   analyzeFile?(message: IncomingMessage, signal: AbortSignal): Promise<string | undefined>;
+  forwardToOwner?(messageId: string): Promise<boolean>;
 }
 
 export class ScanService {
@@ -329,17 +330,22 @@ export class ScanService {
       if (item?.relevant) related.push(message);
     }
     const highlighted = related.length > 0 ? related : messages.slice(0, 5);
+    const senderNames = new Map<string, string>();
+    await Promise.all(
+      highlighted.slice(0, 8).map(async (message) => {
+        senderNames.set(message.messageId, await this.resolveSenderLabel(message));
+      }),
+    );
     for (const message of highlighted.slice(0, 8)) {
       const item = byId.get(message.messageId);
-      const sender = message.sender.displayName ?? message.sender.id;
+      const sender = senderNames.get(message.messageId) ?? message.sender.id;
       const time = formatLocalTime(message.createdAt);
       const reason = item?.reason ? `｜判断：${truncate(item.reason, 80)}` : "";
       const action = item?.actionability ? `｜类型：${item.actionability}` : "";
       lines.push(
         [
           `• ${time} ${sender}${action}${reason}`,
-          `  ${truncate(message.text.replace(/\s+/g, " "), 160)}`,
-          `  message_id: ${message.messageId}`,
+          `  > ${truncate(message.text.replace(/\s+/g, " "), 160)}`,
         ].join("\n"),
       );
     }
@@ -357,6 +363,32 @@ export class ScanService {
         first.chat.id)
       : "未知群";
     await this.options.sendToOwner([`群消息分析（${group}）：${summary}`, ...lines].join("\n\n"));
+    if (related.length > 0 && this.options.forwardToOwner) {
+      let forwarded = 0;
+      for (const message of related.slice(0, 5)) {
+        if (await this.options.forwardToOwner(message.messageId)) forwarded += 1;
+      }
+      if (forwarded > 0) {
+        await this.options.sendToOwner(`已转发 ${forwarded} 条相关原消息，可直接点开查看上下文。`);
+      }
+    }
+  }
+
+  private async resolveSenderLabel(message: IncomingMessage): Promise<string> {
+    if (message.sender.displayName) return message.sender.displayName;
+    try {
+      const fetched = await this.options.platform.fetchMessage?.(message.messageId);
+      if (fetched?.sender.displayName) return fetched.sender.displayName;
+    } catch {
+      // fall through to contact lookup / id
+    }
+    try {
+      const name = await this.options.platform.fetchUserName?.(message.sender.id);
+      if (name) return name;
+    } catch {
+      // keep id as last resort
+    }
+    return message.sender.id;
   }
 
   private appendContextForScan(message: IncomingMessage): void {

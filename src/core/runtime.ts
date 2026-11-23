@@ -848,6 +848,7 @@ export class ProxyRuntime {
       sendToApprover: (text) => this.sendToApprover(text),
       sendToOwner: (text) => this.sendToOwner(text),
       analyzeFile: (message, signal) => this.analyzeFile(message, signal),
+      forwardToOwner: (messageId) => this.notificationService.forwardToOwner(messageId),
     });
   }
 
