@@ -239,6 +239,8 @@ const GroupSessionSchema = z
   .object({
     enabled: z.boolean().default(true),
     summaryEveryMessages: z.number().int().min(1).max(100).default(8),
+    summaryMinNewChars: z.number().int().min(100).max(20_000).optional(),
+    summaryMaxAgeMinutes: z.number().int().min(10).max(1440).optional(),
     summaryMaxChars: z.number().int().min(200).max(8000).default(1500),
     timeoutMs: z.number().int().min(1000).max(120000).default(30_000),
   })

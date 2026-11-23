@@ -848,6 +848,8 @@ export declare const AppConfigSchema: z.ZodObject<{
     groupSession: z.ZodOptional<z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
         summaryEveryMessages: z.ZodDefault<z.ZodNumber>;
+        summaryMinNewChars: z.ZodOptional<z.ZodNumber>;
+        summaryMaxAgeMinutes: z.ZodOptional<z.ZodNumber>;
         summaryMaxChars: z.ZodDefault<z.ZodNumber>;
         timeoutMs: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
@@ -855,10 +857,14 @@ export declare const AppConfigSchema: z.ZodObject<{
         timeoutMs: number;
         summaryEveryMessages: number;
         summaryMaxChars: number;
+        summaryMinNewChars?: number | undefined;
+        summaryMaxAgeMinutes?: number | undefined;
     }, {
         enabled?: boolean | undefined;
         timeoutMs?: number | undefined;
         summaryEveryMessages?: number | undefined;
+        summaryMinNewChars?: number | undefined;
+        summaryMaxAgeMinutes?: number | undefined;
         summaryMaxChars?: number | undefined;
     }>>>;
     memory: z.ZodDefault<z.ZodObject<{
@@ -1395,6 +1401,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         timeoutMs: number;
         summaryEveryMessages: number;
         summaryMaxChars: number;
+        summaryMinNewChars?: number | undefined;
+        summaryMaxAgeMinutes?: number | undefined;
     } | undefined;
 }, {
     platforms: {
@@ -1597,6 +1605,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         enabled?: boolean | undefined;
         timeoutMs?: number | undefined;
         summaryEveryMessages?: number | undefined;
+        summaryMinNewChars?: number | undefined;
+        summaryMaxAgeMinutes?: number | undefined;
         summaryMaxChars?: number | undefined;
     } | undefined;
     memory?: {

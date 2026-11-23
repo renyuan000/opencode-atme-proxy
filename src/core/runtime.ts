@@ -2518,6 +2518,8 @@ export class ProxyRuntime {
 
   private async doUpdateGroupSummary(platform: string, chatId: string): Promise<void> {
     const every = this.config.groupSession?.summaryEveryMessages ?? 8;
+    const minChars = this.config.groupSession?.summaryMinNewChars ?? 1200;
+    const maxAgeMinutes = this.config.groupSession?.summaryMaxAgeMinutes ?? 120;
     const maxChars = this.config.groupSession?.summaryMaxChars ?? 1500;
     const timeoutMs = this.config.groupSession?.timeoutMs ?? 30_000;
     const key = `${platform}:${chatId}`;
@@ -2525,6 +2527,26 @@ export class ProxyRuntime {
     const since = current?.lastMessageAt ?? 0;
     const messages = this.chatContext.recent(key, 50).filter((item) => item.at > since);
     if (messages.length < every) return;
+    const chars = messages.reduce((sum, item) => sum + item.text.length, 0);
+    const uniqueRatio =
+      new Set(messages.map((item) => item.text.replace(/\s+/g, ""))).size /
+      Math.max(1, messages.length);
+    const hasSignal = messages.some((item) =>
+      /(决定|结论|确认|方案|风险|问题|任务|待办|接口|字段|表名|排期|上线)/.test(item.text),
+    );
+    const oldest = messages[0];
+    if (!oldest) return;
+    const ageMinutes = (Date.now() - oldest.at) / 60_000;
+    if (chars < minChars && uniqueRatio < 0.5 && !hasSignal && ageMinutes < maxAgeMinutes) {
+      this.logger.debug("group summary skipped; low information density", {
+        chatId,
+        messages: messages.length,
+        chars,
+        uniqueRatio,
+        ageMinutes,
+      });
+      return;
+    }
     const directory = (await this.resolveProject(chatId)).worktree;
     const sessionId = await this.createGroupSession(platform, chatId, directory);
     const controller = new AbortController();
@@ -2537,7 +2559,8 @@ export class ProxyRuntime {
         text: [
           "你是群聊记录员。只维护摘要，不回答问题、不执行操作。",
           "保留：已确认决策、被否决方案及原因、当前假设、未解决问题、关键表名/接口/字段。",
-          `合并现有摘要和新消息；去掉寒暄和重复；不超过 ${maxChars} 字。`,
+          "只处理新增消息；不要重复已经摘要过的事实；旧摘要只用于保持连续。",
+          `在旧摘要基础上更新，不要把旧事实重新逐条复述；不超过 ${maxChars} 字。`,
           '输出严格 JSON：{summary, decisions, assumptions, open_questions}。',
           "现有摘要：",
           current?.summary ?? "（无）",

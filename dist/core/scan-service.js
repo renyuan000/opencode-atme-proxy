@@ -196,6 +196,12 @@ export class ScanService {
         const classification = await this.options.intentService.classifyOne(enriched, signal);
         if (!classification?.relevant)
             return;
+        if (this.hasMedia(message) &&
+            (classification.ownerAttention || classification.actionability === "task")) {
+            await this.queueMediaApproval(enriched, classification);
+            await this.options.markProcessed(message);
+            return;
+        }
         await this.analyzeFile(message, signal);
         let handled = false;
         if (classification.actionability === "task" &&
@@ -264,6 +270,12 @@ export class ScanService {
                 continue;
             }
             this.appendContextForScan(message);
+            if (this.hasMedia(message) &&
+                (item.ownerAttention || item.actionability === "task")) {
+                await this.queueMediaApproval(message, item);
+                await this.options.markProcessed(message);
+                continue;
+            }
             await this.analyzeFile(message, signal);
             if (item.actionability === "task" &&
                 item.confidence >= this.options.config.filter.minTaskConfidence) {
@@ -360,6 +372,20 @@ export class ScanService {
             // keep id as last resort
         }
         return message.sender.id;
+    }
+    hasMedia(message) {
+        return (message.attachments ?? []).some((attachment) => attachment.kind === "image" || attachment.kind === "file");
+    }
+    async queueMediaApproval(message, classification) {
+        const taskHint = classification.task ?? {
+            title: truncate(message.text.replace(/\s+/g, " ").trim() || "待分析群媒体", 60),
+        };
+        await this.options.taskService.ensureTask(message, {
+            ...classification,
+            actionability: "task",
+            confidence: Math.max(classification.confidence, this.options.config.filter.minTaskConfidence),
+            task: taskHint,
+        }, "group_scan", { autoAnalyze: false });
     }
     appendContextForScan(message) {
         if (!this.options.config.context.enabled)

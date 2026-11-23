@@ -46,5 +46,7 @@ export declare class ScanService {
     private digestWithoutFilter;
     private sendOwnerDigest;
     private resolveSenderLabel;
+    private hasMedia;
+    private queueMediaApproval;
     private appendContextForScan;
 }

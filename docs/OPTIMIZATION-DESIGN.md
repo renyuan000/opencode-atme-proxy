@@ -1206,3 +1206,37 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - 日志写明 `backing off` 和重试时间
 
 这是个人单实例场景下的低成本稳定性保护。
+
+
+### 31. 群摘要触发策略
+
+摘要不是每条消息都做，也不是固定每 N 条都做。
+
+触发条件：
+
+```text
+新增待摘要消息 >= summaryEveryMessages
+并且满足任一：
+  - 新增字符 >= summaryMinNewChars（默认 1200）
+  - 唯一内容比例 >= 0.5
+  - 出现决策/结论/问题/任务/接口/字段/表名/排期/上线等信号
+  - 距最早未摘要消息 >= summaryMaxAgeMinutes（默认 120）
+```
+
+低密度、重复、寒暄多时跳过，不调用摘要模型。
+
+摘要只处理 `lastMessageAt` 之后的新消息；旧摘要仅作为上下文，不重复摘旧原文。失败后已有 5 分钟退避。
+
+建议配置：
+
+```json
+{
+  "groupSession": {
+    "summaryEveryMessages": 8,
+    "summaryMinNewChars": 1200,
+    "summaryMaxAgeMinutes": 120,
+    "summaryMaxChars": 1500,
+    "timeoutMs": 60000
+  }
+}
+```

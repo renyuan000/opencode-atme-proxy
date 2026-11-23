@@ -42,7 +42,9 @@ export declare class TaskService {
     private readonly options;
     constructor(options: TaskServiceOptions);
     analyzeTask(task: TaskRecord): Promise<void>;
-    ensureTask(message: IncomingMessage, classification: Classification | undefined, source: TaskRecord["source"]): Promise<TaskRecord | undefined>;
+    ensureTask(message: IncomingMessage, classification: Classification | undefined, source: TaskRecord["source"], options?: {
+        autoAnalyze?: boolean;
+    }): Promise<TaskRecord | undefined>;
     private rememberTaskOutcome;
     private buildAnalysis;
     private buildAnalysisInWorktree;
