@@ -1142,6 +1142,9 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 
 群消息分析私聊：
 
+- 非 @ 群消息的图片会先 OCR，再进入筛选/摘要上下文
+- @ 群消息的图片仍作为视觉附件直接交给支持图片的模型
+
 - 成员名优先取 `sender.displayName`，缺失时用 `fetchMessage(with_sender_name)` 或 `fetchUserName`
 - 正文使用引用式展示，不再直接展示 `ou_...` / `message_id`
 - 相关原消息通过飞书 `messages/:message_id/forward` 转发到 owner 私聊
