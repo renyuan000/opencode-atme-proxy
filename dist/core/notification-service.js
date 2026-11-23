@@ -33,8 +33,6 @@ export class NotificationService {
                         error: toErrorMessage(error),
                     });
                 }
-                // Keep the original group message as a native forward/quote when possible.
-                await this.forwardToOwner(sourceMessageId);
             }
             return true;
         }

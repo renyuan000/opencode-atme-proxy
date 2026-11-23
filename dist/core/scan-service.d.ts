@@ -31,7 +31,6 @@ export interface ScanServiceOptions {
     sendToApprover(text: string): Promise<boolean>;
     sendToOwner(text: string): Promise<boolean>;
     analyzeFile?(message: IncomingMessage, signal: AbortSignal): Promise<string | undefined>;
-    forwardToOwner?(messageId: string): Promise<boolean>;
 }
 export declare class ScanService {
     private readonly options;
@@ -45,6 +44,7 @@ export declare class ScanService {
     private handlePolledBatchJob;
     private digestWithoutFilter;
     private sendOwnerDigest;
+    private chatLink;
     private resolveSenderLabel;
     private hasMedia;
     private queueMediaApproval;

@@ -205,6 +205,7 @@ export class BotMentionFlow {
                 : "群里有人 @机器人，仅需你知会",
             `类型：${intent.kind}`,
             `来源：${message.chat.name ?? message.chat.id} / ${message.sender.displayName ?? message.sender.id}`,
+            `群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(message.chat.id)}`,
             `内容：${truncate(intent.summary ?? message.text, 240)}`,
             `判断：${intent.reason}`,
             ...(intent.suggestedAction ? [`建议：${intent.suggestedAction}`] : []),

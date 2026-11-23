@@ -1147,7 +1147,7 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 
 - 成员名优先取 `sender.displayName`，缺失时用 `fetchMessage(with_sender_name)` 或 `fetchUserName`
 - 正文使用引用式展示，不再直接展示 `ou_...` / `message_id`
-- 相关原消息通过飞书 `messages/:message_id/forward` 转发到 owner 私聊
+- 相关原消息不转发到私聊，避免生成副本；私聊只附群聊 AppLink
 - 转发失败或平台不支持时保留文本摘要
 - 最多转发 5 条相关原消息
 
@@ -1261,8 +1261,9 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 带来源消息的 owner 私聊通知：
 
 - 先发送可读摘要
-- 再通过飞书 `forward` 转发原消息
-- 让 owner 能直接回到群消息上下文
+- 附 `applink.feishu.cn/client/chat/open?openChatId=<chatId>` 群聊链接
+- 不把原图片/文件转发成私聊副本
+- 群聊链接只能打开群，不能精确滚动到单条消息；飞书没有公开的 message_id → message link API
 - 不再依赖 `ou_`、`chat_id`、`message_id` 作为主要定位方式
 - 转发失败不阻断文字通知，只记录日志
 

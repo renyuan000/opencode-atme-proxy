@@ -33,7 +33,6 @@ export interface ScanServiceOptions {
   sendToApprover(text: string): Promise<boolean>;
   sendToOwner(text: string): Promise<boolean>;
   analyzeFile?(message: IncomingMessage, signal: AbortSignal): Promise<string | undefined>;
-  forwardToOwner?(messageId: string): Promise<boolean>;
 }
 
 export class ScanService {
@@ -403,16 +402,17 @@ export class ScanService {
         first.chat.name ??
         first.chat.id)
       : "未知群";
-    await this.options.sendToOwner([`群消息分析（${group}）：${summary}`, ...lines].join("\n\n"));
-    if (related.length > 0 && this.options.forwardToOwner) {
-      let forwarded = 0;
-      for (const message of related.slice(0, 5)) {
-        if (await this.options.forwardToOwner(message.messageId)) forwarded += 1;
-      }
-      if (forwarded > 0) {
-        await this.options.sendToOwner(`已转发 ${forwarded} 条相关原消息，可直接点开查看上下文。`);
-      }
-    }
+    await this.options.sendToOwner(
+      [
+        `群消息分析（${group}）：${summary}`,
+        ...(first ? [`群聊：${this.chatLink(first.chat.id)}`] : []),
+        ...lines,
+      ].join("\n\n"),
+    );
+  }
+
+  private chatLink(chatId: string): string {
+    return `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}`;
   }
 
   private async resolveSenderLabel(message: IncomingMessage): Promise<string> {
