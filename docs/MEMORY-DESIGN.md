@@ -18,7 +18,7 @@
 - **高影响记忆必须我确认后才置顶**：决策 / 截止。
 - **提炼与评审分两步**，避免模型自证。
 - **新消息要做历史关联**：先判事件单元是否完整；不完整才回溯，硬上限 50 条 / 7 天，结合记忆与未关闭任务。
-- **临时 child session 不是长期记忆**，7 天归档 / 30 天删除；主 session、群会话、角色 worker 为持久会话，不参与该清理。
+- **临时 child session 不是长期记忆**，7 天归档 / 30 天删除；conversation 锚点、群/私聊会话、角色 worker 为持久会话，不参与该清理。
 - **上下文以事件单元为单位组装**：完整则独立处理，不完整才按需回溯。
 - **群会话是唯一群事实源**；角色 worker 持久，任务上下文按 job 隔离。
 - 不做五层目录、不做复杂信任模型、不做大批指标；保持最小可用。
@@ -487,26 +487,44 @@ C. 同群未关闭任务（7 天内，最多 5 个）
 
 ## 12. 会话设计（v1.3）
 
-三层会话，职责固定：
+会话以 conversation 为单位，群和私聊各自独立；不设全局 LLM 主 session。
 
-| 会话            | 数量   | 持久     | 职责                                      | 清理 |
-|-----------------|--------|----------|-------------------------------------------|------|
-| 全局主 session  | 1      | 是       | 插件管理、owner 私聊、审批、跨群汇总         | 长期 |
-| 群会话          | 每群 1 | 是       | 唯一群事实源：聚合、组装、摘要、记忆整理、调度 | 长期 |
-| 扫描器          | 1      | 状态持久 | 周期拉历史、去重、游标；默认不跑 LLM         | 长期 |
-| reply worker    | 角色池 | 是       | 代答草稿（fork 群会话快照）                 | 长期 |
-| analyst worker  | 角色池 | 是       | 任务分析（fork）                            | 长期 |
-| executor worker | 角色池 | 是       | 改代码（isolated + 独立 worktree）          | 长期 |
-| reviewer worker | 角色池 | 是       | 只读复核（isolated）                        | 长期 |
+| 会话                    | 数量          | 持久     | 职责                                            | 清理 |
+|-------------------------|---------------|----------|-------------------------------------------------|------|
+| Owner DM 锚点           | 每个私聊 1    | 是       | owner 私聊上下文、审批、跨群摘要                  | 长期 |
+| 群会话                  | 每个群 1      | 是       | 唯一群事实源：聚合、组装、摘要、记忆整理、调度    | 长期 |
+| 扫描器                  | 1             | 状态持久 | 周期拉历史、去重、游标；默认不跑 LLM              | 长期 |
+| reply worker            | 角色池        | 是       | 代答草稿（fork 群会话快照）                       | 长期 |
+| analyst worker          | 角色池        | 是       | 任务分析（fork）                                  | 长期 |
+| executor worker         | 角色池        | 是       | 改代码（isolated + 独立 worktree）                | 长期 |
+| reviewer worker         | 角色池        | 是       | 只读复核（isolated）                              | 长期 |
+
+Conversation key：
+
+```text
+channel:accountId:conversationKind:externalId
+```
+
+例如：
+
+```text
+feishu:cli_xxx:group:oc_...
+feishu:cli_xxx:dm:oc_...
+wechat:accountA:group:room_...
+wechat:accountA:dm:wxid_...
+```
+
+同一个 owner 在不同 channel/app 下是不同 conversation；需要跨渠道 owner 记忆时，用 `Principal` 显式关联，不共用 session。
 
 规则：
 
-- 持久的是**角色岗位**，不是单次任务；每个 job 结束即清任务上下文。
+- 持久的是 **conversation + 角色岗位**，不是单次任务；每个 job 结束即清任务上下文。
+- 私聊 conversation 和群 conversation 分开绑定 session；同一个用户在不同 channel/app 下也不共用 conversation。
 - 群会话只做聚合、组装、调度，不跑长任务、不执行代码。
 - 扫描器是确定性代码 + 游标，只有拿不准的消息才升级给 LLM 过滤。
 - 现有配置 `maxChildrenPerTask` / `maxChildrenGlobal` 语义上对应 `maxJobsPerTask` / `maxWorkersGlobal`，v1.3 不新增键；`depth=1`；超出排队，不拒绝。
 
-当前实现：群摘要会话独立持久（`group:<platform>:<chatId>`），每 `summaryEveryMessages` 条更新一次，单写者串行；摘要注入 reply 与 analysis。reply/analysis/review 为每群持久 worker，execution 仍为每任务临时 child。
+当前实现：群摘要会话独立持久（conversation key 绑定），每 `summaryEveryMessages` 条更新一次，单写者串行；摘要注入 reply 与 analysis。reply/analysis/review 为每个 conversation 持久 worker，execution 仍为每任务临时 child。私聊使用自己的 conversation anchor，不与群共用。
 
 ### 12.1 上下文所有权（防串味）
 
@@ -628,7 +646,7 @@ worker 执行     并行（受全局 / 每任务上限约束）
 9. 历史聊天关联：50 条 / 7 天窗口、关联决策、审计、阈值。
 10. `chat-context.json` 从 30 条调整为 50 条，并保存逻辑消息。
 11. 测试：来源缺失拒收、未确认不 pin、supersede、重跑幂等、删除生效、历史关联、已批准任务不自动并入。
-12. 全局主 session 暂不做；群摘要会话已实现，承接上下文与摘要；主 session 管理需求待评估。
+12. 不设全局主 session；每个 conversation 使用自己的锚点。群/私聊长期上下文已实现，owner 私聊作为独立 DM conversation。
 13. 角色 worker 持久化：reply / analysis / review 每群持久；executor 每任务临时（已实现）。
 14. 上下文信封与幂等键：群会话 → worker 的单向投递契约。
 15. 事件单元完整性判断与按需回溯；回执策略；busy 拒绝改为排队。

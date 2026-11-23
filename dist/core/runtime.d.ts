@@ -79,6 +79,7 @@ export declare class ProxyRuntime {
     private readonly projectCache;
     constructor(options: RuntimeOptions);
     private refreshGroupKnowledge;
+    private conversationIdFor;
     private ensureGroupWorkspace;
     private jobStore;
     private recoverPendingJobs;

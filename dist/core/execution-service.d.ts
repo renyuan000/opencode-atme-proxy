@@ -21,6 +21,7 @@ export interface ExecutionServiceOptions {
     logger: Logger;
     executionPermission: SessionPermission[];
     readOnlyPermission: SessionPermission[];
+    conversationIdFor?(platform: string, chatId: string): string;
     latestAnalysis(taskId: string): Promise<TaskAnalysis | undefined>;
     resolveProject(chatId: string): Promise<{
         worktree: string;

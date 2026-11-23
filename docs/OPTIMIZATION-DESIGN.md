@@ -503,9 +503,10 @@ opencode serve
 
 ### 18.2 当前实现要点
 
-- coordinator 以 `coordinator:<platform>:<chatId>` 记录，不跑 prompt
-- group session 以 `group:<platform>:<chatId>` 记录
-- worker 以 `worker:<role>:<platform>:<chatId>[:web]` 记录
+- coordinator 以 `coordinator:<conversationId>` 记录，不跑 prompt
+- group session 以 `group:<conversationId>` 记录
+- worker 以 `worker:<role>:<conversationId>[:web]` 记录
+- 新增会话使用 `channel:accountId:conversationKind:externalId`，例如 `feishu:cli_x:group:oc_...`
 - child 以 `child:<sessionId>` 记录，并携带 `chatId/taskId`
 - 每个 session 都显式设置 `directory`，不是依赖启动目录
 - child 的 parentID 指向该群 coordinator
@@ -694,8 +695,8 @@ OpenClaw 的长期会话管理有几个值得吸收的点：
 
 ```text
 GroupKey = platform:chatId
-SessionKey = atme:group:<chatId>:<role>:<epoch>
-ParentSession = coordinator:<platform>:<chatId>
+SessionKey = atme:<conversationId>:<role>:<epoch>
+ParentSession = coordinator:<conversationId>
 ```
 
 - `GroupKey`：业务事实主键，永远不变
@@ -1021,3 +1022,59 @@ workspace 模式下，任务执行不再直接修改源仓库：
 - 项目级 test/lint 可通过 `/工作空间 ... 测试|检查` 配置；未配置时只做 diff 统计
 - 多项目提交/合并还没有自动化
 - 失败时保留工作树用于排查
+
+## 26. Conversation 与会话绑定最终模型
+
+不设“全局主 LLM session”。以 conversation 为单位绑定 OpenCode session。
+
+### 26.1 Conversation key
+
+```text
+channel:accountId:conversationKind:externalId
+```
+
+示例：
+
+```text
+feishu:cli_xxx:group:oc_...
+feishu:cli_xxx:dm:oc_...
+wechat:accountA:group:room_...
+wechat:accountA:dm:wxid_...
+```
+
+规则：
+
+- 一个群 conversation 一个锚点
+- 一个私聊 conversation 一个锚点
+- 同一用户在不同 channel/app 下是不同 conversation
+- 跨渠道 owner 身份用 `Principal` 关联，不共用 session
+- 私聊和群上下文严格隔离
+
+### 26.2 持久关系
+
+```text
+Conversation
+  ├─ 持久上下文（摘要、知识、证据、任务、文档索引）
+  ├─ Coordinator anchor（长期）
+  ├─ Summary/context session（长期）
+  ├─ reply/analysis/review workers（长期）
+  └─ task/execution child（按任务临时）
+```
+
+原则：
+
+```text
+持久的是 conversation，不是单次 session。
+session 是 conversation 的执行租约。
+session 失效时用持久上下文重建。
+```
+
+### 26.3 控制面
+
+owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而是：
+
+- owner DM conversation 自己持有私聊上下文
+- 跨群摘要由确定性 Context Provider 汇总
+- 审批/路由/配置属于控制面代码，不跑 LLM
+
+这样单群、多群、多 owner、飞书/微信多 channel 都不会串上下文。

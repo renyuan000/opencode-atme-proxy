@@ -170,6 +170,9 @@ export class BotMentionFlow {
                 directory: project.worktree,
                 title,
                 role: "analysis",
+                ...(this.options.conversationIdFor?.(message)
+                    ? { conversationId: this.options.conversationIdFor(message) }
+                    : {}),
                 permission: this.options.readOnlyPermission,
                 signal,
             });

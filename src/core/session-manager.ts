@@ -25,6 +25,7 @@ export interface WorkerInput {
   model?: { providerID: string; modelID: string };
   web?: boolean;
   webFetch?: boolean;
+  conversationId?: string;
 }
 
 export interface ChildInput {
@@ -38,6 +39,7 @@ export interface ChildInput {
   taskId?: string;
   model?: { providerID: string; modelID: string };
   signal?: AbortSignal;
+  conversationId?: string;
 }
 
 export interface SessionManagerOptions {
@@ -64,8 +66,14 @@ export class SessionManager {
     return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1;
   }
 
-  private sessionKey(prefix: string, platform: string, chatId: string): string {
-    return `${prefix}:${platform}:${chatId}:e${this.epochFor(chatId)}`;
+  private sessionKey(
+    prefix: string,
+    platform: string,
+    chatId: string,
+    conversationId?: string,
+  ): string {
+    const conversation = conversationId ?? `${platform}:${chatId}`;
+    return `${prefix}:${conversation}:e${this.epochFor(chatId)}`;
   }
 
   async coordinatorSession(
@@ -73,8 +81,9 @@ export class SessionManager {
     chatId: string,
     directory: string,
     title: string,
+    conversationId?: string,
   ): Promise<string> {
-    const key = this.sessionKey("coordinator", platform, chatId);
+    const key = this.sessionKey("coordinator", platform, chatId, conversationId);
     const existing = this.options.sessions.get(key);
     if (existing) {
       const probe = this.options.bridge.getSession;
@@ -121,8 +130,9 @@ export class SessionManager {
     platform: string,
     chatId: string,
     directory: string,
+    conversationId?: string,
   ): Promise<string> {
-    const key = this.sessionKey("group", platform, chatId);
+    const key = this.sessionKey("group", platform, chatId, conversationId);
     const existing = this.options.sessions.get(key);
     if (existing) {
       const probe = this.options.bridge.getSession;
@@ -156,7 +166,7 @@ export class SessionManager {
   }
 
   async createWorkerSession(input: WorkerInput): Promise<string> {
-    const key = `${this.sessionKey(`worker:${input.role}`, input.platform, input.chatId)}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
+    const key = `${this.sessionKey(`worker:${input.role}`, input.platform, input.chatId, input.conversationId)}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
     const existing = this.options.sessions.get(key);
     if (existing && existing.directory === input.directory) {
       const probe = this.options.bridge.getSession;
@@ -174,6 +184,7 @@ export class SessionManager {
       input.chatId,
       input.directory,
       `${this.options.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`,
+      input.conversationId,
     );
     const roleAgent =
       input.role === "analysis"
@@ -227,7 +238,12 @@ export class SessionManager {
         );
       }
     }
-    const key = this.sessionKey(`worker:${input.role}`, input.platform, input.chatId);
+    const key = this.sessionKey(
+      `worker:${input.role}`,
+      input.platform,
+      input.chatId,
+      input.conversationId,
+    );
     const run = async (): Promise<string> => {
       const sessionId = await this.createWorkerSession(input);
       return this.options.bridge.prompt(sessionId, {
@@ -297,6 +313,7 @@ export class SessionManager {
         input.chatId,
         input.directory,
         `${this.options.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`,
+        input.conversationId,
       );
       const roleAgent =
         input.role === "analysis"

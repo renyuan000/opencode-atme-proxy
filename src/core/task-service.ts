@@ -34,6 +34,7 @@ export interface TaskServiceOptions {
   sessionManager: SessionManager;
   logger: Logger;
   readOnlyPermission: SessionPermission[];
+  conversationIdFor?(platform: string, chatId: string): string;
   memory: MemoryStore;
   resolveProject(chatId: string): Promise<{
     worktree: string;
@@ -264,6 +265,9 @@ export class TaskService {
         directory: repo.path,
         title: `${this.options.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
         role: "analysis",
+        ...(this.options.conversationIdFor?.(task.platform, task.chatId)
+          ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
+          : {}),
         permission: this.options.readOnlyPermission,
         ...(analysisAgent ? { agent: analysisAgent } : {}),
         ...(this.options.config.analysis.model
@@ -303,6 +307,9 @@ export class TaskService {
         directory: worktree,
         title: `${this.options.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
         role: "analysis",
+        ...(this.options.conversationIdFor?.(task.platform, task.chatId)
+          ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
+          : {}),
         permission: this.options.readOnlyPermission,
         ...(analysisAgent ? { agent: analysisAgent } : {}),
         ...(this.options.config.analysis.model
@@ -338,6 +345,9 @@ export class TaskService {
           directory,
           title,
           role: "review",
+          ...(this.options.conversationIdFor?.(task.platform, task.chatId)
+            ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
+            : {}),
           permission: this.options.readOnlyPermission,
           agent: this.options.config.subagents.reviewer,
         },

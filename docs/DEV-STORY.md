@@ -113,7 +113,7 @@
 | 执行              | 每任务一个 child     | 7 天归档 / 30 天删 |
 | 群回复 / 批量筛选 | 临时 child           | 用完即删           |
 
-> 以上是当前实现 v0.2；v1.3 目标（主 session / 群会话 / 角色 worker）见 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 12 节。
+> 以上是当前实现 v0.2 历史；conversation 模型（群/私聊各自锚点，不设全局主 session）见 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 12 节。
 
 coordinator 只做锚点，不跑 prompt，避免 `SessionBusyError`，同群还能并发。
 

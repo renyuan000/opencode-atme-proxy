@@ -394,12 +394,14 @@ websocket ready
 
 ### 会话架构（当前实现 v0.2）
 
-> v1.3 目标（主 session / 群会话 / 角色 worker）见 `docs/MEMORY-DESIGN.md` 与 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 12 节。
+> 会话模型：一个 conversation 一个锚点；群和私聊都是独立 conversation。详见 `docs/MEMORY-DESIGN.md` 与 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 12 节。
 
-- 每个群/项目一个 coordinator session（`atme:chat:<chatId>`），只作锚点，不跑 prompt，避免 `SessionBusyError`。
-- 每群一个持久群摘要会话（`atme:group:<chatId>`），只维护摘要与长期上下文。
-- `reply`、`analysis`、`review` 复用每群持久 worker（`atme:worker:<role>:<chatId>`），同一 worker 串行执行 job。
+- 每个群一个 coordinator session，只作锚点，不跑 prompt，避免 `SessionBusyError`。
+- 每个私聊 conversation 一个 coordinator session；单 owner、单机器人时通常就是一个 owner DM。
+- 每个 conversation 一个持久摘要/上下文会话，维护长期摘要与决策。
+- `reply`、`analysis`、`review` 复用每个 conversation 的持久 worker，同一 worker 串行执行 job。
 - `execution` 仍是每任务临时 child，在独立 worktree 中执行。
+- 不存在“所有群共用一个全局 LLM session”的设计。
 - worker 与群摘要会话不参与 7/30 清理；execution child 完成 7 天归档、30 天删除。
 - 关闭 `subagents.enabled` 可退回“每条消息独立 session”的旧行为。
 - 内置三个 agent 定义：`.opencode/agents/atme-analyst.md`、`atme-executor.md`、`atme-reviewer.md`。
@@ -408,8 +410,8 @@ websocket ready
 
 详细评审见 `docs/SESSION-ARCHITECTURE-REVIEW.md`。结论：
 
-- **采纳**：每群一个 coordinator 锚点 + 持久群摘要会话；reply/analysis/review 每群持久 worker，execution 每任务临时 child。
-- **不采纳**：按人拆 subagent、用 subagent 做轮询、主 session 存聊天历史、每条消息建 root session。
+- **采纳**：每个 conversation 一个 coordinator 锚点 + 持久摘要/上下文会话；reply/analysis/review 每 conversation 持久 worker，execution 每任务临时 child。
+- **不采纳**：全局 LLM 主 session、按人拆 subagent、用 subagent 做轮询、主 session 存聊天历史、每条消息建 root session。
 - **快慢路径分离**：分类/必要性/通知走快路径（秒级）；分析/执行/评审走 child（分钟级，不阻塞）。
 - **生命周期**：root 长期保留；child 完成 7 天归档、30 天删除；每任务最多 3 个 child，全局 8，depth=1。
 
@@ -928,18 +930,20 @@ docs/REQUIREMENTS.md   requirements v0.2
 - Feishu adapter first; other platforms implement `PlatformAdapter`.
 - Personal WeChat is not supported (no official bot API).
 - Feishu “all group messages” needs a sensitive scope; confirm in M0.
-- No image/file content parsing in the first release; placeholders only.
+- Image/file parsing exists, but real-world extraction quality and large-file timeouts still need validation.
 - Push/PR/merge is not implemented; the executor never pushes.
 - Running executions are not resumed after a restart.
 
 ### Session architecture (current implementation v0.2)
 
-> The v1.3 target (main session / group session / role workers) is described in `docs/MEMORY-DESIGN.md` and section 12 of `docs/SESSION-ARCHITECTURE-REVIEW.md`.
+> One anchor per conversation; groups and DMs are independent conversations. See `docs/MEMORY-DESIGN.md` and section 12 of `docs/SESSION-ARCHITECTURE-REVIEW.md`.
 
-- One coordinator anchor per chat/project (`atme:chat:<chatId>`); it never runs prompts, avoiding `SessionBusyError`.
-- One persistent group summary session per chat (`atme:group:<chatId>`), used for long-term context and decisions.
-- `reply`, `analysis`, and `review` reuse a per-group persistent worker; each worker runs one job at a time.
+- One coordinator anchor per group conversation; it never runs prompts, avoiding `SessionBusyError`.
+- One coordinator anchor per DM conversation; a single owner/single bot usually means one owner DM.
+- One persistent summary/context session per conversation for long-term decisions.
+- `reply`, `analysis`, and `review` reuse persistent workers per conversation; each worker runs one job at a time.
 - `execution` remains a per-task child in its own worktree.
+- There is no single global LLM session shared by all groups.
 - Workers and group sessions are not swept; execution children archive after 7 days and delete after 30.
 - Set `subagents.enabled=false` to fall back to one session per message.
 - Bundled agent files: `.opencode/agents/atme-analyst.md`, `atme-executor.md`, `atme-reviewer.md`.
@@ -948,8 +952,8 @@ docs/REQUIREMENTS.md   requirements v0.2
 
 See `docs/SESSION-ARCHITECTURE-REVIEW.md`. Summary:
 
-- **Adopt**: one coordinator anchor per chat/project plus a persistent group summary session; `reply` / `analysis` / `review` reuse per-group persistent workers, while `execution` stays a per-task child.
-- **Reject**: per-person subagents, using subagents as pollers, storing chat history in the main session, or creating a root session per message.
+- **Adopt**: one coordinator anchor per conversation plus a persistent summary/context session; `reply` / `analysis` / `review` reuse persistent workers per conversation, while `execution` stays a per-task child.
+- **Reject**: one global LLM session, per-person subagents, using subagents as pollers, storing chat history in the main session, or creating a root session per message.
 - **Fast/slow paths**: classification and notification are seconds; analysis/execution/review run in children without blocking.
 - **Lifecycle**: keep roots; archive children after 7 days, delete after 30; max 3 children per task, 8 global, depth=1.
 

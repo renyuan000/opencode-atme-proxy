@@ -17,6 +17,7 @@ export interface TaskServiceOptions {
     sessionManager: SessionManager;
     logger: Logger;
     readOnlyPermission: SessionPermission[];
+    conversationIdFor?(platform: string, chatId: string): string;
     memory: MemoryStore;
     resolveProject(chatId: string): Promise<{
         worktree: string;

@@ -55,6 +55,7 @@ export interface ReplyServiceOptions {
   refreshSummary(platform: string, chatId: string): Promise<void>;
   ownerOverview?(message: IncomingMessage): string | Promise<string>;
   responsibilityFor?(chatId: string): string;
+  conversationIdFor?(message: IncomingMessage): string;
   groupKnowledgeFor?(chatId: string):
     | {
         product?: string;
@@ -614,6 +615,9 @@ export class ReplyService {
           directory,
           title: `${this.options.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
           role: "reply",
+          ...(this.options.conversationIdFor?.(message)
+            ? { conversationId: this.options.conversationIdFor(message) }
+            : {}),
           web: mode !== "none",
           webFetch: mode === "fetch",
           ...(this.options.model ? { model: this.options.model } : {}),

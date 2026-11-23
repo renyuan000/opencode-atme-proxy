@@ -25,6 +25,7 @@ export interface BotMentionFlowOptions {
         worktree: string;
         resolved: boolean;
     }>;
+    conversationIdFor?(message: IncomingMessage): string;
     sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
     sendToApprover(text: string): Promise<boolean>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;

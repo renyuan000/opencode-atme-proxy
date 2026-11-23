@@ -24,6 +24,7 @@ export interface BotMentionFlowOptions {
   ownerOpenId(): string | undefined;
   ownerName(): string;
   resolveProject(chatId: string): Promise<{ worktree: string; resolved: boolean }>;
+  conversationIdFor?(message: IncomingMessage): string;
   sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
   sendToApprover(text: string): Promise<boolean>;
   safeReply(message: IncomingMessage, text: string): Promise<boolean>;
@@ -227,6 +228,9 @@ export class BotMentionFlow {
         directory: project.worktree,
         title,
         role: "analysis",
+        ...(this.options.conversationIdFor?.(message)
+          ? { conversationId: this.options.conversationIdFor(message) }
+          : {}),
         permission: this.options.readOnlyPermission,
         signal,
       });

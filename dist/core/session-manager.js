@@ -14,11 +14,12 @@ export class SessionManager {
         const value = this.options.epochFor?.(chatId) ?? 1;
         return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1;
     }
-    sessionKey(prefix, platform, chatId) {
-        return `${prefix}:${platform}:${chatId}:e${this.epochFor(chatId)}`;
+    sessionKey(prefix, platform, chatId, conversationId) {
+        const conversation = conversationId ?? `${platform}:${chatId}`;
+        return `${prefix}:${conversation}:e${this.epochFor(chatId)}`;
     }
-    async coordinatorSession(platform, chatId, directory, title) {
-        const key = this.sessionKey("coordinator", platform, chatId);
+    async coordinatorSession(platform, chatId, directory, title, conversationId) {
+        const key = this.sessionKey("coordinator", platform, chatId, conversationId);
         const existing = this.options.sessions.get(key);
         if (existing) {
             const probe = this.options.bridge.getSession;
@@ -60,8 +61,8 @@ export class SessionManager {
             this.coordinatorLocks.delete(key);
         }
     }
-    async createGroupSession(platform, chatId, directory) {
-        const key = this.sessionKey("group", platform, chatId);
+    async createGroupSession(platform, chatId, directory, conversationId) {
+        const key = this.sessionKey("group", platform, chatId, conversationId);
         const existing = this.options.sessions.get(key);
         if (existing) {
             const probe = this.options.bridge.getSession;
@@ -92,7 +93,7 @@ export class SessionManager {
         return sessionId;
     }
     async createWorkerSession(input) {
-        const key = `${this.sessionKey(`worker:${input.role}`, input.platform, input.chatId)}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
+        const key = `${this.sessionKey(`worker:${input.role}`, input.platform, input.chatId, input.conversationId)}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
         const existing = this.options.sessions.get(key);
         if (existing && existing.directory === input.directory) {
             const probe = this.options.bridge.getSession;
@@ -104,7 +105,7 @@ export class SessionManager {
         }
         if (existing)
             this.options.sessions.delete(key);
-        const coordinator = await this.coordinatorSession(input.platform, input.chatId, input.directory, `${this.options.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`);
+        const coordinator = await this.coordinatorSession(input.platform, input.chatId, input.directory, `${this.options.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`, input.conversationId);
         const roleAgent = input.role === "analysis"
             ? this.options.config.subagents.analyst
             : input.role === "review"
@@ -146,7 +147,7 @@ export class SessionManager {
                 await this.finishSession(sessionId, input.title, input.directory, "worker_fallback");
             }
         }
-        const key = this.sessionKey(`worker:${input.role}`, input.platform, input.chatId);
+        const key = this.sessionKey(`worker:${input.role}`, input.platform, input.chatId, input.conversationId);
         const run = async () => {
             const sessionId = await this.createWorkerSession(input);
             return this.options.bridge.prompt(sessionId, {
@@ -205,7 +206,7 @@ export class SessionManager {
             this.taskChildCounts.set(input.taskId, (this.taskChildCounts.get(input.taskId) ?? 0) + 1);
         }
         try {
-            const coordinator = await this.coordinatorSession(input.platform, input.chatId, input.directory, `${this.options.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`);
+            const coordinator = await this.coordinatorSession(input.platform, input.chatId, input.directory, `${this.options.config.opencode.sessionTitlePrefix}:chat:${input.chatId}`, input.conversationId);
             const roleAgent = input.role === "analysis"
                 ? this.options.config.subagents.analyst
                 : input.role === "execution"

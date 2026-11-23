@@ -62,6 +62,7 @@ import { ScanService } from "./scan-service.js";
 import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
 import { GroupWorkspaceManager, type GroupWorkspaceLayout } from "./group-workspace.js";
+import { conversationKey, conversationRefForChat } from "./conversation.js";
 import { SentReplyStore } from "./sent-reply-store.js";
 import {
   GroupStateLayout,
@@ -482,6 +483,12 @@ export class ProxyRuntime {
       webSearchPermission: WEB_SEARCH_PERMISSION,
       webFetchPermission: WEB_FETCH_PERMISSION,
       ownerOpenId: () => this.ownerOpenId(),
+      conversationIdFor: (message) =>
+        this.conversationIdFor(
+          message.platform,
+          message.chat.id,
+          message.chat.kind === "direct" ? "dm" : "group",
+        ),
       resolveProject: async (chatId) => {
         const project = await this.resolveProject(chatId);
         return {
@@ -566,6 +573,8 @@ export class ProxyRuntime {
       sessionManager: this.sessionManager,
       logger: this.logger.child("task"),
       readOnlyPermission: READ_ONLY_PERMISSION,
+      conversationIdFor: (platform, chatId) =>
+        this.conversationIdFor(platform, chatId, "group"),
       resolveProject: async (chatId) => {
         const project = await this.resolveProject(chatId);
         return {
@@ -618,6 +627,8 @@ export class ProxyRuntime {
       logger: this.logger.child("execution"),
       executionPermission: EXECUTION_PERMISSION,
       readOnlyPermission: READ_ONLY_PERMISSION,
+      conversationIdFor: (platform, chatId) =>
+        this.conversationIdFor(platform, chatId, "group"),
       latestAnalysis: (taskId) => this.latestAnalysis(taskId),
       resolveProject: async (chatId) => {
         const project = await this.resolveProject(chatId);
@@ -767,6 +778,12 @@ export class ProxyRuntime {
       ownerOpenId: () => this.ownerOpenId(),
       ownerName: () => this.ownerName(),
       resolveProject: (chatId) => this.resolveProject(chatId),
+      conversationIdFor: (message) =>
+        this.conversationIdFor(
+          message.platform,
+          message.chat.id,
+          message.chat.kind === "direct" ? "dm" : "group",
+        ),
       sendToOwner: (text, sourceMessageId) => this.sendToOwner(text, sourceMessageId),
       sendToApprover: (text) => this.sendToApprover(text),
       safeReply: (message, text) => this.safeReply(message, text),
@@ -876,6 +893,21 @@ export class ProxyRuntime {
         });
       }
     }
+  }
+
+  private conversationIdFor(
+    platform: string,
+    chatId: string,
+    kind: "group" | "dm",
+  ): string {
+    return conversationKey(
+      conversationRefForChat(
+        platform,
+        chatId,
+        kind,
+        platform === "feishu" ? this.config.platforms.feishu.appId : undefined,
+      ),
+    );
   }
 
   private async ensureGroupWorkspace(
@@ -2220,7 +2252,12 @@ export class ProxyRuntime {
     chatId: string,
     directory: string,
   ): Promise<string> {
-    return this.sessionManager.createGroupSession(platform, chatId, directory);
+    return this.sessionManager.createGroupSession(
+      platform,
+      chatId,
+      directory,
+      this.conversationIdFor(platform, chatId, "group"),
+    );
   }
 
   private async updateGroupSummary(platform: string, chatId: string): Promise<void> {

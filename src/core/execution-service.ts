@@ -26,6 +26,7 @@ export interface ExecutionServiceOptions {
   logger: Logger;
   executionPermission: SessionPermission[];
   readOnlyPermission: SessionPermission[];
+  conversationIdFor?(platform: string, chatId: string): string;
   latestAnalysis(taskId: string): Promise<TaskAnalysis | undefined>;
   resolveProject(chatId: string): Promise<{
     worktree: string;
@@ -201,6 +202,9 @@ export class ExecutionService {
           directory: taskWorkspace,
           title: `${this.options.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
           role: "execution",
+          ...(this.options.conversationIdFor?.(task.platform, task.chatId)
+            ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
+            : {}),
           permission: this.options.executionPermission,
           ...(executionAgent ? { agent: executionAgent } : {}),
           taskId: task.id,
@@ -340,6 +344,9 @@ export class ExecutionService {
         directory: worktree,
         title: `${this.options.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
         role: "execution",
+        ...(this.options.conversationIdFor?.(task.platform, task.chatId)
+          ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
+          : {}),
         permission: this.options.executionPermission,
         ...(executionAgent ? { agent: executionAgent } : {}),
         taskId: task.id,
@@ -425,6 +432,9 @@ export class ExecutionService {
         directory: input.directory,
         title,
         role: "review",
+        ...(this.options.conversationIdFor?.(input.task.platform, input.task.chatId)
+          ? { conversationId: this.options.conversationIdFor(input.task.platform, input.task.chatId) }
+          : {}),
         permission: this.options.readOnlyPermission,
         taskId: input.task.id,
       });

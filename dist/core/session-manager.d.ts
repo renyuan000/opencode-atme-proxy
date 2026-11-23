@@ -23,6 +23,7 @@ export interface WorkerInput {
     };
     web?: boolean;
     webFetch?: boolean;
+    conversationId?: string;
 }
 export interface ChildInput {
     platform: string;
@@ -38,6 +39,7 @@ export interface ChildInput {
         modelID: string;
     };
     signal?: AbortSignal;
+    conversationId?: string;
 }
 export interface SessionManagerOptions {
     bridge: OpenCodeBridge;
@@ -56,8 +58,8 @@ export declare class SessionManager {
     constructor(options: SessionManagerOptions);
     private epochFor;
     private sessionKey;
-    coordinatorSession(platform: string, chatId: string, directory: string, title: string): Promise<string>;
-    createGroupSession(platform: string, chatId: string, directory: string): Promise<string>;
+    coordinatorSession(platform: string, chatId: string, directory: string, title: string, conversationId?: string): Promise<string>;
+    createGroupSession(platform: string, chatId: string, directory: string, conversationId?: string): Promise<string>;
     createWorkerSession(input: WorkerInput): Promise<string>;
     runWorker(input: WorkerInput, promptText: string, signal?: AbortSignal, attachments?: PromptAttachment[]): Promise<string>;
     createChildSession(input: ChildInput): Promise<{

@@ -113,7 +113,7 @@ opencode session list
 
 期望：
 
-- 每个群只有一个 root：`atme:chat:<chatId>`。
+- 每个 conversation 一个 root 锚点；群和私聊分别独立。
 - 子会话显示：reply/analysis/review 是持久 worker；execution 是临时 child，都不显示，因为 `parentID` 指向 root。
 - 查看 `~/.local/state/opencode-atme-proxy/sessions.json` 可看到 `kind: coordinator`、`kind: group`、`kind: worker` 和 `kind: child`。
 

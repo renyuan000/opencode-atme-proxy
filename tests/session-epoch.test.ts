@@ -57,11 +57,25 @@ test("session keys move to a new epoch without reusing old workers", async () =>
       role: "reply",
     });
 
-    assert.equal(created.length, 4);
+    await manager.createWorkerSession({
+      platform: "feishu",
+      chatId: "chat",
+      directory: "/repo",
+      title: "worker",
+      role: "reply",
+      conversationId: "feishu:cli_a:group:chat",
+    });
+
+    assert.equal(created.length, 6);
     assert.ok(sessions.list().some(([key]) => key.startsWith("coordinator:feishu:chat:e1")));
     assert.ok(sessions.list().some(([key]) => key.startsWith("coordinator:feishu:chat:e2")));
     assert.ok(sessions.list().some(([key]) => key.startsWith("worker:reply:feishu:chat:e1")));
     assert.ok(sessions.list().some(([key]) => key.startsWith("worker:reply:feishu:chat:e2")));
+    assert.ok(
+      sessions
+        .list()
+        .some(([key]) => key.startsWith("worker:reply:feishu:cli_a:group:chat:e2")),
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -481,6 +481,9 @@ export class ReplyService {
             directory,
             title: `${this.options.config.opencode.sessionTitlePrefix}:worker:reply:${message.chat.id}`,
             role: "reply",
+            ...(this.options.conversationIdFor?.(message)
+                ? { conversationId: this.options.conversationIdFor(message) }
+                : {}),
             web: mode !== "none",
             webFetch: mode === "fetch",
             ...(this.options.model ? { model: this.options.model } : {}),
