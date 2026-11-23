@@ -31,6 +31,7 @@ export interface OwnerCommandServiceOptions {
   manageWorkspace(arg: string): Promise<string>;
   setOwnerFocus(arg: string, kind: "direction" | "keywords"): Promise<string>;
   analyzeTask(arg: string): Promise<string>;
+  queryGroupMessages(arg: string): Promise<string>;
   listOwnerTargets(): string;
   selectOwnerTarget(arg: string): string;
   getGroupKnowledge(arg: string): Promise<string>;
@@ -62,6 +63,7 @@ export class OwnerCommandService {
         "/方向 <群名|chatId> <说明> 设置我在该群的研发方向",
         "/关键词 <群名|chatId> <关键词1,关键词2> 设置我在该群的研发关键词",
         "/分析 <taskId> 手动触发待分析任务",
+        "/群消息 <群名|chatId> [关键词] [数量] 查询群消息",
         "/目标 [编号|chatId|messageId] 查看/选择私聊目标",
         "/画像 [群名|chatId]      查看群初始画像",
       ].join("\n");
@@ -91,6 +93,10 @@ export class OwnerCommandService {
     if (command.command === "analyze") {
       if (!command.arg) return "用法：/分析 <taskId>";
       return this.options.analyzeTask(command.arg);
+    }
+    if (command.command === "group_messages") {
+      if (!command.arg) return "用法：/群消息 <群名|chatId> [关键词] [数量]";
+      return this.options.queryGroupMessages(command.arg);
     }
     if (command.command === "replies") {
       const sent = await this.options.sendReplyManagementCard();

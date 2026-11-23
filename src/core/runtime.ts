@@ -90,6 +90,7 @@ import { JobStore } from "./job-store.js";
 import { ScopedGroupKnowledge, type GroupKnowledge } from "./group-knowledge.js";
 import { OwnerAccessService } from "./owner-access-service.js";
 import {
+  formatLocalTime,
   readJsonFile,
   sha256,
   toErrorMessage,
@@ -452,6 +453,7 @@ export class ProxyRuntime {
       manageWorkspace: (arg) => this.manageWorkspace(arg),
       setOwnerFocus: (arg, kind) => this.setOwnerFocus(arg, kind),
       analyzeTask: (arg) => this.analyzePendingTask(arg),
+      queryGroupMessages: (arg) => this.queryGroupMessages(arg),
       listOwnerTargets: () => this.listOwnerTargets(),
       selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
       getGroupKnowledge: (arg) => this.getGroupKnowledge(arg),
@@ -1698,6 +1700,77 @@ export class ProxyRuntime {
       });
     });
     return `已开始分析任务：${task.title}\n${task.id}`;
+  }
+
+  private async queryGroupMessages(arg: string): Promise<string> {
+    if (!this.options.platform.capabilities().groupHistory) {
+      return "当前平台不支持群历史查询。";
+    }
+    const match = arg.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
+    if (!match) return "用法：/群消息 <群名|chatId> [关键词] [数量]";
+    const key = match[1] ?? "";
+    let rest = (match[2] ?? "").trim();
+    let limit = 20;
+    const limitMatch = rest.match(/^(.*?)(?:\s+|^)(\d{1,3})$/);
+    if (limitMatch) {
+      limit = Math.max(1, Math.min(50, Number(limitMatch[2])));
+      rest = (limitMatch[1] ?? "").trim();
+    }
+    const group = this.config.platforms.feishu.groups.find(
+      (item) => item.chatId === key || item.name === key,
+    );
+    const chatId = group?.chatId ?? (key.startsWith("oc_") ? key : undefined);
+    if (!chatId) return `找不到群：${key}`;
+    if (group && !group.enabled) return `群未启用：${group.name ?? chatId}`;
+    const endTime = Date.now();
+    const startTime = endTime - 7 * 24 * 3600_000;
+    let result;
+    try {
+      result = await this.options.platform.listMessages({
+        chatId,
+        startTime,
+        endTime,
+        maxPages: 5,
+        maxMessages: 200,
+      });
+    } catch (error) {
+      return `查询群消息失败：${toErrorMessage(error)}`;
+    }
+    const keyword = rest.trim();
+    const messages = result.messages
+      .filter((message) => message.senderType === "user" && message.text.trim())
+      .filter((message) => !keyword || message.text.includes(keyword))
+      .slice(-limit);
+    if (messages.length === 0) {
+      return `没有找到符合条件的群消息。\n群：${group?.name ?? chatId}\n时间范围：最近 7 天${keyword ? `\n关键词：${keyword}` : ""}`;
+    }
+    const names = new Map<string, string>();
+    for (const message of messages) {
+      if (message.sender.displayName) {
+        names.set(message.sender.id, message.sender.displayName);
+        continue;
+      }
+      if (names.has(message.sender.id)) continue;
+      try {
+        names.set(
+          message.sender.id,
+          (await this.options.platform.fetchUserName?.(message.sender.id)) ?? "成员",
+        );
+      } catch {
+        names.set(message.sender.id, "成员");
+      }
+    }
+    const groupName = group?.name ?? (await this.fetchChatName(chatId)) ?? "群";
+    return [
+      `群：${groupName}`,
+      `时间范围：最近 7 天${keyword ? `｜关键词：${keyword}` : ""}｜显示最近 ${messages.length} 条`,
+      `打开群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}`,
+      "",
+      ...messages.map(
+        (message) =>
+          `${formatLocalTime(message.createdAt)} ${names.get(message.sender.id) ?? "成员"}：${truncate(message.text.replace(/\s+/g, " "), 300)}`,
+      ),
+    ].join("\n");
   }
 
   private async setOwnerFocus(

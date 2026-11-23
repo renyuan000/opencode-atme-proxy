@@ -14,6 +14,9 @@ const COMMANDS = {
     关键词: "keywords",
     分析: "analyze",
     analyze: "analyze",
+    群消息: "group_messages",
+    查群: "group_messages",
+    group_messages: "group_messages",
     目标: "target",
     画像: "profile",
     帮助: "help",
@@ -24,7 +27,7 @@ export function parseOwnerCommand(text) {
     if (["/", "／", "?", "？", "/?", "／?", "/？", "／？"].includes(bare)) {
         return { command: "help", arg: "" };
     }
-    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|职责|工作空间|workspace|方向|关键词|分析|analyze|目标|画像|帮助|help)\s*([\s\S]*)$/i);
+    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|职责|工作空间|workspace|方向|关键词|分析|analyze|群消息|查群|group_messages|目标|画像|帮助|help)\s*([\s\S]*)$/i);
     if (!match)
         return undefined;
     const token = match[1] ?? "";
