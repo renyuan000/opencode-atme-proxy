@@ -77,26 +77,6 @@ export class NotificationService {
     sendToApprover(text) {
         return this.sendToOwner(text);
     }
-    async forwardToOwner(messageId) {
-        const openId = this.options.ownerOpenId();
-        if (!openId || !this.options.platform.forwardMessage)
-            return false;
-        try {
-            await this.options.sendLimiter.take();
-            await this.options.platform.forwardMessage(messageId, {
-                kind: "user",
-                userId: openId,
-            });
-            return true;
-        }
-        catch (error) {
-            this.options.logger.warn("failed to forward message to owner", {
-                messageId,
-                error: toErrorMessage(error),
-            });
-            return false;
-        }
-    }
     async safeReply(message, text) {
         const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;
         if (this.options.outbound.has(key, message.chat.id)) {

@@ -32,7 +32,6 @@ export declare class NotificationService {
     sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
     sendOwnerNotification(view: NotificationView): Promise<boolean>;
     sendToApprover(text: string): Promise<boolean>;
-    forwardToOwner(messageId: string): Promise<boolean>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
     chatLabel(message: IncomingMessage): Promise<string>;
     rememberChatName(chatId: string, name: string): void;
