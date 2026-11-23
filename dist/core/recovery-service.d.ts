@@ -3,7 +3,7 @@ import type { Logger } from "./logger.js";
 import type { PendingStore } from "./pending-store.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { TaskStore } from "./task-store.js";
-import type { IncomingMessage, TaskRecord } from "./types.js";
+import type { IncomingMessage, NotificationView, TaskRecord } from "./types.js";
 export interface RecoveryServiceOptions {
     config: AppConfig;
     logger: Logger;
@@ -31,6 +31,7 @@ export interface RecoveryServiceOptions {
     analyzeTask(task: TaskRecord): Promise<void>;
     track<T>(promise: Promise<T>): Promise<T>;
     sendToOwner(text: string): Promise<boolean>;
+    sendOwnerNotification?(view: NotificationView): Promise<boolean>;
     describeTask?(task: TaskRecord): Promise<{
         chatLabel: string;
         senderLabel: string;
@@ -41,5 +42,6 @@ export declare class RecoveryService {
     constructor(options: RecoveryServiceOptions);
     recoverOnStartup(): Promise<void>;
     private pullStartupWindow;
+    private sendTaskNotice;
     private resumeOpenTasks;
 }

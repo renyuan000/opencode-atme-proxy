@@ -92,6 +92,7 @@ export declare class FeishuAdapter implements PlatformAdapter {
     }, message: OutboundMessage): Promise<{
         messageId: string;
     }>;
+    renderNotification(view: Parameters<NonNullable<PlatformAdapter["renderNotification"]>>[0]): OutboundMessage;
     renderApproval(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage;
     renderReplyManagement(view: ReplyManagementView): OutboundMessage;
     renderCancelConfirm(input: {

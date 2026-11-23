@@ -44,6 +44,9 @@ export class HybridFeishuAdapter {
     renderApproval(view) {
         return this.adapter.renderApproval(view);
     }
+    renderNotification(view) {
+        return this.adapter.renderNotification(view);
+    }
     renderReplyManagement(view) {
         return this.adapter.renderReplyManagement(view);
     }

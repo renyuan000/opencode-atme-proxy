@@ -340,11 +340,32 @@ export class ScanService {
                 first.chat.name ??
                 first.chat.id)
             : "未知群";
-        await this.options.sendToOwner([
-            `群消息分析（${group}）：${summary}`,
-            ...(first ? [`群聊：${this.chatLink(first.chat.id)}`] : []),
-            ...lines,
-        ].join("\n\n"));
+        const view = {
+            title: "群消息分析",
+            subtitle: `${group} · ${summary}`,
+            sections: highlighted.slice(0, 8).map((message) => {
+                const item = byId.get(message.messageId);
+                return {
+                    title: `${formatLocalTime(message.createdAt)} ${senderNames.get(message.messageId) ?? message.sender.id}`,
+                    ...(item?.actionability ? { meta: item.actionability } : {}),
+                    quote: truncate(message.text.replace(/\s+/g, " "), 160),
+                    ...(item?.reason ? { detail: `判断：${truncate(item.reason, 80)}` } : {}),
+                };
+            }),
+            ...(first
+                ? { link: { label: "打开群聊", url: this.chatLink(first.chat.id) } }
+                : {}),
+        };
+        if (this.options.sendOwnerNotification) {
+            await this.options.sendOwnerNotification(view);
+        }
+        else {
+            await this.options.sendToOwner([
+                `群消息分析（${group}）：${summary}`,
+                ...(first ? [`群聊：${this.chatLink(first.chat.id)}`] : []),
+                ...lines,
+            ].join("\n\n"));
+        }
     }
     chatLink(chatId) {
         return `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}`;

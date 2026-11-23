@@ -411,6 +411,39 @@ export class FeishuAdapter implements PlatformAdapter {
     return this.requireMessageId(response, "reply");
   }
 
+  renderNotification(
+    view: Parameters<NonNullable<PlatformAdapter["renderNotification"]>>[0],
+  ): OutboundMessage {
+    const elements: Array<Record<string, unknown>> = [];
+    view.sections.forEach((section, index) => {
+      if (index > 0) elements.push({ tag: "hr" });
+      const lines = [`**${section.title}**${section.meta ? ` · ${section.meta}` : ""}`];
+      if (section.quote) lines.push(`> ${section.quote}`);
+      if (section.detail) lines.push(`<font color='grey'>${section.detail}</font>`);
+      elements.push({ tag: "div", text: { tag: "lark_md", content: lines.join("\n") } });
+    });
+    if (view.footer) {
+      elements.push({ tag: "div", text: { tag: "lark_md", content: view.footer } });
+    }
+    if (view.link) {
+      elements.push({
+        tag: "div",
+        text: { tag: "lark_md", content: `[${view.link.label}](${view.link.url})` },
+      });
+    }
+    return {
+      kind: "card",
+      card: {
+        config: { wide_screen_mode: true },
+        header: {
+          template: "blue",
+          title: { tag: "plain_text", content: view.title },
+        },
+        elements,
+      },
+    };
+  }
+
   renderApproval(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage {
     return renderApprovalCard(view);
   }

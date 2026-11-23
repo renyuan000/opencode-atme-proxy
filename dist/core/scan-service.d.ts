@@ -6,7 +6,7 @@ import type { Logger } from "./logger.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { RelevanceService } from "./relevance.js";
 import type { TaskService } from "./task-service.js";
-import type { IncomingMessage } from "./types.js";
+import type { IncomingMessage, NotificationView } from "./types.js";
 export interface ScanServiceOptions {
     config: AppConfig;
     logger: Logger;
@@ -30,6 +30,7 @@ export interface ScanServiceOptions {
     markProcessed(message: IncomingMessage): Promise<void>;
     sendToApprover(text: string): Promise<boolean>;
     sendToOwner(text: string): Promise<boolean>;
+    sendOwnerNotification?(view: NotificationView): Promise<boolean>;
     analyzeFile?(message: IncomingMessage, signal: AbortSignal): Promise<string | undefined>;
 }
 export declare class ScanService {

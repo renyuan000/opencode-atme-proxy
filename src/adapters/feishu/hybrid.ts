@@ -75,6 +75,12 @@ export class HybridFeishuAdapter implements PlatformAdapter {
     return this.adapter.renderApproval(view);
   }
 
+  renderNotification(
+    view: Parameters<NonNullable<PlatformAdapter["renderNotification"]>>[0],
+  ): OutboundMessage {
+    return this.adapter.renderNotification(view);
+  }
+
   renderReplyManagement(
     view: Parameters<NonNullable<PlatformAdapter["renderReplyManagement"]>>[0],
   ): OutboundMessage {

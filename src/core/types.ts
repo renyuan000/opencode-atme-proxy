@@ -230,6 +230,21 @@ export interface PlatformActionResult {
   card?: unknown;
 }
 
+export interface NotificationSection {
+  title: string;
+  meta?: string;
+  quote?: string;
+  detail?: string;
+}
+
+export interface NotificationView {
+  title: string;
+  subtitle?: string;
+  sections: NotificationSection[];
+  link?: { label: string; url: string };
+  footer?: string;
+}
+
 export interface PendingReplySummary {
   taskId: string;
   planHash: string;

@@ -5,7 +5,7 @@ import type { Logger } from "./logger.js";
 import type { OpenCodeBridge } from "./opencode.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { TokenBucket } from "./rate-limit.js";
-import type { IncomingMessage } from "./types.js";
+import type { IncomingMessage, NotificationView } from "./types.js";
 import type { SentReplyStore } from "./sent-reply-store.js";
 import { sha256, stableUuid, toErrorMessage } from "./util.js";
 
@@ -59,6 +59,39 @@ export class NotificationService {
       return true;
     } catch (error) {
       this.options.logger.error("failed to send to owner", {
+        error: toErrorMessage(error),
+      });
+      return false;
+    }
+  }
+
+  async sendOwnerNotification(view: NotificationView): Promise<boolean> {
+    const openId = this.options.ownerOpenId();
+    if (!openId) return false;
+    const rendered = this.options.platform.renderNotification?.(view);
+    const fallback = [
+      view.title,
+      ...(view.subtitle ? [view.subtitle] : []),
+      "",
+      ...view.sections.flatMap((section) => [
+        `━━━━━━━━━━`,
+        `${section.title}${section.meta ? ` · ${section.meta}` : ""}`,
+        ...(section.quote ? [`> ${section.quote}`] : []),
+        ...(section.detail ? [section.detail] : []),
+      ]),
+      ...(view.footer ? ["", view.footer] : []),
+      ...(view.link ? [`${view.link.label}：${view.link.url}`] : []),
+    ].join("\n");
+    const message = rendered ?? { kind: "text" as const, text: fallback };
+    try {
+      await this.options.sendLimiter.take();
+      await this.options.platform.send(
+        { kind: "user", userId: openId },
+        { ...message, uuid: stableUuid("owner", openId, sha256(fallback).slice(0, 16)) },
+      );
+      return true;
+    } catch (error) {
+      this.options.logger.warn("failed to send owner notification card", {
         error: toErrorMessage(error),
       });
       return false;

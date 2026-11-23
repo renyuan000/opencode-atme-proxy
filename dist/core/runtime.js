@@ -542,6 +542,7 @@ export class ProxyRuntime {
             analyzeTask: (task) => this.analyzeTask(task),
             track: (promise) => this.track(promise),
             sendToOwner: (text) => this.sendToOwner(text),
+            sendOwnerNotification: (view) => this.notificationService.sendOwnerNotification(view),
             describeTask: (task) => this.describeTask(task),
         });
         this.poller = new PollingService({
@@ -686,6 +687,7 @@ export class ProxyRuntime {
             markProcessed: (message) => this.markProcessed(message),
             sendToApprover: (text) => this.sendToApprover(text),
             sendToOwner: (text) => this.sendToOwner(text),
+            sendOwnerNotification: (view) => this.notificationService.sendOwnerNotification(view),
             analyzeFile: (message, signal) => this.analyzeFile(message, signal),
         });
     }

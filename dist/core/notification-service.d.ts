@@ -4,7 +4,7 @@ import type { Logger } from "./logger.js";
 import type { OpenCodeBridge } from "./opencode.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { TokenBucket } from "./rate-limit.js";
-import type { IncomingMessage } from "./types.js";
+import type { IncomingMessage, NotificationView } from "./types.js";
 import type { SentReplyStore } from "./sent-reply-store.js";
 export interface NotificationServiceOptions {
     config: AppConfig;
@@ -30,6 +30,7 @@ export declare class NotificationService {
     private readonly options;
     constructor(options: NotificationServiceOptions);
     sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
+    sendOwnerNotification(view: NotificationView): Promise<boolean>;
     sendToApprover(text: string): Promise<boolean>;
     forwardToOwner(messageId: string): Promise<boolean>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;

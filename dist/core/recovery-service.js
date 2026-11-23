@@ -108,6 +108,32 @@ export class RecoveryService {
             }
         }
     }
+    async sendTaskNotice(title, subtitle, task, footer, labels) {
+        const text = [
+            `${title}（${labels.chatLabel}）：${task.title}`,
+            `状态：${task.state}`,
+            `来源：${labels.chatLabel} / ${labels.senderLabel}`,
+            `群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
+            footer,
+        ].join("\n");
+        if (this.options.sendOwnerNotification) {
+            await this.options.sendOwnerNotification({
+                title,
+                subtitle,
+                sections: [
+                    { title: task.title, meta: task.state, detail: `来源：${labels.chatLabel} / ${labels.senderLabel}` },
+                ],
+                link: {
+                    label: "打开群聊",
+                    url: `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
+                },
+                footer,
+            });
+        }
+        else {
+            await this.options.sendToOwner(text);
+        }
+    }
     async resumeOpenTasks() {
         const recovery = this.options.config.recovery;
         const now = Date.now();
@@ -133,7 +159,7 @@ export class RecoveryService {
                     chatLabel: task.chatName ?? "群",
                     senderLabel: task.requester.displayName ?? "成员",
                 };
-                await this.options.sendToOwner(`上次执行被中断，已暂停等待你重新批准：\n群：${labels.chatLabel}\n${task.title}\n不会自动重放代码修改。`);
+                await this.sendTaskNotice("执行中断", `${labels.chatLabel} · ${task.state}`, task, "上次执行被中断，已暂停等待你重新批准；不会自动重放代码修改。", labels);
                 continue;
             }
             if ((task.state === "awaiting_approval" || task.state === "needs_info") &&
@@ -163,13 +189,7 @@ export class RecoveryService {
                     chatLabel: task.chatName ?? "群",
                     senderLabel: task.requester.displayName ?? "成员",
                 };
-                await this.options.sendToOwner([
-                    `未完成任务提醒（${labels.chatLabel}）：${task.title}`,
-                    `状态：${task.state}`,
-                    `来源：${labels.chatLabel} / ${labels.senderLabel}`,
-                    `群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
-                    "请在原审批卡或群里处理。",
-                ].join("\n"));
+                await this.sendTaskNotice("未完成任务提醒", `${labels.chatLabel} · ${task.state}`, task, "请在原审批卡或群里处理。", labels);
                 resumed++;
             }
         }

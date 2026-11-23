@@ -1,4 +1,4 @@
-import type { ActorRef, ApprovalView, CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget, PlatformAction, PlatformActionResult, ReplyManagementView } from "./types.js";
+import type { ActorRef, ApprovalView, CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget, NotificationView, PlatformAction, PlatformActionResult, ReplyManagementView } from "./types.js";
 export interface ChatMembershipEvent {
     platform: string;
     chatId: string;
@@ -68,6 +68,7 @@ export interface PlatformAdapter {
         messageId: string;
     }>;
     renderApproval(view: ApprovalView): OutboundMessage;
+    renderNotification?(view: NotificationView): OutboundMessage;
     fetchResource?(messageId: string, key: string, kind?: "image" | "file"): Promise<{
         data: Buffer;
         mime: string;

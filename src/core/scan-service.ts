@@ -8,7 +8,7 @@ import { extractDocumentText } from "./document.js";
 import { ocrImage } from "./ocr.js";
 import type { RelevanceService } from "./relevance.js";
 import type { TaskService } from "./task-service.js";
-import type { Classification, IncomingMessage } from "./types.js";
+import type { Classification, IncomingMessage, NotificationView } from "./types.js";
 import { formatLocalTime, toErrorMessage, truncate } from "./util.js";
 
 export interface ScanServiceOptions {
@@ -32,6 +32,7 @@ export interface ScanServiceOptions {
   markProcessed(message: IncomingMessage): Promise<void>;
   sendToApprover(text: string): Promise<boolean>;
   sendToOwner(text: string): Promise<boolean>;
+  sendOwnerNotification?(view: NotificationView): Promise<boolean>;
   analyzeFile?(message: IncomingMessage, signal: AbortSignal): Promise<string | undefined>;
 }
 
@@ -402,13 +403,33 @@ export class ScanService {
         first.chat.name ??
         first.chat.id)
       : "未知群";
-    await this.options.sendToOwner(
-      [
-        `群消息分析（${group}）：${summary}`,
-        ...(first ? [`群聊：${this.chatLink(first.chat.id)}`] : []),
-        ...lines,
-      ].join("\n\n"),
-    );
+    const view: NotificationView = {
+      title: "群消息分析",
+      subtitle: `${group} · ${summary}`,
+      sections: highlighted.slice(0, 8).map((message) => {
+        const item = byId.get(message.messageId);
+        return {
+          title: `${formatLocalTime(message.createdAt)} ${senderNames.get(message.messageId) ?? message.sender.id}`,
+          ...(item?.actionability ? { meta: item.actionability } : {}),
+          quote: truncate(message.text.replace(/\s+/g, " "), 160),
+          ...(item?.reason ? { detail: `判断：${truncate(item.reason, 80)}` } : {}),
+        };
+      }),
+      ...(first
+        ? { link: { label: "打开群聊", url: this.chatLink(first.chat.id) } }
+        : {}),
+    };
+    if (this.options.sendOwnerNotification) {
+      await this.options.sendOwnerNotification(view);
+    } else {
+      await this.options.sendToOwner(
+        [
+          `群消息分析（${group}）：${summary}`,
+          ...(first ? [`群聊：${this.chatLink(first.chat.id)}`] : []),
+          ...lines,
+        ].join("\n\n"),
+      );
+    }
   }
 
   private chatLink(chatId: string): string {

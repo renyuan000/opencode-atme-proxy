@@ -37,6 +37,7 @@ export declare class HybridFeishuAdapter implements PlatformAdapter {
         messageId: string;
     }>;
     renderApproval(view: ApprovalView): OutboundMessage;
+    renderNotification(view: Parameters<NonNullable<PlatformAdapter["renderNotification"]>>[0]): OutboundMessage;
     renderReplyManagement(view: Parameters<NonNullable<PlatformAdapter["renderReplyManagement"]>>[0]): OutboundMessage;
     renderCancelConfirm(input: Parameters<NonNullable<PlatformAdapter["renderCancelConfirm"]>>[0]): OutboundMessage;
     recallMessage(chatId: string, messageId: string): Promise<void>;

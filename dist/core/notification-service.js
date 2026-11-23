@@ -43,6 +43,37 @@ export class NotificationService {
             return false;
         }
     }
+    async sendOwnerNotification(view) {
+        const openId = this.options.ownerOpenId();
+        if (!openId)
+            return false;
+        const rendered = this.options.platform.renderNotification?.(view);
+        const fallback = [
+            view.title,
+            ...(view.subtitle ? [view.subtitle] : []),
+            "",
+            ...view.sections.flatMap((section) => [
+                `━━━━━━━━━━`,
+                `${section.title}${section.meta ? ` · ${section.meta}` : ""}`,
+                ...(section.quote ? [`> ${section.quote}`] : []),
+                ...(section.detail ? [section.detail] : []),
+            ]),
+            ...(view.footer ? ["", view.footer] : []),
+            ...(view.link ? [`${view.link.label}：${view.link.url}`] : []),
+        ].join("\n");
+        const message = rendered ?? { kind: "text", text: fallback };
+        try {
+            await this.options.sendLimiter.take();
+            await this.options.platform.send({ kind: "user", userId: openId }, { ...message, uuid: stableUuid("owner", openId, sha256(fallback).slice(0, 16)) });
+            return true;
+        }
+        catch (error) {
+            this.options.logger.warn("failed to send owner notification card", {
+                error: toErrorMessage(error),
+            });
+            return false;
+        }
+    }
     sendToApprover(text) {
         return this.sendToOwner(text);
     }
