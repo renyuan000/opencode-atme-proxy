@@ -29,6 +29,7 @@ export interface ContextMessage {
 export interface ChatContext {
   platform: string;
   chatId: string;
+  conversationId?: string;
   chatName?: string;
   projectId?: string;
   worktree?: string;
@@ -86,12 +87,13 @@ export class ChatContextStore {
     return this.chats.get(chatKey);
   }
 
-  append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName">): void {
+  append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName" | "conversationId">): void {
     const existing =
       this.chats.get(chatKey) ??
       ({
         platform: meta?.platform ?? "unknown",
         chatId: meta?.chatId ?? chatKey,
+        ...(meta?.conversationId ? { conversationId: meta.conversationId } : {}),
         ...(meta?.chatName ? { chatName: meta.chatName } : {}),
         messages: [],
         updatedAt: this.now(),
@@ -106,6 +108,7 @@ export class ChatContextStore {
     if (existing.messages.length > this.options.maxMessagesPerChat) {
       existing.messages = existing.messages.slice(-this.options.maxMessagesPerChat);
     }
+    if (meta?.conversationId) existing.conversationId = meta.conversationId;
     existing.updatedAt = this.now();
     this.chats.set(chatKey, existing);
     this.dirty = true;

@@ -815,6 +815,11 @@ export class ProxyRuntime {
         this.ownerTargets.set({
           ownerId,
           chatId: message.chat.id,
+          conversationId: this.conversationIdFor(
+            message.platform,
+            message.chat.id,
+            message.chat.kind === "direct" ? "dm" : "group",
+          ),
           ...(message.chat.name ? { chatName: message.chat.name } : {}),
           sourceMessageId: message.messageId,
           updatedAt: Date.now(),
@@ -1832,6 +1837,11 @@ export class ProxyRuntime {
         {
           platform: message.platform,
           chatId: message.chat.id,
+          conversationId: this.conversationIdFor(
+            message.platform,
+            message.chat.id,
+            message.chat.kind === "direct" ? "dm" : "group",
+          ),
           ...(message.chat.name ? { chatName: message.chat.name } : {}),
         },
       );
@@ -2427,6 +2437,7 @@ export class ProxyRuntime {
     const summaryText = typeof parsed?.summary === "string" ? parsed.summary : raw;
     const record: GroupSummary = {
       chatId: key,
+      conversationId: this.conversationIdFor(platform, chatId, "group"),
       summary: truncateMiddle(summaryText.trim(), maxChars),
       decisions: stringArray(parsed?.decisions),
       assumptions: stringArray(parsed?.assumptions),

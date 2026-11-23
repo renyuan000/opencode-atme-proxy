@@ -17,6 +17,7 @@ export interface ContextMessage {
 export interface ChatContext {
     platform: string;
     chatId: string;
+    conversationId?: string;
     chatName?: string;
     projectId?: string;
     worktree?: string;
@@ -41,7 +42,7 @@ export declare class ChatContextStore {
     constructor(options: ChatContextStoreOptions);
     load(): Promise<void>;
     get(chatKey: string): ChatContext | undefined;
-    append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName">): void;
+    append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName" | "conversationId">): void;
     bindProject(chatKey: string, projectId: string, worktree: string): void;
     recent(chatKey: string, limit: number, excludeMessageId?: string): ContextMessage[];
     find(chatKey: string, messageIds: string[]): ContextMessage[];

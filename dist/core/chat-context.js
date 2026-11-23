@@ -41,6 +41,7 @@ export class ChatContextStore {
             {
                 platform: meta?.platform ?? "unknown",
                 chatId: meta?.chatId ?? chatKey,
+                ...(meta?.conversationId ? { conversationId: meta.conversationId } : {}),
                 ...(meta?.chatName ? { chatName: meta.chatName } : {}),
                 messages: [],
                 updatedAt: this.now(),
@@ -57,6 +58,8 @@ export class ChatContextStore {
         if (existing.messages.length > this.options.maxMessagesPerChat) {
             existing.messages = existing.messages.slice(-this.options.maxMessagesPerChat);
         }
+        if (meta?.conversationId)
+            existing.conversationId = meta.conversationId;
         existing.updatedAt = this.now();
         this.chats.set(chatKey, existing);
         this.dirty = true;

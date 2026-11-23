@@ -31,6 +31,9 @@ export class SessionStore {
                             : "coordinator",
                         ...(typeof value.taskId === "string" ? { taskId: value.taskId } : {}),
                         ...(typeof value.chatId === "string" ? { chatId: value.chatId } : {}),
+                        ...(typeof value.conversationId === "string"
+                            ? { conversationId: value.conversationId }
+                            : {}),
                         ...(typeof value.archivedAt === "number" ? { archivedAt: value.archivedAt } : {}),
                     });
                 }
@@ -56,6 +59,9 @@ export class SessionStore {
             kind: meta?.kind ?? existing?.kind ?? "coordinator",
             ...(meta?.taskId ?? existing?.taskId ? { taskId: meta?.taskId ?? existing?.taskId } : {}),
             ...(meta?.chatId ?? existing?.chatId ? { chatId: meta?.chatId ?? existing?.chatId } : {}),
+            ...(meta?.conversationId ?? existing?.conversationId
+                ? { conversationId: meta?.conversationId ?? existing?.conversationId }
+                : {}),
             ...(meta?.archivedAt ?? existing?.archivedAt
                 ? { archivedAt: meta?.archivedAt ?? existing?.archivedAt }
                 : {}),

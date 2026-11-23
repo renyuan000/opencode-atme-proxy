@@ -2,6 +2,7 @@ import type { Logger } from "./logger.js";
 export interface OwnerTarget {
     ownerId: string;
     chatId: string;
+    conversationId?: string;
     chatName?: string;
     sourceMessageId?: string;
     taskId?: string;

@@ -71,11 +71,11 @@ test("session keys move to a new epoch without reusing old workers", async () =>
     assert.ok(sessions.list().some(([key]) => key.startsWith("coordinator:feishu:chat:e2")));
     assert.ok(sessions.list().some(([key]) => key.startsWith("worker:reply:feishu:chat:e1")));
     assert.ok(sessions.list().some(([key]) => key.startsWith("worker:reply:feishu:chat:e2")));
-    assert.ok(
-      sessions
-        .list()
-        .some(([key]) => key.startsWith("worker:reply:feishu:cli_a:group:chat:e2")),
-    );
+    const conversationWorker = sessions
+      .list()
+      .find(([key]) => key.startsWith("worker:reply:feishu:cli_a:group:chat:e2"));
+    assert.ok(conversationWorker);
+    assert.equal(conversationWorker[1].conversationId, "feishu:cli_a:group:chat");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

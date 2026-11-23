@@ -150,6 +150,14 @@ export class TaskService {
       id: `task_${sha256(`${dedupKey}:${message.messageId}`).slice(0, 12)}`,
       platform: message.platform,
       chatId: message.chat.id,
+      ...(this.options.conversationIdFor?.(message.platform, message.chat.id)
+        ? {
+            conversationId: this.options.conversationIdFor(
+              message.platform,
+              message.chat.id,
+            ),
+          }
+        : {}),
       ...(message.chat.name ? { chatName: message.chat.name } : {}),
       messageIds: message.messageIds ?? [message.messageId],
       source,

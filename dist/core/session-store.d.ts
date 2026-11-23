@@ -8,6 +8,7 @@ export interface SessionRecord {
     kind: SessionKind;
     taskId?: string;
     chatId?: string;
+    conversationId?: string;
     archivedAt?: number;
 }
 export declare class SessionStore {
@@ -22,6 +23,7 @@ export declare class SessionStore {
         kind?: SessionKind;
         taskId?: string;
         chatId?: string;
+        conversationId?: string;
         createdAt?: number;
         archivedAt?: number;
     }): void;

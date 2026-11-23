@@ -190,7 +190,7 @@ export class ScopedChatContext {
     return this.store(chatIdOf(chatKey)).get(chatKey);
   }
 
-  append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName">): void {
+  append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName" | "conversationId">): void {
     this.store(chatIdOf(chatKey)).append(chatKey, message, meta);
   }
 

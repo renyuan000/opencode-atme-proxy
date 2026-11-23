@@ -112,6 +112,7 @@ export class SessionManager {
       this.options.sessions.set(key, sessionId, directory, {
         kind: "coordinator",
         chatId,
+        ...(conversationId ? { conversationId } : {}),
         createdAt: Date.now(),
       });
       await this.options.sessions.flush();
@@ -160,6 +161,7 @@ export class SessionManager {
     this.options.sessions.set(key, sessionId, directory, {
       kind: "group",
       chatId,
+      ...(conversationId ? { conversationId } : {}),
       createdAt: Date.now(),
     });
     await this.options.sessions.flush();
@@ -204,6 +206,7 @@ export class SessionManager {
     this.options.sessions.set(key, sessionId, input.directory, {
       kind: "worker",
       chatId: input.chatId,
+      ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       createdAt: Date.now(),
     });
     await this.options.sessions.flush();
@@ -335,6 +338,7 @@ export class SessionManager {
       this.options.sessions.set(`child:${sessionId}`, sessionId, input.directory, {
         kind: "child",
         chatId: input.chatId,
+        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
         createdAt: Date.now(),
         ...(input.taskId ? { taskId: input.taskId } : {}),
       });
@@ -355,6 +359,7 @@ export class SessionManager {
         this.options.sessions.set(key, record.sessionId, record.directory, {
           ...(record.taskId ? { taskId: record.taskId } : {}),
           ...(record.chatId ? { chatId: record.chatId } : {}),
+          ...(record.conversationId ? { conversationId: record.conversationId } : {}),
           kind: "child",
           createdAt: record.createdAt,
           archivedAt: Date.now(),
@@ -388,6 +393,7 @@ export class SessionManager {
           this.options.sessions.set(key, record.sessionId, record.directory, {
             ...(record.taskId ? { taskId: record.taskId } : {}),
             ...(record.chatId ? { chatId: record.chatId } : {}),
+            ...(record.conversationId ? { conversationId: record.conversationId } : {}),
             kind: "child",
             createdAt: record.createdAt,
             archivedAt: now,

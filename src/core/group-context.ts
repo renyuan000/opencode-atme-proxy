@@ -4,6 +4,7 @@ import { readJsonFile, writeJsonAtomic, toErrorMessage } from "./util.js";
 
 export interface GroupSummary {
   chatId: string;
+  conversationId?: string;
   summary: string;
   decisions: string[];
   assumptions: string[];

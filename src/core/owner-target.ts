@@ -5,6 +5,7 @@ import { readJsonFile, writeJsonAtomic } from "./util.js";
 export interface OwnerTarget {
   ownerId: string;
   chatId: string;
+  conversationId?: string;
   chatName?: string;
   sourceMessageId?: string;
   taskId?: string;

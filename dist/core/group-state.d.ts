@@ -41,7 +41,7 @@ export declare class ScopedChatContext {
     load(): Promise<void>;
     private store;
     get(chatKey: string): ChatContext | undefined;
-    append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName">): void;
+    append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName" | "conversationId">): void;
     bindProject(chatKey: string, projectId: string, worktree: string): void;
     recent(chatKey: string, limit: number, excludeMessageId?: string): ContextMessage[];
     find(chatKey: string, messageIds: string[]): ContextMessage[];

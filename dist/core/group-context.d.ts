@@ -1,6 +1,7 @@
 import type { Logger } from "./logger.js";
 export interface GroupSummary {
     chatId: string;
+    conversationId?: string;
     summary: string;
     decisions: string[];
     assumptions: string[];

@@ -109,6 +109,7 @@ export interface TaskRecord {
   id: string;
   platform: Platform;
   chatId: string;
+  conversationId?: string;
   chatName?: string;
   messageIds: string[];
   source: "mention_me" | "mention_bot" | "group_scan";

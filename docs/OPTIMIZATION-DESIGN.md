@@ -1112,3 +1112,23 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 + 长期 DM 摘要/偏好/决策
 + 最近聊天窗口
 ```
+
+### 26.5 存储元数据进展
+
+已带 `conversationId` 元数据：
+
+- session 记录（coordinator/group/worker/child）
+- task 记录
+- owner target
+- chat context
+- group summary
+
+仍以旧路径/旧 key 为主、尚未物理迁移：
+
+- group-state 目录
+- task 目录
+- owner-target 文件 key
+- chat-context 文件内 key
+- group-context 文件内 key
+
+下一步需要做一次带迁移的 conversation storage 改造，避免旧数据丢失。
