@@ -61,7 +61,7 @@ export class SessionManager {
             this.coordinatorLocks.delete(key);
         }
     }
-    async createGroupSession(platform, chatId, directory, conversationId) {
+    async createGroupSession(platform, chatId, directory, conversationId, title) {
         const key = this.sessionKey("group", platform, chatId, conversationId);
         const existing = this.options.sessions.get(key);
         if (existing) {
@@ -78,7 +78,7 @@ export class SessionManager {
         }
         const sessionId = await this.options.bridge.createSession({
             directory,
-            title: `${this.options.config.opencode.sessionTitlePrefix}:group:${chatId}`,
+            title: title ?? `${this.options.config.opencode.sessionTitlePrefix}:group:${chatId}`,
             permission: this.options.readOnlyPermission,
             ...(this.options.config.opencode.agent
                 ? { agent: this.options.config.opencode.agent }

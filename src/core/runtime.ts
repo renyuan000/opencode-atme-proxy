@@ -63,6 +63,7 @@ import { NotificationService } from "./notification-service.js";
 import { RecoveryService } from "./recovery-service.js";
 import { GroupWorkspaceManager, type GroupWorkspaceLayout } from "./group-workspace.js";
 import { conversationKey, conversationRefForChat } from "./conversation.js";
+import { ScopedDmContext } from "./dm-context.js";
 import { SentReplyStore } from "./sent-reply-store.js";
 import {
   GroupStateLayout,
@@ -201,6 +202,7 @@ export class ProxyRuntime {
   private readonly documentCache: ScopedDocumentCache;
   private readonly documentRefs: ScopedDocumentRefs;
   private readonly groupKnowledge: ScopedGroupKnowledge;
+  private readonly dmContext: ScopedDmContext;
   private readonly jobsByGroup = new Map<string, JobStore>();
   private readonly groupLocks = new Map<string, Promise<void>>();
   private readonly blockedDirectAlerts = new Map<string, number>();
@@ -265,13 +267,17 @@ export class ProxyRuntime {
     );
     this.cursors = new ScopedCursors(this.groupState, this.logger.child("cursor"));
     this.sessions = new ScopedSessions(this.groupState, this.logger.child("sessions"));
+    this.dmContext = new ScopedDmContext(this.groupState, this.logger.child("dm-context"));
     this.sessionManager = new SessionManager({
       bridge: this.options.bridge,
       sessions: this.sessions as unknown as SessionStore,
       config: this.config,
       logger: this.logger.child("sessions"),
       readOnlyPermission: READ_ONLY_PERMISSION,
-      epochFor: (chatId) => this.groupKnowledge.get(chatId)?.sessionEpoch ?? 1,
+      epochFor: (chatId) =>
+        this.dmContext.get(chatId)?.sessionEpoch ??
+        this.groupKnowledge.get(chatId)?.sessionEpoch ??
+        1,
     });
     this.tasks = new ScopedTasks(this.groupState, this.logger.child("tasks"));
     this.approvals = new ScopedApprovals(this.groupState, async (taskId) => {
@@ -489,6 +495,19 @@ export class ProxyRuntime {
           message.chat.id,
           message.chat.kind === "direct" ? "dm" : "group",
         ),
+      dmContextFor: (chatId) => {
+        const context = this.dmContext.get(chatId);
+        return context
+          ? {
+              summary: context.summary,
+              preferences: context.preferences,
+              decisions: context.decisions,
+              ongoingGoals: context.ongoingGoals,
+              openQuestions: context.openQuestions,
+              sessionEpoch: context.sessionEpoch,
+            }
+          : undefined;
+      },
       resolveProject: async (chatId) => {
         const project = await this.resolveProject(chatId);
         return {
@@ -1083,6 +1102,7 @@ export class ProxyRuntime {
     if (this.started) return;
     await mkdir(join(this.stateDir, "scratch"), { recursive: true });
     await this.groupState.load();
+    await this.dmContext.load();
     for (const group of this.config.platforms.feishu.groups) {
       await this.ensureGroupWorkspace(group.chatId, group.name, group.project, group.workspace);
       await this.jobStore(group.chatId).load();
@@ -1831,7 +1851,15 @@ export class ProxyRuntime {
           const style = detectReplyStyle(message, this.replyOptions);
           const reply = await this.askOpenCode(message, style, controller.signal);
           const ok = await this.safeReply(message, this.sanitize(reply));
-          if (ok) await this.markProcessed(message);
+          if (ok) {
+            await this.markProcessed(message);
+            void this.updateDmSummary(message.platform, message.chat.id).catch((error) => {
+              this.logger.warn("dm summary update failed", {
+                chatId: message.chat.id,
+                error: toErrorMessage(error),
+              });
+            });
+          }
           await this.audit.append({
             actor: message.sender,
             action: "direct_message_replied",
@@ -2258,6 +2286,81 @@ export class ProxyRuntime {
       directory,
       this.conversationIdFor(platform, chatId, "group"),
     );
+  }
+
+  private async updateDmSummary(platform: string, chatId: string): Promise<void> {
+    if (this.config.groupSession?.enabled === false) return;
+    const every = this.config.groupSession?.summaryEveryMessages ?? 8;
+    const maxChars = this.config.groupSession?.summaryMaxChars ?? 1500;
+    const timeoutMs = this.config.groupSession?.timeoutMs ?? 30_000;
+    const key = `${platform}:${chatId}`;
+    const current = this.dmContext.get(chatId);
+    const since = current?.lastMessageAt ?? 0;
+    const messages = this.chatContext.recent(key, 50).filter((item) => item.at > since);
+    if (messages.length < every) return;
+    const directory = (await this.resolveProject(chatId)).worktree;
+    const sessionId = await this.sessionManager.createGroupSession(
+      platform,
+      chatId,
+      directory,
+      this.conversationIdFor(platform, chatId, "dm"),
+      `${this.config.opencode.sessionTitlePrefix}:dm-summary:${chatId}`,
+    );
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error("dm summary timed out")), timeoutMs);
+    let raw: string;
+    try {
+      raw = await this.options.bridge.prompt(sessionId, {
+        directory,
+        title: `${this.config.opencode.sessionTitlePrefix}:dm-summary:${chatId}`,
+        text: [
+          "你是 owner 私聊记录员。只维护私聊长期上下文，不回答问题、不执行操作。",
+          "保留：owner 的偏好、已确认决策、进行中的目标、未解决问题、关键约束。",
+          "不要记录一次性寒暄、临时闲聊、密码/密钥等敏感信息。",
+          `合并现有上下文和新消息；去掉重复；摘要不超过 ${maxChars} 字。`,
+          '输出严格 JSON：{summary, preferences, decisions, ongoing_goals, open_questions}。',
+          "现有上下文：",
+          JSON.stringify(current ?? {}),
+          "新增消息：",
+          ...messages.map(
+            (item) => `- ${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 500)}`,
+          ),
+        ].join("\n"),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    const parsed = parseJsonLoose(raw);
+    const summary =
+      typeof parsed?.summary === "string" ? parsed.summary.trim() : raw.trim();
+    const preferences = stringArray(parsed?.preferences);
+    const decisions = stringArray(parsed?.decisions);
+    const ongoingGoals = stringArray(parsed?.ongoing_goals);
+    const openQuestions = stringArray(parsed?.open_questions);
+    const semanticChanged = Boolean(
+      current &&
+        (JSON.stringify(current.preferences) !== JSON.stringify(preferences) ||
+          JSON.stringify(current.decisions) !== JSON.stringify(decisions)),
+    );
+    const now = Date.now();
+    this.dmContext.set({
+      chatId,
+      summary: truncateMiddle(summary, maxChars),
+      preferences,
+      decisions,
+      ongoingGoals,
+      openQuestions,
+      lastMessageAt: messages[messages.length - 1]?.at ?? now,
+      updatedAt: now,
+      sessionEpoch: (current?.sessionEpoch ?? 1) + (semanticChanged ? 1 : 0),
+    });
+    await this.dmContext.flush();
+    await this.audit.append({
+      actor: { system: true },
+      action: "dm_summary_updated",
+      details: { chatId, messages: messages.length },
+    });
   }
 
   private async updateGroupSummary(platform: string, chatId: string): Promise<void> {

@@ -59,7 +59,7 @@ export declare class SessionManager {
     private epochFor;
     private sessionKey;
     coordinatorSession(platform: string, chatId: string, directory: string, title: string, conversationId?: string): Promise<string>;
-    createGroupSession(platform: string, chatId: string, directory: string, conversationId?: string): Promise<string>;
+    createGroupSession(platform: string, chatId: string, directory: string, conversationId?: string, title?: string): Promise<string>;
     createWorkerSession(input: WorkerInput): Promise<string>;
     runWorker(input: WorkerInput, promptText: string, signal?: AbortSignal, attachments?: PromptAttachment[]): Promise<string>;
     createChildSession(input: ChildInput): Promise<{

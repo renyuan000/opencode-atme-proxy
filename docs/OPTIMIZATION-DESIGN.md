@@ -1078,3 +1078,37 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - 审批/路由/配置属于控制面代码，不跑 LLM
 
 这样单群、多群、多 owner、飞书/微信多 channel 都不会串上下文。
+
+### 26.4 私聊长期上下文
+
+私聊不再只是“最近消息 + 长期 session”，增加独立 DM context：
+
+```text
+<state>/groups/私聊__短ID/dm-context.json
+  chatId
+  summary
+  preferences[]
+  decisions[]
+  ongoingGoals[]
+  openQuestions[]
+  lastMessageAt
+  updatedAt
+  sessionEpoch
+```
+
+规则：
+
+- 私聊每 `summaryEveryMessages` 条更新一次摘要
+- 摘要只保留偏好、决策、目标、未解决问题，不保存寒暄和敏感信息
+- 私聊 prompt 注入 `私聊长期上下文`
+- 偏好/决策变化时升私聊 `sessionEpoch`
+- 私聊 session 长期复用；失效时用 DM context 重建
+- DM context 和群 context 隔离，跨群信息只通过显式 owner target / 汇总进入
+
+这样私聊同时具备：
+
+```text
+长期 session 绑定
++ 长期 DM 摘要/偏好/决策
++ 最近聊天窗口
+```

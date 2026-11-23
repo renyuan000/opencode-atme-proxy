@@ -51,6 +51,14 @@ export interface ReplyServiceOptions {
     ownerOverview?(message: IncomingMessage): string | Promise<string>;
     responsibilityFor?(chatId: string): string;
     conversationIdFor?(message: IncomingMessage): string;
+    dmContextFor?(chatId: string): {
+        summary?: string;
+        preferences?: string[];
+        decisions?: string[];
+        ongoingGoals?: string[];
+        openQuestions?: string[];
+        sessionEpoch?: number;
+    } | undefined;
     groupKnowledgeFor?(chatId: string): {
         product?: string;
         summary?: string;

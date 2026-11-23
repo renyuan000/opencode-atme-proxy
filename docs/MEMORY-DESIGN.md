@@ -524,7 +524,7 @@ wechat:accountA:dm:wxid_...
 - 扫描器是确定性代码 + 游标，只有拿不准的消息才升级给 LLM 过滤。
 - 现有配置 `maxChildrenPerTask` / `maxChildrenGlobal` 语义上对应 `maxJobsPerTask` / `maxWorkersGlobal`，v1.3 不新增键；`depth=1`；超出排队，不拒绝。
 
-当前实现：群摘要会话独立持久（conversation key 绑定），每 `summaryEveryMessages` 条更新一次，单写者串行；摘要注入 reply 与 analysis。reply/analysis/review 为每个 conversation 持久 worker，execution 仍为每任务临时 child。私聊使用自己的 conversation anchor，不与群共用。
+当前实现：群摘要会话独立持久（conversation key 绑定），每 `summaryEveryMessages` 条更新一次，单写者串行；摘要注入 reply 与 analysis。reply/analysis/review 为每个 conversation 持久 worker，execution 仍为每任务临时 child。私聊使用自己的 conversation anchor，不与群共用；私聊另有 `dm-context.json`，保存摘要、偏好、决策、目标、未解决问题和 `sessionEpoch`。
 
 ### 12.1 上下文所有权（防串味）
 

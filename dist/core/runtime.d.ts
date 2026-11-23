@@ -66,6 +66,7 @@ export declare class ProxyRuntime {
     private readonly documentCache;
     private readonly documentRefs;
     private readonly groupKnowledge;
+    private readonly dmContext;
     private readonly jobsByGroup;
     private readonly groupLocks;
     private readonly blockedDirectAlerts;
@@ -145,6 +146,7 @@ export declare class ProxyRuntime {
     private sweepSessions;
     private rememberFromMention;
     private createGroupSession;
+    private updateDmSummary;
     private updateGroupSummary;
     private doUpdateGroupSummary;
     private discoverWorkspaceProjects;

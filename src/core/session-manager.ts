@@ -131,6 +131,7 @@ export class SessionManager {
     chatId: string,
     directory: string,
     conversationId?: string,
+    title?: string,
   ): Promise<string> {
     const key = this.sessionKey("group", platform, chatId, conversationId);
     const existing = this.options.sessions.get(key);
@@ -150,7 +151,7 @@ export class SessionManager {
     }
     const sessionId = await this.options.bridge.createSession({
       directory,
-      title: `${this.options.config.opencode.sessionTitlePrefix}:group:${chatId}`,
+      title: title ?? `${this.options.config.opencode.sessionTitlePrefix}:group:${chatId}`,
       permission: this.options.readOnlyPermission,
       ...(this.options.config.opencode.agent
         ? { agent: this.options.config.opencode.agent }
