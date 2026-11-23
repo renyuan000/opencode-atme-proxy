@@ -69,6 +69,7 @@ export declare class ProxyRuntime {
     private readonly dmContext;
     private readonly jobsByGroup;
     private readonly groupLocks;
+    private readonly groupSummaryFailureUntil;
     private readonly blockedDirectAlerts;
     private readonly messageControllers;
     private recoveryPromise?;

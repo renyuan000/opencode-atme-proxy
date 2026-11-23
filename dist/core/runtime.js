@@ -122,6 +122,7 @@ export class ProxyRuntime {
     dmContext;
     jobsByGroup = new Map();
     groupLocks = new Map();
+    groupSummaryFailureUntil = new Map();
     blockedDirectAlerts = new Map();
     messageControllers = new Map();
     recoveryPromise;
@@ -2171,12 +2172,20 @@ export class ProxyRuntime {
         if (this.config.groupSession?.enabled === false)
             return;
         const key = `${platform}:${chatId}`;
+        const retryAfter = this.groupSummaryFailureUntil.get(key) ?? 0;
+        if (retryAfter > Date.now())
+            return;
         const previous = this.groupLocks.get(key) ?? Promise.resolve();
         const next = previous
-            .then(() => this.doUpdateGroupSummary(platform, chatId))
+            .then(async () => {
+            await this.doUpdateGroupSummary(platform, chatId);
+            this.groupSummaryFailureUntil.delete(key);
+        })
             .catch((error) => {
-            this.logger.warn("group summary update failed", {
+            this.groupSummaryFailureUntil.set(key, Date.now() + 5 * 60_000);
+            this.logger.warn("group summary update failed; backing off", {
                 chatId,
+                retryAfterSeconds: 300,
                 error: toErrorMessage(error),
             });
         });

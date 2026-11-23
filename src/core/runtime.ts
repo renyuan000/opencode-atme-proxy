@@ -205,6 +205,7 @@ export class ProxyRuntime {
   private readonly dmContext: ScopedDmContext;
   private readonly jobsByGroup = new Map<string, JobStore>();
   private readonly groupLocks = new Map<string, Promise<void>>();
+  private readonly groupSummaryFailureUntil = new Map<string, number>();
   private readonly blockedDirectAlerts = new Map<string, number>();
   private readonly messageControllers = new Map<string, AbortController>();
   private recoveryPromise?: Promise<void>;
@@ -2491,12 +2492,19 @@ export class ProxyRuntime {
   private async updateGroupSummary(platform: string, chatId: string): Promise<void> {
     if (this.config.groupSession?.enabled === false) return;
     const key = `${platform}:${chatId}`;
+    const retryAfter = this.groupSummaryFailureUntil.get(key) ?? 0;
+    if (retryAfter > Date.now()) return;
     const previous = this.groupLocks.get(key) ?? Promise.resolve();
     const next = previous
-      .then(() => this.doUpdateGroupSummary(platform, chatId))
+      .then(async () => {
+        await this.doUpdateGroupSummary(platform, chatId);
+        this.groupSummaryFailureUntil.delete(key);
+      })
       .catch((error) => {
-        this.logger.warn("group summary update failed", {
+        this.groupSummaryFailureUntil.set(key, Date.now() + 5 * 60_000);
+        this.logger.warn("group summary update failed; backing off", {
           chatId,
+          retryAfterSeconds: 300,
           error: toErrorMessage(error),
         });
       });
