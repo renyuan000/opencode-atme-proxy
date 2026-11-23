@@ -427,7 +427,7 @@ xlsx > 20 sheet 或 > 500 行：分块
 7. 群文件相关时能自动分析并私聊结果
 8. 审批等待不触发生成超时
 9. 群知识/证据可回溯到消息或文件
-10. 147 个单元测试通过，新增文件/队列/DM context 测试
+10. 148 个单元测试通过，新增文件/队列/DM context/上下文 key 测试
 
 ## 16. 开源与给同事使用前的检查
 
@@ -1122,13 +1122,17 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - owner target
 - chat context
 - group summary
+- group.json
+
+已迁移到 conversation key，并保留旧 key 回退：
+
+- `chat-context` 内部 key
+- `group-context` 内部 key
 
 仍以旧路径/旧 key 为主、尚未物理迁移：
 
 - group-state 目录
 - task 目录
 - owner-target 文件 key
-- chat-context 文件内 key
-- group-context 文件内 key
 
-下一步需要做一次带迁移的 conversation storage 改造，避免旧数据丢失。
+下一步需要做这些目录/文件 key 的带迁移改造，避免旧数据丢失。

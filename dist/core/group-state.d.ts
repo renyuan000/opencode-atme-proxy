@@ -18,6 +18,7 @@ export interface GroupStateInfo {
     name: string;
     dirName: string;
     dir: string;
+    conversationId?: string;
 }
 export declare class GroupStateLayout {
     private readonly root;
@@ -26,9 +27,12 @@ export declare class GroupStateLayout {
     private readonly logger;
     constructor(root: string, logger?: Logger);
     load(): Promise<void>;
-    ensure(chatId: string, name?: string): Promise<GroupStateInfo>;
+    ensure(chatId: string, name?: string, options?: {
+        conversationId?: string;
+    }): Promise<GroupStateInfo>;
     private writeGroupJson;
     dirFor(chatId: string): string;
+    conversationIdFor(chatId: string): string | undefined;
     rootPath(): string;
     unassignedPath(): string;
     all(): GroupStateInfo[];
@@ -40,6 +44,8 @@ export declare class ScopedChatContext {
     constructor(layout: GroupStateLayout, options: Omit<ChatContextStoreOptions, "file">);
     load(): Promise<void>;
     private store;
+    private normalizedKey;
+    private keys;
     get(chatKey: string): ChatContext | undefined;
     append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName" | "conversationId">): void;
     bindProject(chatKey: string, projectId: string, worktree: string): void;

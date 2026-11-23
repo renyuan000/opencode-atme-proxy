@@ -282,7 +282,10 @@ test("group summary is stored and injected into replies", async () => {
     await new Promise((r) => setTimeout(r, 150));
     const { readFile } = await import("node:fs/promises");
     const context = JSON.parse(await readGroupStateFile(dir, "group-context.json"));
-    assert.match(context.chats["feishu:chat"].summary, /第 3 步/);
+    const summary = Object.values(context.chats as Record<string, { summary: string }>).find(
+      (item) => item.summary.includes("第 3 步"),
+    );
+    assert.ok(summary);
     const groupSession = bridge.created.find((item) => item.title?.includes(":group:"));
     assert.ok(groupSession?.permission?.some((item) => item.permission === "edit" && item.action === "deny"));
     await runtime.ingest(mention("m1", "接下来呢？"));

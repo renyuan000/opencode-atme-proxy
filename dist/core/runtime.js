@@ -740,8 +740,10 @@ export class ProxyRuntime {
     conversationIdFor(platform, chatId, kind) {
         return conversationKey(conversationRefForChat(platform, chatId, kind, platform === "feishu" ? this.config.platforms.feishu.appId : undefined));
     }
-    async ensureGroupWorkspace(chatId, name, project, workspace) {
-        const info = await this.groupState.ensure(chatId, name);
+    async ensureGroupWorkspace(chatId, name, project, workspace, conversationKind = "group") {
+        const info = await this.groupState.ensure(chatId, name, {
+            conversationId: this.conversationIdFor("feishu", chatId, conversationKind),
+        });
         await this.groupWorkspace.ensure({
             chatId,
             name: info.name,
@@ -1009,7 +1011,7 @@ export class ProxyRuntime {
             return;
         const chatName = await this.chatLabel(message);
         const groupConfig = this.config.platforms.feishu.groups.find((group) => group.chatId === message.chat.id);
-        await this.ensureGroupWorkspace(message.chat.id, message.chat.kind === "direct" ? "私聊" : chatName, groupConfig?.project, groupConfig?.workspace);
+        await this.ensureGroupWorkspace(message.chat.id, message.chat.kind === "direct" ? "私聊" : chatName, groupConfig?.project, groupConfig?.workspace, message.chat.kind === "direct" ? "dm" : "group");
         this.logger.info("inbound routing", {
             messageId: message.messageId,
             chatId: message.chat.id,

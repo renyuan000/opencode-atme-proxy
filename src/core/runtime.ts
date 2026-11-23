@@ -944,8 +944,11 @@ export class ProxyRuntime {
       secondary?: string[];
     },
     workspace?: GroupWorkspaceLayout,
+    conversationKind: "group" | "dm" = "group",
   ): Promise<void> {
-    const info = await this.groupState.ensure(chatId, name);
+    const info = await this.groupState.ensure(chatId, name, {
+      conversationId: this.conversationIdFor("feishu", chatId, conversationKind),
+    });
     await this.groupWorkspace.ensure({
       chatId,
       name: info.name,
@@ -1226,6 +1229,7 @@ export class ProxyRuntime {
       message.chat.kind === "direct" ? "私聊" : chatName,
       groupConfig?.project,
       groupConfig?.workspace,
+      message.chat.kind === "direct" ? "dm" : "group",
     );
     this.logger.info("inbound routing", {
       messageId: message.messageId,

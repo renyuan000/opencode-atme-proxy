@@ -47,6 +47,7 @@ export interface GroupStateInfo {
   name: string;
   dirName: string;
   dir: string;
+  conversationId?: string;
 }
 
 export class GroupStateLayout {
@@ -77,6 +78,7 @@ export class GroupStateLayout {
           chatId?: string;
           name?: string;
           dirName?: string;
+          conversationId?: string;
         }>(join(dir, "group.json"), {});
         if (!data.chatId) continue;
         const info: GroupStateInfo = {
@@ -84,6 +86,9 @@ export class GroupStateLayout {
           name: data.name ?? dirName.split("__")[0] ?? dirName,
           dirName: data.dirName ?? dirName,
           dir,
+          ...(typeof data.conversationId === "string"
+            ? { conversationId: data.conversationId }
+            : {}),
         };
         this.byChat.set(info.chatId, info);
         this.byDir.set(info.dirName, info);
@@ -94,13 +99,23 @@ export class GroupStateLayout {
     this.logger.info("group state layout loaded", { groups: this.byChat.size });
   }
 
-  async ensure(chatId: string, name?: string): Promise<GroupStateInfo> {
+  async ensure(
+    chatId: string,
+    name?: string,
+    options?: { conversationId?: string },
+  ): Promise<GroupStateInfo> {
     const existing = this.byChat.get(chatId);
     if (existing) {
+      let changed = false;
       if (name && name !== existing.name) {
         existing.name = name;
-        await this.writeGroupJson(existing);
+        changed = true;
       }
+      if (options?.conversationId && existing.conversationId !== options.conversationId) {
+        existing.conversationId = options.conversationId;
+        changed = true;
+      }
+      if (changed) await this.writeGroupJson(existing);
       return existing;
     }
     const displayName = name || (chatId.startsWith("oc_b0143a44") ? "私聊" : `群_${shortId(chatId)}`);
@@ -109,7 +124,13 @@ export class GroupStateLayout {
     if (!info) {
       const dir = join(this.root, dirName);
       await mkdir(dir, { recursive: true });
-      info = { chatId, name: displayName, dirName, dir };
+      info = {
+        chatId,
+        name: displayName,
+        dirName,
+        dir,
+        ...(options?.conversationId ? { conversationId: options.conversationId } : {}),
+      };
       this.byChat.set(chatId, info);
       this.byDir.set(dirName, info);
       await this.writeGroupJson(info);
@@ -117,7 +138,13 @@ export class GroupStateLayout {
       dirName = `${sanitize(displayName)}__${shortId(chatId)}-${shortId(chatId).slice(-3)}`;
       const dir = join(this.root, dirName);
       await mkdir(dir, { recursive: true });
-      info = { chatId, name: displayName, dirName, dir };
+      info = {
+        chatId,
+        name: displayName,
+        dirName,
+        dir,
+        ...(options?.conversationId ? { conversationId: options.conversationId } : {}),
+      };
       this.byChat.set(chatId, info);
       this.byDir.set(dirName, info);
       await this.writeGroupJson(info);
@@ -136,6 +163,7 @@ export class GroupStateLayout {
       groupKey: `feishu:${info.chatId}`,
       chatId: info.chatId,
       name: info.name,
+      ...(info.conversationId ? { conversationId: info.conversationId } : {}),
       shortId: shortId(info.chatId),
       dirName: info.dirName,
       createdAt: previous?.createdAt ?? new Date().toISOString(),
@@ -148,6 +176,10 @@ export class GroupStateLayout {
 
   dirFor(chatId: string): string {
     return this.byChat.get(chatId)?.dir ?? join(this.root, `群_${shortId(chatId)}`);
+  }
+
+  conversationIdFor(chatId: string): string | undefined {
+    return this.byChat.get(chatId)?.conversationId;
   }
 
   rootPath(): string {
@@ -186,24 +218,51 @@ export class ScopedChatContext {
     return store;
   }
 
+  private normalizedKey(chatKey: string): string {
+    return this.layout.conversationIdFor(chatIdOf(chatKey)) ?? chatKey;
+  }
+
+  private keys(chatKey: string): string[] {
+    const normalized = this.normalizedKey(chatKey);
+    return normalized === chatKey ? [chatKey] : [normalized, chatKey];
+  }
+
   get(chatKey: string): ChatContext | undefined {
-    return this.store(chatIdOf(chatKey)).get(chatKey);
+    const store = this.store(chatIdOf(chatKey));
+    for (const key of this.keys(chatKey)) {
+      const context = store.get(key);
+      if (context) return context;
+    }
+    return undefined;
   }
 
   append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName" | "conversationId">): void {
-    this.store(chatIdOf(chatKey)).append(chatKey, message, meta);
+    const key = this.normalizedKey(chatKey);
+    this.store(chatIdOf(key)).append(key, message, meta);
   }
 
   bindProject(chatKey: string, projectId: string, worktree: string): void {
-    this.store(chatIdOf(chatKey)).bindProject(chatKey, projectId, worktree);
+    const key = this.normalizedKey(chatKey);
+    this.store(chatIdOf(key)).bindProject(key, projectId, worktree);
   }
 
   recent(chatKey: string, limit: number, excludeMessageId?: string): ContextMessage[] {
-    return this.store(chatIdOf(chatKey)).recent(chatKey, limit, excludeMessageId);
+    const store = this.store(chatIdOf(chatKey));
+    const messages = this.keys(chatKey).flatMap((key) =>
+      store.recent(key, limit, excludeMessageId),
+    );
+    if (this.keys(chatKey).length === 1) return messages.slice(-limit);
+    const byId = new Map<string, ContextMessage>();
+    for (const message of messages) byId.set(message.messageId, message);
+    return [...byId.values()]
+      .sort((a, b) => a.at - b.at)
+      .slice(-limit);
   }
 
   find(chatKey: string, messageIds: string[]): ContextMessage[] {
-    return this.store(chatIdOf(chatKey)).find(chatKey, messageIds);
+    const store = this.store(chatIdOf(chatKey));
+    const found = this.keys(chatKey).flatMap((key) => store.find(key, messageIds));
+    return [...new Map(found.map((message) => [message.messageId, message])).values()];
   }
 
   prune(): void {
@@ -243,12 +302,19 @@ export class ScopedGroupContext {
   }
 
   get(chatId: string): GroupSummary | undefined {
-    return this.store(chatIdOf(chatId)).get(chatId.includes(":") ? chatId : `feishu:${chatId}`);
+    const key = chatId.includes(":") ? chatId : `feishu:${chatId}`;
+    const store = this.store(chatIdOf(key));
+    const normalized = this.layout.conversationIdFor(chatIdOf(key));
+    return (
+      (normalized ? store.get(normalized) : undefined) ??
+      store.get(key)
+    );
   }
 
   set(chatId: string, summary: GroupSummary): void {
     const key = chatId.includes(":") ? chatId : `feishu:${chatId}`;
-    this.store(chatIdOf(chatId)).set(key, summary);
+    const target = this.layout.conversationIdFor(chatIdOf(key)) ?? key;
+    this.store(chatIdOf(target)).set(target, summary);
   }
 
   size(): number {
