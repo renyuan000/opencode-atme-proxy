@@ -1,6 +1,10 @@
 import type { AppConfig } from "./config.js";
 import type { AuditLog } from "./audit.js";
-import type { ChatContextStore } from "./chat-context.js";
+import type { ChatContextStore, ContextMessage } from "./chat-context.js";
+import {
+  selectMediaCluster,
+  type MediaClusterCandidate,
+} from "./media-cluster.js";
 import type { ContextService } from "./context-service.js";
 import type { LlmClient } from "./relevance.js";
 import { makeDedupKey, parseJsonLoose } from "./relevance.js";
@@ -436,9 +440,10 @@ export class ReplyService {
         ? await this.loadRecentHistory(message)
         : [];
     const evidenceBlock = this.options.contextService.evidenceRecall(message);
-    const images = await this.loadImages(message);
-    const ocrText = images.length > 0 ? await this.loadImageText(message) : undefined;
-    const documentText = await this.loadRecentDocuments(message);
+    const media = await this.loadMediaContext(message);
+    const images = media.images;
+    const ocrText = media.ocrText;
+    const documentText = media.documents;
     const responsibility =
       message.chat.kind === "group"
         ? (this.options.responsibilityFor?.(message.chat.id) ?? "")
@@ -533,6 +538,7 @@ export class ReplyService {
       workspaceDocs: project.workspaceDocs?.length ?? 0,
       hasDmContext: Boolean(dmContext),
       dmPreferences: dmContext?.preferences?.length ?? 0,
+      mediaClusterMessages: media.clusterIds.length,
       truncated:
         documentText?.includes("[已截断") ||
         quotedChain.some((line) => line.includes("[已截断")) ||
@@ -685,6 +691,167 @@ export class ReplyService {
         [],
       );
     }
+  }
+
+  private async loadMediaContext(message: IncomingMessage): Promise<{
+    images: PromptAttachment[];
+    ocrText?: string;
+    documents?: string;
+    clusterIds: string[];
+  }> {
+    const currentImages = await this.loadImages(message);
+    const currentOcr = currentImages.length > 0 ? await this.loadImageText(message) : undefined;
+    const currentFiles = await this.loadFilesFrom(
+      message.messageId,
+      message.attachments ?? [],
+      2,
+    );
+    const candidates = await this.collectMediaCandidates(message);
+    if (candidates.length === 0) {
+      return {
+        images: currentImages,
+        ...(currentOcr ? { ocrText: currentOcr } : {}),
+        ...(currentFiles.length > 0 ? { documents: currentFiles.join("\n\n---\n\n") } : {}),
+        clusterIds: [],
+      };
+    }
+    const decision = await selectMediaCluster(this.options.llm, message, candidates, {
+      windowSeconds: this.options.config.context.mediaClusterWindowSeconds ?? 300,
+      maxCandidates: this.options.config.context.mediaClusterMaxCandidates ?? 8,
+    });
+    if (decision.usedFallback || decision.selectedIds.length === 0) {
+      return {
+        images: currentImages,
+        ...(currentOcr ? { ocrText: currentOcr } : {}),
+        ...(currentFiles.length > 0 ? { documents: currentFiles.join("\n\n---\n\n") } : {}),
+        clusterIds: [],
+      };
+    }
+    const selected = new Set(decision.selectedIds);
+    const selectedMessages = this.options.chatContext
+      .recent(`${message.platform}:${message.chat.id}`, 50, message.messageId)
+      .filter((item: ContextMessage) => selected.has(item.messageId));
+    const images = [...currentImages];
+    const ocrParts: string[] = currentOcr ? [currentOcr] : [];
+    const documents = [...currentFiles];
+    for (const item of selectedMessages) {
+      for (const attachment of item.attachments ?? []) {
+        if (attachment.kind === "image" && attachment.key && images.length < 2) {
+          try {
+            const resource = await this.options.platform.fetchResource?.(
+              item.messageId,
+              attachment.key,
+              "image",
+            );
+            if (!resource || resource.data.length > 3 * 1024 * 1024) continue;
+            images.push({
+              mime: resource.mime,
+              url: `data:${resource.mime};base64,${resource.data.toString("base64")}`,
+              ...(attachment.name ? { filename: attachment.name } : {}),
+            });
+            const text = await ocrImage(resource.data, resource.mime);
+            if (text) ocrParts.push(`[${item.messageId}] ${text}`);
+          } catch (error) {
+            this.options.logger.warn("failed to load clustered image", {
+              messageId: item.messageId,
+              error: toErrorMessage(error),
+            });
+          }
+        }
+      }
+      const files = await this.loadFilesFrom(item.messageId, item.attachments ?? [], 2);
+      documents.push(...files);
+    }
+    return {
+      images,
+      ...(ocrParts.length > 0 ? { ocrText: clip(ocrParts.join("\n\n---\n\n"), 6000, "OCR") } : {}),
+      ...(documents.length > 0
+        ? { documents: documents.slice(0, 2).join("\n\n---\n\n") }
+        : {}),
+      clusterIds: [...selected],
+    };
+  }
+
+  private async collectMediaCandidates(message: IncomingMessage): Promise<MediaClusterCandidate[]> {
+    const windowMs = (this.options.config.context.mediaClusterWindowSeconds ?? 300) * 1000;
+    const max = this.options.config.context.mediaClusterMaxCandidates ?? 8;
+    const recent = this.options.chatContext.recent(
+      `${message.platform}:${message.chat.id}`,
+      50,
+      message.messageId,
+    );
+    const candidates: MediaClusterCandidate[] = [];
+    for (const item of recent) {
+      if (item.at >= message.createdAt) continue;
+      if (item.at < message.createdAt - windowMs) continue;
+      if (item.senderId !== message.sender.id) continue;
+      if (!(item.attachments ?? []).some((attachment) => attachment.kind === "image" || attachment.kind === "file")) {
+        continue;
+      }
+      const interleavedSenders = [
+        ...new Set(
+          recent
+            .filter((other) => other.at > item.at && other.at < message.createdAt && other.senderId !== message.sender.id)
+            .map((other) => other.senderName ?? other.senderId),
+        ),
+      ];
+      const ocrParts: string[] = [];
+      for (const attachment of item.attachments ?? []) {
+        if (attachment.kind !== "image" || !attachment.key) continue;
+        try {
+          const resource = await this.options.platform.fetchResource?.(
+            item.messageId,
+            attachment.key,
+            "image",
+          );
+          if (!resource || resource.data.length > 3 * 1024 * 1024) continue;
+          const text = await ocrImage(resource.data, resource.mime);
+          if (text) ocrParts.push(text);
+        } catch (error) {
+          this.options.logger.warn("failed to OCR media candidate", {
+            messageId: item.messageId,
+            error: toErrorMessage(error),
+          });
+        }
+      }
+      candidates.push({
+        messageId: item.messageId,
+        senderId: item.senderId,
+        ...(item.senderName ? { senderName: item.senderName } : {}),
+        text: item.text,
+        ...(ocrParts.length > 0 ? { ocr: clip(ocrParts.join("\n\n"), 1200, "候选图片 OCR") } : {}),
+        at: item.at,
+        attachments: item.attachments ?? [],
+        interleavedSenders,
+      });
+    }
+    return candidates.slice(-max);
+  }
+
+  private async loadFilesFrom(
+    messageId: string,
+    attachments: NonNullable<IncomingMessage["attachments"]>,
+    max: number,
+  ): Promise<string[]> {
+    const platform = this.options.platform;
+    if (!platform.fetchResource) return [];
+    const loaded: string[] = [];
+    for (const attachment of attachments) {
+      if (attachment.kind !== "file" || !attachment.key) continue;
+      try {
+        const resource = await platform.fetchResource(messageId, attachment.key, "file");
+        if (resource.data.length > 8 * 1024 * 1024) continue;
+        const text = await extractDocumentText(resource.data, resource.mime, attachment.name);
+        if (text) loaded.push(`${attachment.name ? `${attachment.name}\n` : ""}${text.slice(0, 8_000)}`);
+      } catch (error) {
+        this.options.logger.warn("failed to load clustered file", {
+          messageId,
+          error: toErrorMessage(error),
+        });
+      }
+      if (loaded.length >= max) break;
+    }
+    return loaded;
   }
 
   private async loadImageText(message: IncomingMessage): Promise<string | undefined> {

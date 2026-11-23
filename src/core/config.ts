@@ -197,6 +197,8 @@ const ContextSchema = z
     burstMaxMessages: z.number().int().min(1).max(20).default(5),
     burstMaxChars: z.number().int().min(100).max(20000).default(4000),
     burstGrouping: z.boolean().default(true),
+    mediaClusterWindowSeconds: z.number().int().min(30).max(3600).optional(),
+    mediaClusterMaxCandidates: z.number().int().min(1).max(20).optional(),
   })
   .default({});
 

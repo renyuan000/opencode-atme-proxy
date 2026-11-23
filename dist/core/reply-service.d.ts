@@ -121,6 +121,9 @@ export declare class ReplyService {
     draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth, unified?: boolean): Promise<string>;
     private webMode;
     private runReplyWorker;
+    private loadMediaContext;
+    private collectMediaCandidates;
+    private loadFilesFrom;
     private loadImageText;
     private loadRecentHistory;
     private loadQuotedChain;

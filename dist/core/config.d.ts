@@ -753,6 +753,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         burstMaxMessages: z.ZodDefault<z.ZodNumber>;
         burstMaxChars: z.ZodDefault<z.ZodNumber>;
         burstGrouping: z.ZodDefault<z.ZodBoolean>;
+        mediaClusterWindowSeconds: z.ZodOptional<z.ZodNumber>;
+        mediaClusterMaxCandidates: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         enabled: boolean;
         maxCharsPerMessage: number;
@@ -772,6 +774,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMediaPlaceholders?: boolean | undefined;
         storeAllGroupMessages?: boolean | undefined;
         storeOwnerGroup?: boolean | undefined;
+        mediaClusterWindowSeconds?: number | undefined;
+        mediaClusterMaxCandidates?: number | undefined;
     }, {
         enabled?: boolean | undefined;
         maxCharsPerMessage?: number | undefined;
@@ -791,6 +795,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         burstMaxMessages?: number | undefined;
         burstMaxChars?: number | undefined;
         burstGrouping?: boolean | undefined;
+        mediaClusterWindowSeconds?: number | undefined;
+        mediaClusterMaxCandidates?: number | undefined;
     }>>;
     evidence: z.ZodOptional<z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
@@ -1257,6 +1263,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         storeMediaPlaceholders?: boolean | undefined;
         storeAllGroupMessages?: boolean | undefined;
         storeOwnerGroup?: boolean | undefined;
+        mediaClusterWindowSeconds?: number | undefined;
+        mediaClusterMaxCandidates?: number | undefined;
     };
     memory: {
         enabled: boolean;
@@ -1535,6 +1543,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         burstMaxMessages?: number | undefined;
         burstMaxChars?: number | undefined;
         burstGrouping?: boolean | undefined;
+        mediaClusterWindowSeconds?: number | undefined;
+        mediaClusterMaxCandidates?: number | undefined;
     } | undefined;
     evidence?: {
         enabled?: boolean | undefined;
