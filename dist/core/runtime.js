@@ -433,6 +433,7 @@ export class ProxyRuntime {
             logger: this.logger.child("task"),
             readOnlyPermission: READ_ONLY_PERMISSION,
             conversationIdFor: (platform, chatId) => this.conversationIdFor(platform, chatId, "group"),
+            loadAttachments: (task) => this.loadTaskAttachments(task),
             resolveProject: async (chatId) => {
                 const project = await this.resolveProject(chatId);
                 return {
@@ -1752,6 +1753,37 @@ export class ProxyRuntime {
     }
     handlePolledBatch(messages) {
         return this.scanService.handlePolledBatch(messages);
+    }
+    async loadTaskAttachments(task) {
+        const platform = this.options.platform;
+        if (!platform.fetchResource)
+            return [];
+        const messageId = task.messageIds[task.messageIds.length - 1] ?? task.messageIds[0];
+        if (!messageId)
+            return [];
+        const images = [];
+        for (const attachment of task.attachments ?? []) {
+            if (attachment.kind !== "image" || !attachment.key)
+                continue;
+            try {
+                const resource = await platform.fetchResource(messageId, attachment.key, "image");
+                if (resource.data.length > 3 * 1024 * 1024)
+                    continue;
+                images.push({
+                    mime: resource.mime,
+                    url: `data:${resource.mime};base64,${resource.data.toString("base64")}`,
+                    ...(attachment.name ? { filename: attachment.name } : {}),
+                });
+            }
+            catch (error) {
+                this.logger.warn("failed to load task image attachment", {
+                    taskId: task.id,
+                    messageId,
+                    error: toErrorMessage(error),
+                });
+            }
+        }
+        return images;
     }
     async analyzeFile(message, signal) {
         const style = detectReplyStyle(message, this.replyOptions);

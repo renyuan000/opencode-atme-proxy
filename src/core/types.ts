@@ -116,6 +116,7 @@ export interface TaskRecord {
   requester: ActorRef;
   title: string;
   excerpt: string;
+  attachments?: AttachmentRef[];
   project?: string;
   deadline?: number;
   keywords: string[];

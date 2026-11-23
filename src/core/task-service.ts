@@ -6,6 +6,7 @@ import type { Logger } from "./logger.js";
 import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
+import type { PromptAttachment } from "./opencode.js";
 import type {
   AnalysisVerification,
   Classification,
@@ -35,6 +36,7 @@ export interface TaskServiceOptions {
   logger: Logger;
   readOnlyPermission: SessionPermission[];
   conversationIdFor?(platform: string, chatId: string): string;
+  loadAttachments?(task: TaskRecord): Promise<PromptAttachment[]>;
   memory: MemoryStore;
   resolveProject(chatId: string): Promise<{
     worktree: string;
@@ -164,6 +166,7 @@ export class TaskService {
       requester: message.sender,
       title,
       excerpt: truncate(message.text, 500),
+      ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       ...(taskHint?.project ? { project: taskHint.project } : {}),
       ...(taskHint?.deadline ? { deadline: taskHint.deadline } : {}),
       keywords: this.options.config.filter.profile.keywords.filter((keyword) =>
@@ -233,6 +236,7 @@ export class TaskService {
     task: TaskRecord,
     signal?: AbortSignal,
   ): Promise<TaskAnalysis> {
+    const attachments = (await this.options.loadAttachments?.(task)) ?? [];
     const workspaceConfig = this.options.config.platforms.feishu.groups.find(
       (group) => group.chatId === task.chatId,
     )?.workspace;
@@ -247,6 +251,7 @@ export class TaskService {
         signal,
         project.workspaceProjects,
         project.workspaceDocs,
+        attachments,
       );
     }
     const repo = this.options.config.repos[0];
@@ -255,7 +260,7 @@ export class TaskService {
       if (!project.resolved) {
         return this.missingProjectAnalysis(task);
       }
-      return this.buildAnalysisInWorktree(task, project.worktree, signal);
+      return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments);
     }
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
@@ -284,6 +289,7 @@ export class TaskService {
       },
       prompt,
       signal,
+      attachments,
     );
     return parseAnalysis(raw, task, repo.id);
   }
@@ -294,6 +300,7 @@ export class TaskService {
     signal?: AbortSignal,
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>,
     workspaceDocs?: string[],
+    attachments: PromptAttachment[] = [],
   ): Promise<TaskAnalysis> {
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
@@ -305,6 +312,9 @@ export class TaskService {
       context: ctx,
       ...(workspaceProjects ? { workspaceProjects } : {}),
       ...(workspaceDocs ? { workspaceDocs } : {}),
+      ...(task.attachments?.length
+        ? { attachmentNames: task.attachments.map((item) => item.name ?? item.kind) }
+        : {}),
     });
     const analysisAgent =
       this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;
@@ -326,6 +336,7 @@ export class TaskService {
       },
       prompt,
       signal,
+      attachments,
     );
     return parseAnalysis(raw, task, workspaceProjects?.[0]?.name ?? "workspace");
   }

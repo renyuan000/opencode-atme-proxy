@@ -130,6 +130,7 @@ export declare class ProxyRuntime {
     private handleBotMention;
     private handleMeMention;
     private handlePolledBatch;
+    private loadTaskAttachments;
     private analyzeFile;
     private isFileRelevant;
     private handleGroupScan;

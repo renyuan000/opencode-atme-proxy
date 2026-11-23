@@ -5,6 +5,7 @@ import type { Logger } from "./logger.js";
 import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
+import type { PromptAttachment } from "./opencode.js";
 import type { Classification, IncomingMessage, TaskAnalysis, TaskRecord } from "./types.js";
 export interface TaskServiceOptions {
     config: AppConfig;
@@ -18,6 +19,7 @@ export interface TaskServiceOptions {
     logger: Logger;
     readOnlyPermission: SessionPermission[];
     conversationIdFor?(platform: string, chatId: string): string;
+    loadAttachments?(task: TaskRecord): Promise<PromptAttachment[]>;
     memory: MemoryStore;
     resolveProject(chatId: string): Promise<{
         worktree: string;

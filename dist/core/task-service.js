@@ -96,6 +96,7 @@ export class TaskService {
             requester: message.sender,
             title,
             excerpt: truncate(message.text, 500),
+            ...(message.attachments?.length ? { attachments: message.attachments } : {}),
             ...(taskHint?.project ? { project: taskHint.project } : {}),
             ...(taskHint?.deadline ? { deadline: taskHint.deadline } : {}),
             keywords: this.options.config.filter.profile.keywords.filter((keyword) => message.text.includes(keyword)),
@@ -158,13 +159,14 @@ export class TaskService {
         void this.options.memory.flush();
     }
     async buildAnalysis(task, signal) {
+        const attachments = (await this.options.loadAttachments?.(task)) ?? [];
         const workspaceConfig = this.options.config.platforms.feishu.groups.find((group) => group.chatId === task.chatId)?.workspace;
         if (workspaceConfig) {
             const project = await this.options.resolveProject(task.chatId);
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs, attachments);
         }
         const repo = this.options.config.repos[0];
         if (!repo) {
@@ -172,7 +174,7 @@ export class TaskService {
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments);
         }
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
@@ -196,10 +198,10 @@ export class TaskService {
             ...(this.options.config.analysis.model
                 ? { model: this.options.config.analysis.model }
                 : {}),
-        }, prompt, signal);
+        }, prompt, signal, attachments);
         return parseAnalysis(raw, task, repo.id);
     }
-    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs) {
+    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs, attachments = []) {
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
             task,
@@ -210,6 +212,9 @@ export class TaskService {
             context: ctx,
             ...(workspaceProjects ? { workspaceProjects } : {}),
             ...(workspaceDocs ? { workspaceDocs } : {}),
+            ...(task.attachments?.length
+                ? { attachmentNames: task.attachments.map((item) => item.name ?? item.kind) }
+                : {}),
         });
         const analysisAgent = this.options.config.opencode.analysisAgent ?? this.options.config.opencode.agent;
         const raw = await this.options.sessionManager.runWorker({
@@ -226,7 +231,7 @@ export class TaskService {
             ...(this.options.config.analysis.model
                 ? { model: this.options.config.analysis.model }
                 : {}),
-        }, prompt, signal);
+        }, prompt, signal, attachments);
         return parseAnalysis(raw, task, workspaceProjects?.[0]?.name ?? "workspace");
     }
     async verifyAnalysis(task, analysis, signal) {

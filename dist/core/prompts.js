@@ -17,6 +17,9 @@ export function buildAnalysisPrompt(input) {
         ...(input.workspaceDocs?.length
             ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...input.workspaceDocs.map((path) => `- ${path}`)]
             : []),
+        ...(input.attachmentNames?.length
+            ? ["任务附带图片/文件（已作为附件提供，先查看再分析）：", ...input.attachmentNames.map((name) => `- ${name}`)]
+            : []),
         "任务：",
         JSON.stringify({
             title: task.title,
