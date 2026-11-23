@@ -100,8 +100,9 @@ A 解决“同一句话被拆成几条发”，B 解决“隔很久补充同一�
       group.json                  群身份、项目、职责
       group-knowledge.json          初始/持续演进的群画像
       group-knowledge-history.jsonl 群画像变更历史
-      chat-context.json           本群聊天上下文 / 7 天
+      chat-context.json           本群/私聊最近聊天窗口 / 7 天
       group-context.json          本群摘要
+      dm-context.json             私聊长期摘要/偏好/决策/目标（仅私聊）
       memory.json                 本群记忆兼容文件
       document-cache.json         在线文档正文缓存（7 天）
       document-refs.json          在线文档 URL/来源记录（90 天）

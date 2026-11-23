@@ -710,13 +710,13 @@ awaiting_approval → rejected / expired
 3. 批量筛选按群串行（`scanConcurrency=1`），避免同一群上下文重复、token 浪费。
 4. 队列有界（`maxQueue`），满时拒绝并告警，不无限堆积。
 5. 优先级：@消息 > 批量筛选；等待超过 30s 的任务逐步提升优先级，避免饿死。
-6. 每群一个 coordinator 会话做锚点；reply/analysis/review 每群持久 worker，execution 每任务临时 child（`parentID`）；群回复和批量筛选用临时 child，用完即删。
+6. 每个 conversation（群/私聊）一个 coordinator 锚点；reply/analysis/review 每个 conversation 持久 worker，execution 每任务临时 child（`parentID`）；不设全局 LLM 主 session。
 7. 单条 @ 超时（`mentionTimeoutMs`，默认 120s，需覆盖短聚合等待）后取消并回复失败提示；不拖垮其他消息。
 8. 同一 `message_id` 并发到达只处理一次（in-flight + 持久化去重）。
 9. 发送侧使用 token bucket 限流，避免触发平台频率限制。
 10. 长任务超过 `ackDelayMs`（默认 2s）先回「收到，处理中…」，完成后回最终结果。
 
-> 本条描述当前 v0.2 实现；v1.3 目标（主 session / 群会话 / 角色 worker）见 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 12 节。
+> 2026-11-20 修订：改为 conversation 模型，群/私聊各自锚点，不设全局主 session；详见 `docs/SESSION-ARCHITECTURE-REVIEW.md` 第 12 节。
 
 **验收标准**：
 
