@@ -15,6 +15,7 @@ import type {
   TaskRecord,
 } from "./types.js";
 import { assertTransition, canTransition } from "./task-state.js";
+import { sha256 } from "./util.js";
 
 export interface ApprovalServiceOptions {
   config: AppConfig;
@@ -169,15 +170,33 @@ export class ApprovalService {
       }
       await this.options.sentReplies.markRecalled(record.id);
       const task = await this.options.tasks.findByMessageId(record.sourceMessageId);
-      if (task && task.state === "done") {
+      if (task) {
         task.state = "awaiting_approval";
         task.updatedAt = Date.now();
         await this.options.tasks.save(task);
+        const draft = record.text.replace(/^（助手代答）\s*/, "").trim();
+        const planHash = sha256(
+          `${task.id}:${record.sourceMessageId}:concise:${draft}`,
+        ).slice(0, 16);
+        this.options.pending.set(`${task.id}:reply`, {
+          platform: record.platform,
+          taskId: task.id,
+          planHash,
+          analysisVersion: 1,
+          actorId: task.requester.id,
+          mode: "reply",
+          chatId: record.chatId,
+          sourceMessageId: record.sourceMessageId,
+          style: "concise",
+          draft,
+          createdAt: Date.now(),
+        });
+        await this.options.pending.flush();
         await this.options.sendToApprover(
           `已撤回机器人回复，原任务已重新打开：
-群：${task.chatName ?? task.chatId}
+群：${this.groupLabel(task.chatId)}
 ${task.title}
-可以重新回复、只分析，或等我重新请示后再回复。`,
+草稿已放回待审批：/改写 <新内容>、/重写 <要求>，或 /发送 重新发送。`,
         );
       }
       await this.options.audit.append({
@@ -365,7 +384,7 @@ ${task.title}
     };
   }
 
-  private async resolveSenderLabel(value: string): Promise<string> {
+  private async resolveSenderLabel(value: string, sourceMessageId?: string): Promise<string> {
     if (!/^ou_/.test(value)) return value;
     const cached = this.nameCache.get(value);
     if (cached) return cached;
@@ -376,7 +395,19 @@ ${task.title}
         return name;
       }
     } catch {
-      // Fall back to the open_id when contact lookup is unavailable.
+      // Try the source message below, then keep the open_id as last resort.
+    }
+    if (sourceMessageId) {
+      try {
+        const message = await this.options.platform.fetchMessage?.(sourceMessageId);
+        const name = message?.sender.displayName;
+        if (name) {
+          this.nameCache.set(value, name);
+          return name;
+        }
+      } catch {
+        // Keep the open_id as last resort.
+      }
     }
     return value;
   }
@@ -393,8 +424,13 @@ ${task.title}
       pending.push({
         taskId: card.taskId,
         planHash: card.planHash,
-        chatLabel: task?.chatName ?? this.groupLabel(card.chatId),
-        senderLabel: withNames ? await this.resolveSenderLabel(sender) : sender,
+        chatLabel:
+          task?.chatName && task.chatName !== task.chatId
+            ? task.chatName
+            : this.groupLabel(task?.chatId ?? card.chatId),
+        senderLabel: withNames
+          ? await this.resolveSenderLabel(sender, card.sourceMessageId)
+          : sender,
         draft: card.draft ?? "（无草稿）",
         excerpt: task?.excerpt ?? "",
         createdAt: card.createdAt,
@@ -404,8 +440,13 @@ ${task.title}
     for (const item of this.options.sentReplies.listRecallable(8)) {
       sent.push({
         id: item.id,
-        chatLabel: item.chatName ?? this.groupLabel(item.chatId),
-        senderLabel: withNames ? await this.resolveSenderLabel(item.senderLabel) : item.senderLabel,
+        chatLabel:
+          item.chatName && item.chatName !== item.chatId
+            ? item.chatName
+            : this.groupLabel(item.chatId),
+        senderLabel: withNames
+          ? await this.resolveSenderLabel(item.senderLabel, item.sourceMessageId)
+          : item.senderLabel,
         text: item.text,
         sourceText: item.sourceText,
         sentAt: item.sentAt,
