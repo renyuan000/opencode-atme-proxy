@@ -174,24 +174,7 @@ export class ApprovalService {
         task.state = "awaiting_approval";
         task.updatedAt = Date.now();
         await this.options.tasks.save(task);
-        const draft = record.text.replace(/^（助手代答）\s*/, "").trim();
-        const planHash = sha256(
-          `${task.id}:${record.sourceMessageId}:concise:${draft}`,
-        ).slice(0, 16);
-        this.options.pending.set(`${task.id}:reply`, {
-          platform: record.platform,
-          taskId: task.id,
-          planHash,
-          analysisVersion: 1,
-          actorId: task.requester.id,
-          mode: "reply",
-          chatId: record.chatId,
-          sourceMessageId: record.sourceMessageId,
-          style: "concise",
-          draft,
-          createdAt: Date.now(),
-        });
-        await this.options.pending.flush();
+        await this.restorePendingDraft(task, record);
         await this.options.sendToApprover(
           `已撤回机器人回复，原任务已重新打开：
 群：${this.groupLabel(task.chatId)}
@@ -412,7 +395,50 @@ ${task.title}
     return value;
   }
 
+  private async restorePendingDraft(task: TaskRecord, record: { text: string; platform: string; chatId: string; sourceMessageId: string }): Promise<void> {
+    if (this.options.pending.get(`${task.id}:reply`) || this.options.pending.findForTask(task.id)) {
+      return;
+    }
+    const draft = record.text.replace(/^（助手代答）\s*/, "").trim();
+    const planHash = sha256(
+      `${task.id}:${record.sourceMessageId}:concise:${draft}`,
+    ).slice(0, 16);
+    this.options.pending.set(`${task.id}:reply`, {
+      platform: record.platform,
+      taskId: task.id,
+      planHash,
+      analysisVersion: 1,
+      actorId: task.requester.id,
+      mode: "reply",
+      chatId: record.chatId,
+      sourceMessageId: record.sourceMessageId,
+      style: "concise",
+      draft,
+      createdAt: Date.now(),
+    });
+    await this.options.pending.flush();
+  }
+
+  private async restoreRecalledDrafts(): Promise<void> {
+    let changed = false;
+    for (const record of this.options.sentReplies.list(50)) {
+      if (record.status !== "recalled") continue;
+      const task = await this.options.tasks.findByMessageId(record.sourceMessageId);
+      if (!task) continue;
+      if (this.options.pending.get(`${task.id}:reply`) || this.options.pending.findForTask(task.id)) {
+        continue;
+      }
+      task.state = "awaiting_approval";
+      task.updatedAt = Date.now();
+      await this.options.tasks.save(task);
+      await this.restorePendingDraft(task, record);
+      changed = true;
+    }
+    if (changed) await this.options.pending.flush();
+  }
+
   private async replyManagementView(withNames = true): Promise<ReplyManagementView> {
+    await this.restoreRecalledDrafts();
     const pending: PendingReplySummary[] = [];
     const cards = this.options.pending
       .snapshot()

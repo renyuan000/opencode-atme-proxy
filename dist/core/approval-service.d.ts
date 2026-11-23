@@ -41,6 +41,8 @@ export declare class ApprovalService {
     private groupLabel;
     private replyManagementResult;
     private resolveSenderLabel;
+    private restorePendingDraft;
+    private restoreRecalledDrafts;
     private replyManagementView;
     private approveTask;
     private rejectTask;
