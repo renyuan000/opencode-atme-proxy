@@ -436,7 +436,7 @@ export class ProxyRuntime {
             logger: this.logger.child("task"),
             readOnlyPermission: READ_ONLY_PERMISSION,
             conversationIdFor: (platform, chatId) => this.conversationIdFor(platform, chatId, "group"),
-            loadAttachments: (task) => this.loadTaskAttachments(task),
+            loadAttachments: (task) => this.replyService.loadTaskAttachments(task),
             resolveProject: async (chatId) => {
                 const project = await this.resolveProject(chatId);
                 return {

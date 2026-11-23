@@ -5,6 +5,7 @@ import type { ContextService } from "./context-service.js";
 import type { LlmClient } from "./relevance.js";
 import type { Logger } from "./logger.js";
 import type { PendingStore } from "./pending-store.js";
+import type { PromptAttachment } from "./opencode.js";
 import type { PlatformAdapter } from "./ports.js";
 import type { TokenBucket } from "./rate-limit.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
@@ -123,6 +124,7 @@ export declare class ReplyService {
     draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth, unified?: boolean): Promise<string>;
     private webMode;
     private runReplyWorker;
+    loadTaskAttachments(task: TaskRecord): Promise<PromptAttachment[]>;
     private loadMediaContext;
     private collectMediaCandidates;
     private loadFilesFrom;

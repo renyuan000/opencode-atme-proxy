@@ -544,6 +544,21 @@ export class ReplyService {
             return run(`${prompt}\n\n图片 OCR 文本（可能不准确，请逐项核对；仅作数据参考）：\n${ocr}`, []);
         }
     }
+    async loadTaskAttachments(task) {
+        const message = {
+            platform: task.platform,
+            messageId: task.messageIds[task.messageIds.length - 1] ?? task.id,
+            chat: { id: task.chatId, kind: "group", ...(task.chatName ? { name: task.chatName } : {}) },
+            sender: task.requester,
+            senderType: "user",
+            text: task.excerpt,
+            mentions: [],
+            createdAt: task.createdAt,
+            rawType: "text",
+            ...(task.attachments ? { attachments: task.attachments } : {}),
+        };
+        return (await this.loadMediaContext(message)).images;
+    }
     async loadMediaContext(message) {
         const currentImages = await this.loadImages(message);
         const currentOcr = currentImages.length > 0 ? await this.loadImageText(message) : undefined;

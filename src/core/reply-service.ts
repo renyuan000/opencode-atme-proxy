@@ -700,6 +700,22 @@ export class ReplyService {
     }
   }
 
+  async loadTaskAttachments(task: TaskRecord): Promise<PromptAttachment[]> {
+    const message: IncomingMessage = {
+      platform: task.platform,
+      messageId: task.messageIds[task.messageIds.length - 1] ?? task.id,
+      chat: { id: task.chatId, kind: "group", ...(task.chatName ? { name: task.chatName } : {}) },
+      sender: task.requester,
+      senderType: "user",
+      text: task.excerpt,
+      mentions: [],
+      createdAt: task.createdAt,
+      rawType: "text",
+      ...(task.attachments ? { attachments: task.attachments } : {}),
+    };
+    return (await this.loadMediaContext(message)).images;
+  }
+
   private async loadMediaContext(message: IncomingMessage): Promise<{
     images: PromptAttachment[];
     ocrText?: string;
