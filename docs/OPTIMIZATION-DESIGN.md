@@ -1136,3 +1136,14 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - owner-target 文件 key
 
 下一步需要做这些目录/文件 key 的带迁移改造，避免旧数据丢失。
+
+
+### 27. 群消息摘要体验
+
+群消息分析私聊：
+
+- 成员名优先取 `sender.displayName`，缺失时用 `fetchMessage(with_sender_name)` 或 `fetchUserName`
+- 正文使用引用式展示，不再直接展示 `ou_...` / `message_id`
+- 相关原消息通过飞书 `messages/:message_id/forward` 转发到 owner 私聊
+- 转发失败或平台不支持时保留文本摘要
+- 最多转发 5 条相关原消息
