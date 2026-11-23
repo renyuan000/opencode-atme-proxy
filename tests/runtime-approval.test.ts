@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,7 +8,7 @@ import type { LoadedConfig } from "../src/core/config.js";
 import type { PlatformAdapter } from "../src/core/ports.js";
 import type { CapabilitySet, IncomingMessage, OutboundMessage, OutboundTarget, ApprovalView, PlatformAction, PlatformActionResult } from "../src/core/types.js";
 import type { OpenCodeBridge } from "../src/core/opencode.js";
-import { readGroupStateFile, writeGroupStateFile } from "./group-state.js";
+import { ensureTestGroup, readGroupStateFile, writeGroupStateFile } from "./group-state.js";
 
 function cfg(stateDir: string, autoReply = false, filterEnabled = false): LoadedConfig {
   return {
@@ -364,6 +364,63 @@ test("auto reply on mention sends without approval when enabled", async () => {
     assert.equal(adapter.sent.length, 0);
     assert.equal(adapter.replies.length, 1);
     assert.match(adapter.replies[0]!, /助手代答/);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("owner dm injects durable context and reuses conversation-bound worker", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-context-"));
+  try {
+    const groupDir = await ensureTestGroup(dir, "dm", "私聊");
+    await writeFile(
+      join(groupDir, "dm-context.json"),
+      JSON.stringify({
+        version: 1,
+        conversations: {
+          dm: {
+            chatId: "dm",
+            summary: "owner 偏好先给结论",
+            preferences: ["先结论后展开"],
+            decisions: ["默认不自动发群"],
+            ongoingGoals: ["长期维护资产测绘群"],
+            openQuestions: [],
+            lastMessageAt: 0,
+            updatedAt: 1,
+            sessionEpoch: 2,
+          },
+        },
+      }),
+    );
+    const loaded = cfg(dir);
+    loaded.config.directChat = { enabled: true, onlyOwner: true };
+    loaded.config.subagents.enabled = true;
+    const adapter = new Fake();
+    const bridge = new Bridge();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge, loaded });
+    await runtime.start();
+    await runtime.ingest({
+      platform: "feishu",
+      messageId: "dm-1",
+      chat: { id: "dm", kind: "direct" },
+      sender: { platform: "feishu", id: "me", displayName: "任元" },
+      senderType: "user",
+      text: "以后先给结论",
+      mentions: [],
+      createdAt: Date.now(),
+      rawType: "text",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.ok(bridge.texts.some((text) => text.includes("私聊长期上下文")));
+    assert.ok(bridge.texts.some((text) => text.includes("owner 偏好先给结论")));
+    const sessions = JSON.parse(await readFile(join(groupDir, "sessions.json"), "utf8"));
+    assert.ok(
+      Object.keys(sessions.sessions).some((key) =>
+        key.startsWith("worker:reply:feishu:cli:dm:dm:e2"),
+      ),
+    );
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });
