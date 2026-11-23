@@ -80,3 +80,30 @@ test("session keys move to a new epoch without reusing old workers", async () =>
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("session store preserves group and worker kinds after reload", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-session-kinds-"));
+  try {
+    const file = join(dir, "sessions.json");
+    const store = new SessionStore(file);
+    await store.load();
+    store.set("group:feishu:chat", "group-1", "/repo", { kind: "group", chatId: "chat" });
+    store.set("worker:reply:feishu:chat", "worker-1", "/repo", {
+      kind: "worker",
+      chatId: "chat",
+    });
+    store.set("coordinator:feishu:chat", "coord-1", "/repo", {
+      kind: "coordinator",
+      chatId: "chat",
+    });
+    await store.flush();
+
+    const reloaded = new SessionStore(file);
+    await reloaded.load();
+    assert.equal(reloaded.get("group:feishu:chat")?.kind, "group");
+    assert.equal(reloaded.get("worker:reply:feishu:chat")?.kind, "worker");
+    assert.equal(reloaded.get("coordinator:feishu:chat")?.kind, "coordinator");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

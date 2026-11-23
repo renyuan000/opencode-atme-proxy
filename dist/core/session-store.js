@@ -23,7 +23,12 @@ export class SessionStore {
                             : typeof value.updatedAt === "number"
                                 ? value.updatedAt
                                 : 0,
-                        kind: value.kind === "child" ? "child" : "coordinator",
+                        kind: value.kind === "coordinator" ||
+                            value.kind === "group" ||
+                            value.kind === "worker" ||
+                            value.kind === "child"
+                            ? value.kind
+                            : "coordinator",
                         ...(typeof value.taskId === "string" ? { taskId: value.taskId } : {}),
                         ...(typeof value.chatId === "string" ? { chatId: value.chatId } : {}),
                         ...(typeof value.archivedAt === "number" ? { archivedAt: value.archivedAt } : {}),
