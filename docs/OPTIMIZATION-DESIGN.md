@@ -1174,3 +1174,21 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
   }
 }
 ```
+
+
+### 29. 关键词与研发方向
+
+- 群画像记录产品方向、功能、依赖、术语。
+- 每个群可记录 owner 自己的研发方向和关键词。
+- 关键词命中只是强信号之一，不是唯一判定：
+  - 未命中关键词也可能相关
+  - 命中关键词也可能是转发、反讽或他人话题
+- 分诊 prompt 同时带入：
+  - group_direction
+  - owner_direction
+  - owner_keywords
+  - group_terms
+  - group_projects
+  - group_responsibility
+  - recent_history
+- 最终由 LLM 综合语义判断，不以关键词硬筛。

@@ -335,6 +335,10 @@ export class ReplyService {
                 groupProfile.features?.length ? `功能：${groupProfile.features.join("、")}` : "",
                 groupProfile.dependsOn?.length ? `依赖：${groupProfile.dependsOn.join("、")}` : "",
                 groupProfile.excludes?.length ? `排除：${groupProfile.excludes.join("、")}` : "",
+                groupProfile.ownerDirection ? `我的方向：${groupProfile.ownerDirection}` : "",
+                groupProfile.ownerKeywords?.length
+                    ? `我的关键词：${groupProfile.ownerKeywords.join("、")}`
+                    : "",
                 ...(groupTerms.length > 0
                     ? ["群术语表（本群定义优先于通用含义）：", ...groupTerms.map(([term, meaning]) => `- ${term} = ${meaning}`)]
                     : []),
@@ -401,6 +405,7 @@ export class ReplyService {
             hasResponsibility: Boolean(responsibility),
             hasGroupKnowledge: Boolean(groupProfile),
             groupTerms: groupTerms.length,
+            ownerKeywords: groupProfile?.ownerKeywords?.length ?? 0,
             sessionEpoch: groupProfile?.sessionEpoch ?? 1,
             workspace: Boolean(project.workspace),
             workspaceProjects: project.workspaceProjects?.length ?? 0,

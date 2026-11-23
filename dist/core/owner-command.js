@@ -10,6 +10,8 @@ const COMMANDS = {
     职责: "responsibility",
     工作空间: "workspace",
     workspace: "workspace",
+    方向: "direction",
+    关键词: "keywords",
     目标: "target",
     画像: "profile",
     帮助: "help",
@@ -20,7 +22,7 @@ export function parseOwnerCommand(text) {
     if (["/", "／", "?", "？", "/?", "／?", "/？", "／？"].includes(bare)) {
         return { command: "help", arg: "" };
     }
-    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|职责|工作空间|workspace|目标|画像|帮助|help)\s*([\s\S]*)$/i);
+    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|职责|工作空间|workspace|方向|关键词|目标|画像|帮助|help)\s*([\s\S]*)$/i);
     if (!match)
         return undefined;
     const token = match[1] ?? "";

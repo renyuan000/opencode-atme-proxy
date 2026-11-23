@@ -146,6 +146,16 @@ export declare const AppConfigSchema: z.ZodObject<{
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
                 }>>;
+                ownerFocus: z.ZodOptional<z.ZodObject<{
+                    summary: z.ZodDefault<z.ZodString>;
+                    keywords: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                }, "strip", z.ZodTypeAny, {
+                    summary: string;
+                    keywords: string[];
+                }, {
+                    summary?: string | undefined;
+                    keywords?: string[] | undefined;
+                }>>;
                 responsibility: z.ZodOptional<z.ZodDefault<z.ZodObject<{
                     summary: z.ZodDefault<z.ZodString>;
                     owns: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -188,6 +198,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
+                ownerFocus?: {
+                    summary: string;
+                    keywords: string[];
+                } | undefined;
                 responsibility?: {
                     summary: string;
                     owns: string[];
@@ -217,6 +231,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                     }[] | undefined;
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
+                } | undefined;
+                ownerFocus?: {
+                    summary?: string | undefined;
+                    keywords?: string[] | undefined;
                 } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
@@ -280,6 +298,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
+                ownerFocus?: {
+                    summary: string;
+                    keywords: string[];
+                } | undefined;
                 responsibility?: {
                     summary: string;
                     owns: string[];
@@ -340,6 +362,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
+                ownerFocus?: {
+                    summary?: string | undefined;
+                    keywords?: string[] | undefined;
+                } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
                     owns?: string[] | undefined;
@@ -397,6 +423,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                     docs: string[];
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
+                } | undefined;
+                ownerFocus?: {
+                    summary: string;
+                    keywords: string[];
                 } | undefined;
                 responsibility?: {
                     summary: string;
@@ -459,6 +489,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                     }[] | undefined;
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
+                } | undefined;
+                ownerFocus?: {
+                    summary?: string | undefined;
+                    keywords?: string[] | undefined;
                 } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
@@ -558,15 +592,15 @@ export declare const AppConfigSchema: z.ZodObject<{
         }, "strip", z.ZodTypeAny, {
             name: string;
             projects: string[];
-            role: string;
             keywords: string[];
+            role: string;
             excludeKeywords: string[];
             tasks: string[];
         }, {
             name?: string | undefined;
             projects?: string[] | undefined;
-            role?: string | undefined;
             keywords?: string[] | undefined;
+            role?: string | undefined;
             excludeKeywords?: string[] | undefined;
             tasks?: string[] | undefined;
         }>>;
@@ -584,8 +618,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         profile: {
             name: string;
             projects: string[];
-            role: string;
             keywords: string[];
+            role: string;
             excludeKeywords: string[];
             tasks: string[];
         };
@@ -607,8 +641,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         profile?: {
             name?: string | undefined;
             projects?: string[] | undefined;
-            role?: string | undefined;
             keywords?: string[] | undefined;
+            role?: string | undefined;
             excludeKeywords?: string[] | undefined;
             tasks?: string[] | undefined;
         } | undefined;
@@ -1096,8 +1130,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         profile: {
             name: string;
             projects: string[];
-            role: string;
             keywords: string[];
+            role: string;
             excludeKeywords: string[];
             tasks: string[];
         };
@@ -1180,6 +1214,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                     docs: string[];
                     root?: string | undefined;
                     autoDiscover?: boolean | undefined;
+                } | undefined;
+                ownerFocus?: {
+                    summary: string;
+                    keywords: string[];
                 } | undefined;
                 responsibility?: {
                     summary: string;
@@ -1404,6 +1442,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                     docs?: string[] | undefined;
                     autoDiscover?: boolean | undefined;
                 } | undefined;
+                ownerFocus?: {
+                    summary?: string | undefined;
+                    keywords?: string[] | undefined;
+                } | undefined;
                 responsibility?: {
                     summary?: string | undefined;
                     owns?: string[] | undefined;
@@ -1436,8 +1478,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         profile?: {
             name?: string | undefined;
             projects?: string[] | undefined;
-            role?: string | undefined;
             keywords?: string[] | undefined;
+            role?: string | undefined;
             excludeKeywords?: string[] | undefined;
             tasks?: string[] | undefined;
         } | undefined;

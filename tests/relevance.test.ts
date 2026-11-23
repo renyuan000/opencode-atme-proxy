@@ -138,12 +138,12 @@ test("classify batches, aggregates usage, and fills missing messages", async () 
     message("m3", "无关"),
   ]);
   assert.equal(items.length, 3);
-  assert.equal(stats.batches, 1);
-  assert.equal(stats.totalTokens, 15);
+  assert.equal(stats.batches, 2);
+  assert.equal(stats.totalTokens, 30);
   const byId = new Map(items.map((item) => [item.messageId, item]));
   assert.equal(byId.get("m1")?.actionability, "question");
   assert.equal(byId.get("m2")?.reason, "missing from model output");
-  assert.equal(byId.get("m3")?.reason, "not selected for filtering");
+  assert.equal(byId.get("m3")?.reason, "missing from model output");
 });
 
 test("empty keyword profile still sends plain messages to classification", () => {

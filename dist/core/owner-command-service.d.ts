@@ -24,6 +24,7 @@ export interface OwnerCommandServiceOptions {
     sendReplyManagementCard(): Promise<boolean>;
     setGroupResponsibility(arg: string): Promise<string>;
     manageWorkspace(arg: string): Promise<string>;
+    setOwnerFocus(arg: string, kind: "direction" | "keywords"): Promise<string>;
     listOwnerTargets(): string;
     selectOwnerTarget(arg: string): string;
     getGroupKnowledge(arg: string): Promise<string>;

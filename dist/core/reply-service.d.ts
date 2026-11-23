@@ -66,6 +66,8 @@ export interface ReplyServiceOptions {
         dependsOn?: string[];
         excludes?: string[];
         terms?: Record<string, string>;
+        ownerDirection?: string;
+        ownerKeywords?: string[];
         sessionEpoch?: number;
     } | undefined;
     documentCache?: {

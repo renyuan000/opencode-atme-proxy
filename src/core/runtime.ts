@@ -449,6 +449,7 @@ export class ProxyRuntime {
       sendReplyManagementCard: () => this.approvalService.sendReplyManagementCard(),
       setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
       manageWorkspace: (arg) => this.manageWorkspace(arg),
+      setOwnerFocus: (arg, kind) => this.setOwnerFocus(arg, kind),
       listOwnerTargets: () => this.listOwnerTargets(),
       selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
       getGroupKnowledge: (arg) => this.getGroupKnowledge(arg),
@@ -577,6 +578,8 @@ export class ProxyRuntime {
           dependsOn: profile.dependsOn,
           excludes: profile.excludes,
           terms: profile.terms,
+          ownerDirection: profile.ownerDirection,
+          ownerKeywords: profile.ownerKeywords,
           sessionEpoch: profile.sessionEpoch,
         };
       },
@@ -754,6 +757,14 @@ export class ProxyRuntime {
             ? [...(project.reference ?? []), ...(project.secondary ?? [])]
             : [],
           ...(responsibility ? { responsibility } : {}),
+          ...(inferred
+            ? {
+                direction: inferred.summary || inferred.product,
+                ownerDirection: inferred.ownerDirection,
+                ownerKeywords: inferred.ownerKeywords,
+                terms: inferred.terms,
+              }
+            : {}),
         };
       },
       logger: this.logger.child("relevance"),
@@ -881,10 +892,16 @@ export class ProxyRuntime {
       };
       const summary = explicit?.summary || existing?.summary || `[推断] ${product}`;
       const excludes = explicit?.excludes ?? existing?.excludes ?? [];
+      const ownerDirection = group.ownerFocus?.summary || existing?.ownerDirection || "";
+      const ownerKeywords = (group.ownerFocus?.keywords ?? []).length > 0
+        ? [...new Set(group.ownerFocus!.keywords)]
+        : (existing?.ownerKeywords ?? []);
       const semanticChanged = Boolean(
         existing &&
           (existing.product !== product ||
             existing.summary !== summary ||
+            existing.ownerDirection !== ownerDirection ||
+            JSON.stringify(existing.ownerKeywords) !== JSON.stringify(ownerKeywords) ||
             JSON.stringify(existing.features) !== JSON.stringify(features) ||
             JSON.stringify(existing.dependsOn) !== JSON.stringify([...new Set(dependencies)]) ||
             JSON.stringify(existing.excludes) !== JSON.stringify(excludes) ||
@@ -900,6 +917,8 @@ export class ProxyRuntime {
         dependsOn: [...new Set(dependencies)],
         excludes,
         terms,
+        ownerDirection,
+        ownerKeywords,
         sessionEpoch: (existing?.sessionEpoch ?? 1) + (semanticChanged ? 1 : 0),
         source: explicit ? "owner" : "inferred",
         confidence: explicit ? 1 : known.length > 0 ? 0.6 : 0.3,
@@ -1560,6 +1579,8 @@ export class ProxyRuntime {
           `产品：${profile.product}`,
           `摘要：${profile.summary}`,
           `功能：${profile.features.join("、") || "待补充"}`,
+          `我的方向：${profile.ownerDirection || "待补充"}`,
+          `我的关键词：${profile.ownerKeywords.join("、") || "待补充"}`,
           `依赖：${profile.dependsOn.join("、") || "无"}`,
           `排除：${profile.excludes.join("、") || "无"}`,
           `术语：${Object.entries(profile.terms)
@@ -1631,6 +1652,61 @@ export class ProxyRuntime {
     await this.ensureGroupWorkspace(group.chatId, group.name, group.project, group.workspace);
     await this.refreshGroupKnowledge();
     return `已设置「${group.name ?? group.chatId}」职责：${description}`;
+  }
+
+  private async setOwnerFocus(
+    arg: string,
+    kind: "direction" | "keywords",
+  ): Promise<string> {
+    const match = arg.trim().match(/^(\S+)\s+([\s\S]+)$/);
+    if (!match) {
+      return kind === "direction"
+        ? "用法：/方向 <群名|chatId> <说明>"
+        : "用法：/关键词 <群名|chatId> <关键词1,关键词2>";
+    }
+    const key = match[1] ?? "";
+    const value = (match[2] ?? "").trim();
+    if (!value) return kind === "direction" ? "方向不能为空。" : "关键词不能为空。";
+    const group = this.config.platforms.feishu.groups.find(
+      (item) => item.chatId === key || item.name === key,
+    );
+    if (!group) return `找不到群：${key}`;
+    const existing = group.ownerFocus ?? { summary: "", keywords: [] };
+    group.ownerFocus =
+      kind === "direction"
+        ? { ...existing, summary: value }
+        : {
+            ...existing,
+            keywords: [...new Set(value.split(/[,，\s]+/).map((item) => item.trim()).filter(Boolean))],
+          };
+    await this.persistGroupOwnerFocus(group);
+    await this.refreshGroupKnowledge();
+    const profile = this.groupKnowledge.get(group.chatId);
+    const epoch = profile?.sessionEpoch ?? 1;
+    return `已设置「${group.name ?? group.chatId}」${kind === "direction" ? "研发方向" : "研发关键词"}：${
+      kind === "direction" ? group.ownerFocus.summary : group.ownerFocus.keywords.join("、")
+    }\n会话代际：e${epoch}`;
+  }
+
+  private async persistGroupOwnerFocus(
+    group: AppConfig["platforms"]["feishu"]["groups"][number],
+  ): Promise<void> {
+    const path = this.options.loaded.path;
+    if (!path) return;
+    try {
+      const raw = await readJsonFile<Record<string, any>>(path, {});
+      const groups = raw.platforms?.feishu?.groups;
+      if (Array.isArray(groups)) {
+        const target = groups.find((item: any) => item?.chatId === group.chatId);
+        if (target) target.ownerFocus = group.ownerFocus;
+      }
+      await writeJsonAtomic(path, raw);
+    } catch (error) {
+      this.logger.warn("failed to persist owner focus", {
+        chatId: group.chatId,
+        error: toErrorMessage(error),
+      });
+    }
   }
 
   private async manageWorkspace(arg: string): Promise<string> {

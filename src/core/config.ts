@@ -28,6 +28,13 @@ const GroupWorkspaceSchema = z.object({
   autoDiscover: z.boolean().optional(),
 });
 
+const GroupOwnerFocusSchema = z
+  .object({
+    summary: z.string().default(""),
+    keywords: z.array(z.string()).default([]),
+  })
+  .optional();
+
 const GroupResponsibilitySchema = z
   .object({
     summary: z.string().default(""),
@@ -44,6 +51,7 @@ const GroupSchema = z.object({
   enabled: z.boolean().default(true),
   project: GroupProjectSchema.optional(),
   workspace: GroupWorkspaceSchema.optional(),
+  ownerFocus: GroupOwnerFocusSchema,
   responsibility: GroupResponsibilitySchema.optional(),
 });
 

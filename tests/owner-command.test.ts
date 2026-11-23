@@ -19,6 +19,14 @@ test("parses slash commands", () => {
     command: "workspace",
     arg: "产品-资产测绘 添加 asd-engine worktrees/asd-engine.git",
   });
+  assert.deepEqual(parseOwnerCommand("/方向 产品-资产测绘 负责采集与加工链路"), {
+    command: "direction",
+    arg: "产品-资产测绘 负责采集与加工链路",
+  });
+  assert.deepEqual(parseOwnerCommand("/关键词 产品-资产测绘 管理面,IP管理"), {
+    command: "keywords",
+    arg: "产品-资产测绘 管理面,IP管理",
+  });
   assert.deepEqual(parseOwnerCommand("/回复管理"), { command: "replies", arg: "" });
   assert.deepEqual(parseOwnerCommand("/取消 2"), { command: "cancel", arg: "2" });
   assert.deepEqual(parseOwnerCommand("／帮助"), { command: "help", arg: "" });

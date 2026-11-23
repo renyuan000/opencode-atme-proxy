@@ -29,6 +29,7 @@ export interface OwnerCommandServiceOptions {
   sendReplyManagementCard(): Promise<boolean>;
   setGroupResponsibility(arg: string): Promise<string>;
   manageWorkspace(arg: string): Promise<string>;
+  setOwnerFocus(arg: string, kind: "direction" | "keywords"): Promise<string>;
   listOwnerTargets(): string;
   selectOwnerTarget(arg: string): string;
   getGroupKnowledge(arg: string): Promise<string>;
@@ -57,6 +58,8 @@ export class OwnerCommandService {
         "/工作空间 <群名|chatId> 删除 <名称>",
         "/工作空间 <群名|chatId> 测试|检查 <名称> <命令>",
         "/工作空间 <群名|chatId> 自动 自动发现 worktrees 项目",
+        "/方向 <群名|chatId> <说明> 设置我在该群的研发方向",
+        "/关键词 <群名|chatId> <关键词1,关键词2> 设置我在该群的研发关键词",
         "/目标 [编号|chatId|messageId] 查看/选择私聊目标",
         "/画像 [群名|chatId]      查看群初始画像",
       ].join("\n");
@@ -76,6 +79,12 @@ export class OwnerCommandService {
     if (command.command === "workspace") {
       if (!command.arg) return "用法：/工作空间 <群名|chatId> [root|添加|删除|自动|清空]";
       return this.options.manageWorkspace(command.arg);
+    }
+    if (command.command === "direction") {
+      return this.options.setOwnerFocus(command.arg, "direction");
+    }
+    if (command.command === "keywords") {
+      return this.options.setOwnerFocus(command.arg, "keywords");
     }
     if (command.command === "replies") {
       const sent = await this.options.sendReplyManagementCard();

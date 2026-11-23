@@ -14,6 +14,8 @@ export interface GroupKnowledge {
   dependsOn: string[];
   excludes: string[];
   terms: Record<string, string>;
+  ownerDirection: string;
+  ownerKeywords: string[];
   sessionEpoch: number;
   source: "inferred" | "owner";
   confidence: number;
@@ -49,6 +51,8 @@ function normalizeKnowledge(
     dependsOn: stringArray(raw.dependsOn),
     excludes: stringArray(raw.excludes),
     terms,
+    ownerDirection: typeof raw.ownerDirection === "string" ? raw.ownerDirection : "",
+    ownerKeywords: stringArray(raw.ownerKeywords),
     sessionEpoch:
       typeof raw.sessionEpoch === "number" && Number.isFinite(raw.sessionEpoch)
         ? Math.max(1, Math.floor(raw.sessionEpoch))
