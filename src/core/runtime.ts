@@ -454,6 +454,7 @@ export class ProxyRuntime {
       setOwnerFocus: (arg, kind) => this.setOwnerFocus(arg, kind),
       analyzeTask: (arg) => this.analyzePendingTask(arg),
       queryGroupMessages: (arg) => this.queryGroupMessages(arg),
+      queryMentions: (arg) => this.queryMentions(arg),
       listOwnerTargets: () => this.listOwnerTargets(),
       selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
       getGroupKnowledge: (arg) => this.getGroupKnowledge(arg),
@@ -1703,11 +1704,48 @@ export class ProxyRuntime {
   }
 
   private async queryGroupMessages(arg: string): Promise<string> {
+    return this.queryConversationMessages(arg, false);
+  }
+
+  private async queryMentions(arg: string): Promise<string> {
+    return this.queryConversationMessages(arg, true);
+  }
+
+  private normalizeGroupQuery(value: string): string {
+    return value
+      .replace(/^产品[-—]/, "")
+      .replace(/[\s_\-—]+/g, "")
+      .toLowerCase();
+  }
+
+  private matchGroups(key: string): AppConfig["platforms"]["feishu"]["groups"] {
+    if (key.startsWith("oc_")) return [];
+    const normalized = this.normalizeGroupQuery(key);
+    if (!normalized) return [];
+    const all = this.config.platforms.feishu.groups.filter((group) => group.enabled);
+    const scored = all
+      .map((group) => {
+        const product = this.groupKnowledge.get(group.chatId)?.product ?? "";
+        const names = [group.name ?? "", product]
+          .filter(Boolean)
+          .map((value) => this.normalizeGroupQuery(value));
+        const exact = names.some((name) => name === normalized);
+        const contains = names.some((name) => name.includes(normalized));
+        return { group, score: exact ? 2 : contains ? 1 : 0 };
+      })
+      .filter((item) => item.score > 0);
+    const best = Math.max(0, ...scored.map((item) => item.score));
+    return scored.filter((item) => item.score === best).map((item) => item.group);
+  }
+
+  private async queryConversationMessages(arg: string, mentionsOnly: boolean): Promise<string> {
     if (!this.options.platform.capabilities().groupHistory) {
       return "当前平台不支持群历史查询。";
     }
     const match = arg.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
-    if (!match) return "用法：/群消息 <群名|chatId> [关键词] [数量]";
+    if (!match) return mentionsOnly
+      ? "用法：/提及 <群名关键词> [数量]"
+      : "用法：/群消息 <群名关键词> [关键词] [数量]";
     const key = match[1] ?? "";
     let rest = (match[2] ?? "").trim();
     let limit = 20;
@@ -1716,12 +1754,21 @@ export class ProxyRuntime {
       limit = Math.max(1, Math.min(50, Number(limitMatch[2])));
       rest = (limitMatch[1] ?? "").trim();
     }
-    const group = this.config.platforms.feishu.groups.find(
-      (item) => item.chatId === key || item.name === key,
-    );
-    const chatId = group?.chatId ?? (key.startsWith("oc_") ? key : undefined);
-    if (!chatId) return `找不到群：${key}`;
-    if (group && !group.enabled) return `群未启用：${group.name ?? chatId}`;
+    const candidates = this.matchGroups(key);
+    if (candidates.length === 0) {
+      if (key.startsWith("oc_")) {
+        return "请用群名关键词查询，不需要输入 chatId。";
+      }
+      return `找不到群：${key}\n可用群：\n${this.config.platforms.feishu.groups.map((group) => `- ${group.name ?? group.chatId}`).join("\n")}`;
+    }
+    if (candidates.length > 1) {
+      return [
+        `匹配到多个群，请用更完整的群名：`,
+        ...candidates.map((group) => `- ${group.name ?? "未命名群"}`),
+      ].join("\n");
+    }
+    const group = candidates[0]!;
+    const chatId = group.chatId;
     const endTime = Date.now();
     const startTime = endTime - 7 * 24 * 3600_000;
     let result;
@@ -1736,13 +1783,21 @@ export class ProxyRuntime {
     } catch (error) {
       return `查询群消息失败：${toErrorMessage(error)}`;
     }
+    const ownerId = this.ownerOpenId();
+    const botId =
+      (this.options.platform as { getBotOpenId?: () => string | undefined }).getBotOpenId?.() ??
+      this.config.platforms.feishu.botOpenId;
     const keyword = rest.trim();
     const messages = result.messages
       .filter((message) => message.senderType === "user" && message.text.trim())
+      .filter((message) =>
+        !mentionsOnly ||
+        message.mentions.some((mention) => mention.id === ownerId || mention.id === botId),
+      )
       .filter((message) => !keyword || message.text.includes(keyword))
       .slice(-limit);
     if (messages.length === 0) {
-      return `没有找到符合条件的群消息。\n群：${group?.name ?? chatId}\n时间范围：最近 7 天${keyword ? `\n关键词：${keyword}` : ""}`;
+      return `没有找到符合条件的群消息。\n群：${group.name ?? "未命名群"}\n时间范围：最近 7 天${keyword ? `\n关键词：${keyword}` : ""}`;
     }
     const names = new Map<string, string>();
     for (const message of messages) {
@@ -1760,9 +1815,9 @@ export class ProxyRuntime {
         names.set(message.sender.id, "成员");
       }
     }
-    const groupName = group?.name ?? (await this.fetchChatName(chatId)) ?? "群";
+    const title = mentionsOnly ? "@提及" : "群消息";
     return [
-      `群：${groupName}`,
+      `${title}｜群：${group.name ?? "未命名群"}`,
       `时间范围：最近 7 天${keyword ? `｜关键词：${keyword}` : ""}｜显示最近 ${messages.length} 条`,
       `打开群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}`,
       "",

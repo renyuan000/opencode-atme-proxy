@@ -27,6 +27,7 @@ export interface OwnerCommandServiceOptions {
     setOwnerFocus(arg: string, kind: "direction" | "keywords"): Promise<string>;
     analyzeTask(arg: string): Promise<string>;
     queryGroupMessages(arg: string): Promise<string>;
+    queryMentions(arg: string): Promise<string>;
     listOwnerTargets(): string;
     selectOwnerTarget(arg: string): string;
     getGroupKnowledge(arg: string): Promise<string>;

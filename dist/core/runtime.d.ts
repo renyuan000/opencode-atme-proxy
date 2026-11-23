@@ -119,6 +119,10 @@ export declare class ProxyRuntime {
     private setGroupResponsibility;
     private analyzePendingTask;
     private queryGroupMessages;
+    private queryMentions;
+    private normalizeGroupQuery;
+    private matchGroups;
+    private queryConversationMessages;
     private setOwnerFocus;
     private persistGroupOwnerFocus;
     private manageWorkspace;
