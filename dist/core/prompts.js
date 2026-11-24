@@ -26,6 +26,7 @@ export function buildAnalysisPrompt(input) {
         "任务：",
         JSON.stringify({
             title: task.title,
+            topic: task.topic,
             excerpt: task.excerpt,
             requester: task.requester.displayName ?? task.requester.id,
             project: task.project,

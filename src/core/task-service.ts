@@ -76,6 +76,20 @@ export class TaskService {
           ...new Set([...analysis.openQuestions, ...verification.reasons]),
         ];
       }
+    } catch (error) {
+      task.state = "needs_info";
+      task.updatedAt = Date.now();
+      await this.options.tasks.save(task);
+      await this.options.audit.append({
+        actor: { system: true },
+        action: "analysis_failed",
+        taskId: task.id,
+        details: { error: toErrorMessage(error) },
+      });
+      await this.options.sendToApprover(
+        `任务分析失败：${task.title}\n原因：${toErrorMessage(error)}\n可回复 /分析 ${task.id} 重试。`,
+      );
+      return;
     } finally {
       clearTimeout(timer);
     }
