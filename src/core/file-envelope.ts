@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { extractDocument, type ExtractDocumentOptions } from "./document.js";
 
 export type ReadRangeKind = "chars" | "pages" | "sheet" | "section";
 
@@ -26,6 +27,25 @@ export interface FileEnvelope extends ExtractedDocument {
   size: number;
   name?: string;
   localPath?: string;
+}
+
+export async function extractFileEnvelope(input: {
+  conversationId: string;
+  data: Buffer;
+  mime: string;
+  name?: string;
+  localPath?: string;
+  options?: ExtractDocumentOptions;
+}): Promise<FileEnvelope> {
+  const extracted = await extractDocument(input.data, input.mime, input.name, input.options);
+  return createFileEnvelope({
+    conversationId: input.conversationId,
+    data: input.data,
+    mime: input.mime,
+    extracted,
+    ...(input.name ? { name: input.name } : {}),
+    ...(input.localPath ? { localPath: input.localPath } : {}),
+  });
 }
 
 export function createFileEnvelope(input: {

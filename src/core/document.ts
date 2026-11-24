@@ -7,7 +7,13 @@ import { promisify } from "node:util";
 import type { ExtractedDocument, ReadRange } from "./file-envelope.js";
 
 const execFileAsync = promisify(execFile);
-const MAX_EXTRACT_CHARS = 20_000;
+export const DEFAULT_MAX_EXTRACT_CHARS = 20_000;
+
+export interface ExtractDocumentOptions {
+  maxChars?: number;
+  maxBytes?: number;
+  timeoutMs?: number;
+}
 
 function extension(name: string | undefined, mime: string): string {
   const fromName = name?.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
@@ -18,10 +24,14 @@ function extension(name: string | undefined, mime: string): string {
   return "bin";
 }
 
-async function run(command: string, args: string[]): Promise<string | undefined> {
+async function run(
+  command: string,
+  args: string[],
+  timeoutMs = 20_000,
+): Promise<string | undefined> {
   try {
     const { stdout } = await execFileAsync(command, args, {
-      timeout: 20_000,
+      timeout: timeoutMs,
       maxBuffer: 4 * 1024 * 1024,
     });
     return String(stdout ?? "").trim() || undefined;
@@ -30,16 +40,20 @@ async function run(command: string, args: string[]): Promise<string | undefined>
   }
 }
 
-function finish(text: string | undefined, extractor: string): ExtractedDocument {
+function finish(
+  text: string | undefined,
+  extractor: string,
+  maxChars: number,
+): ExtractedDocument {
   const raw = text?.trim() ?? "";
-  const limited = raw.slice(0, MAX_EXTRACT_CHARS);
+  const limited = raw.slice(0, maxChars);
   const readRanges: ReadRange[] = limited
     ? [{ kind: "chars", start: 0, end: limited.length }]
     : [];
   return {
     ...(limited ? { text: limited } : {}),
     chars: raw.length,
-    truncated: raw.length > MAX_EXTRACT_CHARS,
+    truncated: raw.length > maxChars,
     pagesProcessed: [],
     readRanges,
     extractor,
@@ -62,10 +76,18 @@ export async function extractDocument(
   data: Buffer,
   mime: string,
   name?: string,
+  options: ExtractDocumentOptions = {},
 ): Promise<ExtractedDocument> {
+  if (options.maxBytes !== undefined && data.length > options.maxBytes) {
+    return failure("none", "too_large");
+  }
+  const maxChars = options.maxChars ?? DEFAULT_MAX_EXTRACT_CHARS;
+  const timeoutMs = options.timeoutMs ?? 20_000;
+  const done = (text: string | undefined, extractor: string) =>
+    finish(text, extractor, maxChars);
   const ext = extension(name, mime);
-  if (["txt", "md", "sql", "csv", "json", "log", "yaml", "yml"].includes(ext)) {
-    return finish(data.toString("utf8").trim(), "text");
+  if (["txt", "md", "sql", "csv", "tsv", "json", "log", "yaml", "yml"].includes(ext)) {
+    return done(data.toString("utf8").trim(), "text");
   }
   if (ext === "html" || ext === "htm") {
     const raw = data.toString("utf8");
@@ -91,7 +113,7 @@ export async function extractDocument(
     const text = `${visible}${useful ? `\n${useful}` : ""}`
       .replace(/\s{2,}/g, " ")
       .trim();
-    return finish(text, "html");
+    return done(text, "html");
   }
   if (["xlsx", "xls"].includes(ext)) {
     try {
@@ -104,7 +126,7 @@ export async function extractDocument(
         if (!csv.trim()) continue;
         lines.push(`### Sheet: ${name}`, csv);
       }
-      return finish(lines.join("\n").trim(), "xlsx");
+      return done(lines.join("\n").trim(), "xlsx");
     } catch {
       return failure("xlsx", "extract_failed");
     }
@@ -116,17 +138,17 @@ export async function extractDocument(
   try {
     await writeFile(file, data);
     if (ext === "pdf") {
-      return finish(await run("pdftotext", [file, "-"]), "pdftotext");
+      return done(await run("pdftotext", [file, "-"], timeoutMs), "pdftotext");
     }
     if (ext === "doc") {
-      return finish(await run("antiword", [file]), "antiword");
+      return done(await run("antiword", [file], timeoutMs), "antiword");
     }
     if (ext === "docx") {
-      const text = await run("pandoc", [file, "-t", "plain"]);
-      if (text) return finish(text, "pandoc");
-      const xml = await run("unzip", ["-p", file, "word/document.xml"]);
+      const text = await run("pandoc", [file, "-t", "plain"], timeoutMs);
+      if (text) return done(text, "pandoc");
+      const xml = await run("unzip", ["-p", file, "word/document.xml"], timeoutMs);
       if (!xml) return failure("docx", "extract_failed");
-      return finish(
+      return done(
         xml
           .replace(/<w:p[^>]*>/g, "\n")
           .replace(/<[^>]+>/g, "")
@@ -150,6 +172,7 @@ export async function extractDocumentText(
   data: Buffer,
   mime: string,
   name?: string,
+  options?: ExtractDocumentOptions,
 ): Promise<string | undefined> {
-  return (await extractDocument(data, mime, name)).text;
+  return (await extractDocument(data, mime, name, options)).text;
 }

@@ -4,7 +4,7 @@
 |---|---|
 | 日期 | 2026-11-24 |
 | 范围 | 文件、图片、PDF、Office、消息/上下文进入模型前的预处理 |
-| 基线 | 2026-11-24 开发版；测试 160/160；`atme-proxy.service` active |
+| 基线 | 2026-11-24 开发版；测试 162/162；`atme-proxy.service` active |
 | 用途 | 对比 OpenClaw、OpenCode、Codex、Claude Code，记录 atme-proxy 的取舍和后续落地顺序 |
 | 状态 | 设计参考；文中“建议”不代表已经实现 |
 
@@ -324,16 +324,29 @@ maxXlsxRows          500（预览/提取）
 
 ### 6.1 当前实现状态（2026-11-24）
 
+支持格式矩阵：
+
+| 类型 | 扩展名 | 提取器 | 现状 |
+|:--|:--|:--|:--|
+| 纯文本 | txt/md/sql/csv/tsv/json/log/yaml/yml | 内置 UTF-8 | 已有 |
+| 网页 | html/htm | 内置标签清洗 | 已有 |
+| Excel | xlsx/xls | SheetJS | 已有，最多 20 sheet；行数上限待做 |
+| Word | docx | pandoc，失败回退 document.xml | 已有 |
+| 旧 Word | doc | antiword | 已有，依赖本机工具 |
+| PDF | pdf | pdftotext | 已有；页级/扫描页图待做 |
+| 图片 | png/jpg/jpeg/webp | OCR/视觉附件 | 已有，走图片路径，不是文档提取 |
+
 | 能力 | 状态 | 说明 |
 |:--|:--|:--|
-| 文本/HTML/xlsx/docx/pdf/doc 基础提取 | 已有 | `document.ts`，固定 20k 截断 |
+| 文本/HTML/Excel/Word/PDF 基础提取 | 已有 | `document.ts`；Excel `.xlsx/.xls` 走 SheetJS，最多 20 个 sheet；固定 20k 截断 |
 | 图片 OCR、媒体簇 | 已有 | 扫描 OCR；回复路径可传图片附件，失败回退 OCR |
 | 非 @ 媒体候选/审批 | 已有 | 本地提取/OCR → 相关性 → `needs_info` 候选 |
 | 文件 hash/manifest | 基础已实现 | `src/core/file-envelope.ts` 提供 `FileEnvelope/ExtractedDocument`；服务尚未接入 |
 | 目录/选段/`readRanges` | 基础已实现 | 已记录字符 `readRanges`；页/节选段未做 |
 | PDF 页级/扫描页图 | 未做 | 仅 `pdftotext` 全文 |
 | 原生视觉能力协商 | 部分 | 回复路径传图；扫描路径仍以 OCR 为主 |
-| 原始字节/页像素/超时/并发门禁 | 未做 | 仅 8MB 文件门禁和最多 2 个附件 |
+| 原始字节/超时/字符门禁 | 基础已实现 | `extractDocument` 支持 `maxBytes/maxChars/timeoutMs`；服务层尚未统一接入 |
+| 页像素/并发门禁 | 未做 | 仍靠调用方 8MB/附件数量限制 |
 | 内容 hash 缓存 | 未做 | 在线文档按 URL 缓存，不是内容 hash |
 | 在线文档 contentHash/etag | 未做 | 仍是 chatId + URL |
 | 执行阶段附件 manifest | 未做 | 分析阶段有附件，执行 prompt 未复用 |
@@ -345,7 +358,7 @@ maxXlsxRows          500（预览/提取）
 
 | 文件 | 改造 |
 |---|---|
-| `src/core/document.ts` | 从“返回字符串”改为返回结构化 `ExtractedDocument`；去掉固定 20k `slice`，改为提取 + 目录 + `readRanges` + 截断元数据 |
+| `src/core/document.ts` | 已返回结构化 `ExtractedDocument`；默认 20k 可配置，带 `readRanges`/截断元数据；目录/页选段待做 |
 | `src/core/document.ts` | PDF 增加 `pdfinfo` 页数、`pdftotext -f -l` 页范围、表格页 `-layout`、扫描件页图/OCR 兜底 |
 | `src/core/scan-service.ts` | 先做浅层元数据/目录/相关性；深度提取只在 @、`/分析`、任务分析或 owner 批准后；不再把 8k 文本直接拼进消息 |
 | `src/core/reply-service.ts` | `loadFilesFrom`/`loadMediaContext` 统一附件预算、`conversationId + sha256` 缓存、读取范围；在线文档按 URL + contentHash/etag 缓存 |

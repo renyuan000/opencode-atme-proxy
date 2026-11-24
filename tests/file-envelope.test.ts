@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { extractDocument } from "../src/core/document.js";
-import { createFileEnvelope } from "../src/core/file-envelope.js";
+import { createFileEnvelope, extractFileEnvelope } from "../src/core/file-envelope.js";
+import * as XLSX from "xlsx";
 
 test("extractDocument returns structured truncation metadata", async () => {
   const source = "a".repeat(20_050);
@@ -43,4 +44,45 @@ test("unsupported files return a structured error", async () => {
   assert.equal(result.extractor, "none");
   assert.equal(result.text, undefined);
   assert.deepEqual(result.readRanges, []);
+});
+
+
+test("extracts Excel workbooks", async () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["name", "value"],
+      ["kafka", "42"],
+    ]),
+    "资产",
+  );
+  const data = Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+  const result = await extractDocument(
+    data,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "assets.xlsx",
+  );
+  assert.equal(result.extractor, "xlsx");
+  assert.match(result.text ?? "", /### Sheet: 资产/);
+  assert.match(result.text ?? "", /kafka,42/);
+});
+
+test("enforces optional maxBytes and maxChars", async () => {
+  const data = Buffer.from("abcdef");
+  const tooLarge = await extractDocument(data, "text/plain", "a.txt", { maxBytes: 3 });
+  assert.equal(tooLarge.error, "too_large");
+  assert.equal(tooLarge.text, undefined);
+
+  const clipped = await extractFileEnvelope({
+    conversationId: "feishu:app:group:chat",
+    data,
+    mime: "text/plain",
+    name: "a.txt",
+    options: { maxChars: 3 },
+  });
+  assert.equal(clipped.text, "abc");
+  assert.equal(clipped.chars, 6);
+  assert.equal(clipped.truncated, true);
+  assert.deepEqual(clipped.readRanges, [{ kind: "chars", start: 0, end: 3 }]);
 });
