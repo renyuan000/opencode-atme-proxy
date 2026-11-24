@@ -152,6 +152,23 @@ export class TaskService {
         return existing;
       }
     }
+    if (taskHint?.topic) {
+      const recent = (await this.options.tasks.list()).find(
+        (item) =>
+          item.chatId === message.chat.id &&
+          item.topic === taskHint.topic &&
+          item.requester.id === message.sender.id &&
+          now - item.updatedAt < 2 * 3600_000 &&
+          !["done", "rejected", "canceled"].includes(item.state),
+      );
+      if (recent) {
+        recent.messageIds = [...new Set([...recent.messageIds, message.messageId])];
+        recent.attachments = [...(recent.attachments ?? []), ...(message.attachments ?? [])];
+        recent.updatedAt = now;
+        await this.options.tasks.save(recent);
+        return recent;
+      }
+    }
     const task: TaskRecord = {
       id: `task_${sha256(`${dedupKey}:${message.messageId}`).slice(0, 12)}`,
       platform: message.platform,
@@ -170,6 +187,7 @@ export class TaskService {
       requester: message.sender,
       title,
       excerpt: truncate(message.text, 500),
+      ...(taskHint?.topic ? { topic: taskHint.topic } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       ...(taskHint?.project ? { project: taskHint.project } : {}),
       ...(taskHint?.deadline ? { deadline: taskHint.deadline } : {}),

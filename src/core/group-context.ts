@@ -2,6 +2,14 @@ import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
 import { readJsonFile, writeJsonAtomic, toErrorMessage } from "./util.js";
 
+export interface GroupTopic {
+  title: string;
+  summary?: string;
+  phase?: string;
+  status: "active" | "paused" | "done";
+  messageIds?: string[];
+}
+
 export interface GroupSummary {
   chatId: string;
   conversationId?: string;
@@ -9,6 +17,7 @@ export interface GroupSummary {
   decisions: string[];
   assumptions: string[];
   openQuestions: string[];
+  topics?: GroupTopic[];
   lastMessageAt: number;
   updatedAt: number;
 }

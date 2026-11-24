@@ -2713,9 +2713,11 @@ export class ProxyRuntime {
         text: [
           "你是群聊记录员。只维护摘要，不回答问题、不执行操作。",
           "保留：已确认决策、被否决方案及原因、当前假设、未解决问题、关键表名/接口/字段。",
+          "同时识别当前群的讨论主题、阶段性任务和阶段：topics = [{title, summary, phase, status, message_ids}]。",
+          "status 只能是 active/paused/done；phase 是当前阶段，例如需求确认、排查、开发、验证、发布。",
           "只处理新增消息；不要重复已经摘要过的事实；旧摘要只用于保持连续。",
           `在旧摘要基础上更新，不要把旧事实重新逐条复述；不超过 ${maxChars} 字。`,
-          '输出严格 JSON：{summary, decisions, assumptions, open_questions}。',
+          '输出严格 JSON：{summary, decisions, assumptions, open_questions, topics}。',
           "现有摘要：",
           current?.summary ?? "（无）",
           "新增消息：",
@@ -2735,6 +2737,30 @@ export class ProxyRuntime {
       parsed = {};
     }
     const summaryText = typeof parsed?.summary === "string" ? parsed.summary : raw;
+    const topics = Array.isArray(parsed?.topics)
+      ? parsed.topics
+          .filter((item: unknown) => item && typeof item === "object")
+          .slice(0, 8)
+          .map((item: any) => ({
+            title: typeof item.title === "string" ? item.title.trim() : "",
+            ...(typeof item.summary === "string" && item.summary.trim()
+              ? { summary: item.summary.trim() }
+              : {}),
+            ...(typeof item.phase === "string" && item.phase.trim()
+              ? { phase: item.phase.trim() }
+              : {}),
+            status:
+              item.status === "paused" || item.status === "done" ? item.status : "active",
+            ...(Array.isArray(item.message_ids)
+              ? {
+                  messageIds: item.message_ids.filter(
+                    (id: unknown): id is string => typeof id === "string",
+                  ),
+                }
+              : {}),
+          }))
+          .filter((item: any) => item.title)
+      : current?.topics;
     const record: GroupSummary = {
       chatId: key,
       conversationId: this.conversationIdFor(platform, chatId, "group"),
@@ -2742,6 +2768,7 @@ export class ProxyRuntime {
       decisions: stringArray(parsed?.decisions),
       assumptions: stringArray(parsed?.assumptions),
       openQuestions: stringArray(parsed?.open_questions),
+      ...(topics ? { topics } : {}),
       lastMessageAt: Math.max(...messages.map((item) => item.at)),
       updatedAt: Date.now(),
     };

@@ -56,6 +56,10 @@ export class ContextService {
       ...summary.decisions.map((item) => `决策：${item}`),
       ...summary.assumptions.map((item) => `假设：${item}`),
       ...summary.openQuestions.map((item) => `未解决：${item}`),
+      ...(summary.topics ?? []).map(
+        (topic) =>
+          `主题：${topic.title}${topic.phase ? `（${topic.phase}）` : ""}${topic.status !== "active" ? `[${topic.status}]` : ""}${topic.summary ? `：${topic.summary}` : ""}`,
+      ),
     ].filter(Boolean);
     return truncateMiddle(
       parts.join("\n"),

@@ -76,6 +76,7 @@ export interface BotIntent {
 
 export interface TaskHint {
   title: string;
+  topic?: string;
   project?: string;
   deadline?: number;
   requester?: string;
@@ -120,6 +121,7 @@ export interface TaskRecord {
   requester: ActorRef;
   title: string;
   excerpt: string;
+  topic?: string;
   attachments?: AttachmentRef[];
   project?: string;
   deadline?: number;

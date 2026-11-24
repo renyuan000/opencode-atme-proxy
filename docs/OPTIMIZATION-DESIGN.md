@@ -1356,3 +1356,34 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - 私聊 owner 说明“可能不属于你的开发范围”
 - 附群聊链接
 - 等 owner 判断
+
+
+### 38. 讨论主题与阶段性任务
+
+群摘要增加 `topics`：
+
+```json
+{
+  "title": "资产同步未生效",
+  "summary": "平台资产台账为空，正在确认同步链路",
+  "phase": "排查",
+  "status": "active",
+  "message_ids": ["om_..."]
+}
+```
+
+分类任务增加 `topic`。同一群、同一发送人、同一 topic、2 小时内且未结束的任务会合并，避免图片和文件各建一个任务。
+
+群摘要 prompt 同时输出：
+
+- summary
+- decisions
+- assumptions
+- open_questions
+- topics：标题、摘要、阶段、状态、消息 ID
+
+用途：
+
+- 回复/分析 prompt 注入当前主题和阶段
+- 减少同一问题重复建候选任务
+- 后续再按 topic 做语义检索和任务归档

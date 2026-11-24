@@ -587,6 +587,7 @@ function normalizeTaskHint(value: unknown): TaskHint | undefined {
   if (typeof task.title !== "string" || !task.title.trim()) return undefined;
   return {
     title: task.title.trim(),
+    ...(typeof task.topic === "string" && task.topic.trim() ? { topic: task.topic.trim() } : {}),
     ...(typeof task.project === "string" ? { project: task.project } : {}),
     ...(typeof task.requester === "string" ? { requester: task.requester } : {}),
     ...(typeof task.acceptance_hint === "string"
