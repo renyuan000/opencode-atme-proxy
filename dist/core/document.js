@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
+const MAX_EXTRACT_CHARS = 20_000;
 function extension(name, mime) {
     const fromName = name?.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
     if (fromName)
@@ -29,10 +30,36 @@ async function run(command, args) {
         return undefined;
     }
 }
-export async function extractDocumentText(data, mime, name) {
+function finish(text, extractor) {
+    const raw = text?.trim() ?? "";
+    const limited = raw.slice(0, MAX_EXTRACT_CHARS);
+    const readRanges = limited
+        ? [{ kind: "chars", start: 0, end: limited.length }]
+        : [];
+    return {
+        ...(limited ? { text: limited } : {}),
+        chars: raw.length,
+        truncated: raw.length > MAX_EXTRACT_CHARS,
+        pagesProcessed: [],
+        readRanges,
+        extractor,
+        ...(!limited ? { error: "empty" } : {}),
+    };
+}
+function failure(extractor, error) {
+    return {
+        chars: 0,
+        truncated: false,
+        pagesProcessed: [],
+        readRanges: [],
+        extractor,
+        error,
+    };
+}
+export async function extractDocument(data, mime, name) {
     const ext = extension(name, mime);
     if (["txt", "md", "sql", "csv", "json", "log", "yaml", "yml"].includes(ext)) {
-        return data.toString("utf8").trim().slice(0, 20_000) || undefined;
+        return finish(data.toString("utf8").trim(), "text");
     }
     if (ext === "html" || ext === "htm") {
         const raw = data.toString("utf8");
@@ -55,10 +82,10 @@ export async function extractDocumentText(data, mime, name) {
             .map((match) => match[0].trim())
             .filter((value) => value.length >= 2);
         const useful = [...new Set(labels)].join("\n");
-        return `${visible}${useful ? `\n${useful}` : ""}`
+        const text = `${visible}${useful ? `\n${useful}` : ""}`
             .replace(/\s{2,}/g, " ")
-            .trim()
-            .slice(0, 20_000) || undefined;
+            .trim();
+        return finish(text, "html");
     }
     if (["xlsx", "xls"].includes(ext)) {
         try {
@@ -73,34 +100,32 @@ export async function extractDocumentText(data, mime, name) {
                     continue;
                 lines.push(`### Sheet: ${name}`, csv);
             }
-            return lines.join("\n").trim().slice(0, 20_000) || undefined;
+            return finish(lines.join("\n").trim(), "xlsx");
         }
         catch {
-            return undefined;
+            return failure("xlsx", "extract_failed");
         }
     }
     if (!["docx", "pdf", "doc"].includes(ext))
-        return undefined;
+        return failure("none", "unsupported");
     const dir = await mkdtemp(join(tmpdir(), "atme-doc-"));
     const file = join(dir, `document.${ext}`);
     try {
         await writeFile(file, data);
         if (ext === "pdf") {
-            const text = await run("pdftotext", [file, "-"]);
-            return text?.slice(0, 20_000);
+            return finish(await run("pdftotext", [file, "-"]), "pdftotext");
         }
         if (ext === "doc") {
-            const text = await run("antiword", [file]);
-            return text?.slice(0, 20_000);
+            return finish(await run("antiword", [file]), "antiword");
         }
         if (ext === "docx") {
             const text = await run("pandoc", [file, "-t", "plain"]);
             if (text)
-                return text.slice(0, 20_000);
+                return finish(text, "pandoc");
             const xml = await run("unzip", ["-p", file, "word/document.xml"]);
             if (!xml)
-                return undefined;
-            return xml
+                return failure("docx", "extract_failed");
+            return finish(xml
                 .replace(/<w:p[^>]*>/g, "\n")
                 .replace(/<[^>]+>/g, "")
                 .replace(/&amp;/g, "&")
@@ -109,13 +134,15 @@ export async function extractDocumentText(data, mime, name) {
                 .replace(/&quot;/g, '"')
                 .replace(/&#39;/g, "'")
                 .replace(/\n{3,}/g, "\n\n")
-                .trim()
-                .slice(0, 20_000);
+                .trim(), "docx-xml");
         }
-        return undefined;
+        return failure("none", "unsupported");
     }
     finally {
         await rm(dir, { recursive: true, force: true }).catch(() => { });
     }
+}
+export async function extractDocumentText(data, mime, name) {
+    return (await extractDocument(data, mime, name)).text;
 }
 //# sourceMappingURL=document.js.map

@@ -4,7 +4,7 @@
 |---|---|
 | 日期 | 2026-11-24 |
 | 范围 | 文件、图片、PDF、Office、消息/上下文进入模型前的预处理 |
-| 基线 | 2026-11-24 开发版；测试 157/157；`atme-proxy.service` active |
+| 基线 | 2026-11-24 开发版；测试 160/160；`atme-proxy.service` active |
 | 用途 | 对比 OpenClaw、OpenCode、Codex、Claude Code，记录 atme-proxy 的取舍和后续落地顺序 |
 | 状态 | 设计参考；文中“建议”不代表已经实现 |
 
@@ -329,8 +329,8 @@ maxXlsxRows          500（预览/提取）
 | 文本/HTML/xlsx/docx/pdf/doc 基础提取 | 已有 | `document.ts`，固定 20k 截断 |
 | 图片 OCR、媒体簇 | 已有 | 扫描 OCR；回复路径可传图片附件，失败回退 OCR |
 | 非 @ 媒体候选/审批 | 已有 | 本地提取/OCR → 相关性 → `needs_info` 候选 |
-| 文件 hash/manifest | 未做 | 无统一 `FileEnvelope` |
-| 目录/选段/`readRanges` | 未做 | 仍按固定字符截断 |
+| 文件 hash/manifest | 基础已实现 | `src/core/file-envelope.ts` 提供 `FileEnvelope/ExtractedDocument`；服务尚未接入 |
+| 目录/选段/`readRanges` | 基础已实现 | 已记录字符 `readRanges`；页/节选段未做 |
 | PDF 页级/扫描页图 | 未做 | 仅 `pdftotext` 全文 |
 | 原生视觉能力协商 | 部分 | 回复路径传图；扫描路径仍以 OCR 为主 |
 | 原始字节/页像素/超时/并发门禁 | 未做 | 仅 8MB 文件门禁和最多 2 个附件 |
