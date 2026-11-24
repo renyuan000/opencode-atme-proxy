@@ -31,14 +31,12 @@ export interface ScanServiceOptions {
     sendToApprover(text: string): Promise<boolean>;
     sendToOwner(text: string): Promise<boolean>;
     sendOwnerNotification?(view: NotificationView): Promise<boolean>;
-    analyzeFile?(message: IncomingMessage, signal: AbortSignal): Promise<string | undefined>;
 }
 export declare class ScanService {
     private readonly options;
     constructor(options: ScanServiceOptions);
     handlePolledBatch(messages: IncomingMessage[]): Promise<void>;
     private skipIrrelevantFile;
-    private analyzeFile;
     private enrichFile;
     private enrichFiles;
     handleGroupScan(message: IncomingMessage, signal: AbortSignal): Promise<void>;

@@ -875,7 +875,6 @@ export class ProxyRuntime {
       sendToApprover: (text) => this.sendToApprover(text),
       sendToOwner: (text) => this.sendToOwner(text),
       sendOwnerNotification: (view) => this.notificationService.sendOwnerNotification(view),
-      analyzeFile: (message, signal) => this.analyzeFile(message, signal),
     });
   }
 
@@ -2279,14 +2278,6 @@ export class ProxyRuntime {
 
   private handlePolledBatch(messages: IncomingMessage[]): Promise<void> {
     return this.scanService.handlePolledBatch(messages);
-  }
-
-  private async analyzeFile(
-    message: IncomingMessage,
-    signal: AbortSignal,
-  ): Promise<string | undefined> {
-    const style = detectReplyStyle(message, this.replyOptions);
-    return this.replyService.draft(message, style, signal);
   }
 
   private isFileRelevant(

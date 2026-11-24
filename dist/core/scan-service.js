@@ -120,28 +120,6 @@ export class ScanService {
         }
         return false;
     }
-    async analyzeFile(message, signal) {
-        if (!this.options.analyzeFile)
-            return;
-        const files = (message.attachments ?? []).filter((item) => item.kind === "file");
-        if (files.length === 0)
-            return;
-        try {
-            const analysis = await this.options.analyzeFile(message, signal);
-            if (!analysis?.trim())
-                return;
-            const names = files.map((file) => file.name).filter(Boolean).join("、");
-            await this.options.sendToOwner(`文件分析（${message.chat.name ?? message.chat.id}）：\n文件：${names || "未命名文件"}\n${clip(analysis.trim(), 6000, "文件分析")}`);
-        }
-        catch (error) {
-            this.options.logger.warn("file analysis failed", {
-                messageId: message.messageId,
-                chatId: message.chat.id,
-                error: toErrorMessage(error),
-            });
-            await this.options.sendToOwner(`文件分析失败（${message.chat.name ?? message.chat.id}）：\n文件：${files.map((file) => file.name).filter(Boolean).join("、") || "未命名文件"}\n原因：${toErrorMessage(error)}`);
-        }
-    }
     async enrichFile(message) {
         const files = (message.attachments ?? []).filter((item) => item.kind === "file" && item.key);
         const images = (message.attachments ?? []).filter((item) => item.kind === "image" && item.key);
@@ -202,13 +180,11 @@ export class ScanService {
             await this.options.markProcessed(message);
             return;
         }
-        if (this.hasMedia(message) &&
-            (classification.ownerAttention || classification.actionability === "task")) {
+        if (this.hasMedia(message)) {
             await this.queueMediaApproval(enriched, classification);
             await this.options.markProcessed(message);
             return;
         }
-        await this.analyzeFile(message, signal);
         let handled = false;
         if (classification.actionability === "task" &&
             classification.confidence >= this.options.config.filter.minTaskConfidence) {
@@ -282,13 +258,11 @@ export class ScanService {
                 await this.options.markProcessed(message);
                 continue;
             }
-            if (this.hasMedia(message) &&
-                (item.ownerAttention || item.actionability === "task")) {
+            if (this.hasMedia(message)) {
                 await this.queueMediaApproval(message, item);
                 await this.options.markProcessed(message);
                 continue;
             }
-            await this.analyzeFile(message, signal);
             if (item.actionability === "task" &&
                 item.confidence >= this.options.config.filter.minTaskConfidence) {
                 await this.options.taskService.ensureTask(message, item, "group_scan");

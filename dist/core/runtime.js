@@ -698,7 +698,6 @@ export class ProxyRuntime {
             sendToApprover: (text) => this.sendToApprover(text),
             sendToOwner: (text) => this.sendToOwner(text),
             sendOwnerNotification: (view) => this.notificationService.sendOwnerNotification(view),
-            analyzeFile: (message, signal) => this.analyzeFile(message, signal),
         });
     }
     async refreshGroupKnowledge() {
@@ -1994,10 +1993,6 @@ export class ProxyRuntime {
     }
     handlePolledBatch(messages) {
         return this.scanService.handlePolledBatch(messages);
-    }
-    async analyzeFile(message, signal) {
-        const style = detectReplyStyle(message, this.replyOptions);
-        return this.replyService.draft(message, style, signal);
     }
     isFileRelevant(message, fileName, content) {
         const profile = this.groupKnowledge.get(message.chat.id);

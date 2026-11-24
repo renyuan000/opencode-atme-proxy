@@ -33,7 +33,6 @@ export interface ScanServiceOptions {
   sendToApprover(text: string): Promise<boolean>;
   sendToOwner(text: string): Promise<boolean>;
   sendOwnerNotification?(view: NotificationView): Promise<boolean>;
-  analyzeFile?(message: IncomingMessage, signal: AbortSignal): Promise<string | undefined>;
 }
 
 export class ScanService {
@@ -150,29 +149,6 @@ export class ScanService {
     return false;
   }
 
-  private async analyzeFile(message: IncomingMessage, signal: AbortSignal): Promise<void> {
-    if (!this.options.analyzeFile) return;
-    const files = (message.attachments ?? []).filter((item) => item.kind === "file");
-    if (files.length === 0) return;
-    try {
-      const analysis = await this.options.analyzeFile(message, signal);
-      if (!analysis?.trim()) return;
-      const names = files.map((file) => file.name).filter(Boolean).join("、");
-      await this.options.sendToOwner(
-        `文件分析（${message.chat.name ?? message.chat.id}）：\n文件：${names || "未命名文件"}\n${clip(analysis.trim(), 6000, "文件分析")}`,
-      );
-    } catch (error) {
-      this.options.logger.warn("file analysis failed", {
-        messageId: message.messageId,
-        chatId: message.chat.id,
-        error: toErrorMessage(error),
-      });
-      await this.options.sendToOwner(
-        `文件分析失败（${message.chat.name ?? message.chat.id}）：\n文件：${files.map((file) => file.name).filter(Boolean).join("、") || "未命名文件"}\n原因：${toErrorMessage(error)}`,
-      );
-    }
-  }
-
   private async enrichFile(message: IncomingMessage): Promise<IncomingMessage> {
     const files = (message.attachments ?? []).filter(
       (item) => item.kind === "file" && item.key,
@@ -241,15 +217,11 @@ export class ScanService {
       await this.options.markProcessed(message);
       return;
     }
-    if (
-      this.hasMedia(message) &&
-      (classification.ownerAttention || classification.actionability === "task")
-    ) {
+    if (this.hasMedia(message)) {
       await this.queueMediaApproval(enriched, classification);
       await this.options.markProcessed(message);
       return;
     }
-    await this.analyzeFile(message, signal);
     let handled = false;
     if (
       classification.actionability === "task" &&
@@ -334,15 +306,11 @@ export class ScanService {
         await this.options.markProcessed(message);
         continue;
       }
-      if (
-        this.hasMedia(message) &&
-        (item.ownerAttention || item.actionability === "task")
-      ) {
+      if (this.hasMedia(message)) {
         await this.queueMediaApproval(message, item);
         await this.options.markProcessed(message);
         continue;
       }
-      await this.analyzeFile(message, signal);
       if (
         item.actionability === "task" &&
         item.confidence >= this.options.config.filter.minTaskConfidence
