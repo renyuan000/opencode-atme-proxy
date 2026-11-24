@@ -779,7 +779,7 @@ export class ReplyService {
               url: `data:${resource.mime};base64,${resource.data.toString("base64")}`,
               ...(attachment.name ? { filename: attachment.name } : {}),
             });
-            const text = await ocrImage(resource.data, resource.mime);
+            const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
             if (text) ocrParts.push(`[${item.messageId}] ${text}`);
           } catch (error) {
             this.options.logger.warn("failed to load clustered image", {
@@ -835,7 +835,7 @@ export class ReplyService {
             "image",
           );
           if (!resource || resource.data.length > 3 * 1024 * 1024) continue;
-          const text = await ocrImage(resource.data, resource.mime);
+          const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
           if (text) ocrParts.push(text);
         } catch (error) {
           this.options.logger.warn("failed to OCR media candidate", {
@@ -895,7 +895,7 @@ export class ReplyService {
       try {
         const resource = await platform.fetchResource(message.messageId, item.key!, "image");
         if (resource.data.length > 3 * 1024 * 1024) continue;
-        const text = await ocrImage(resource.data, resource.mime);
+        const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
         if (text) texts.push(text);
       } catch (error) {
         this.options.logger.warn("failed to OCR image attachment", {

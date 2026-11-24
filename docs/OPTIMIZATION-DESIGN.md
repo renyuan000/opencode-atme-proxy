@@ -1155,6 +1155,16 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - 摘要最多展示 8 条相关消息
 
 
+### 27.1 OCR 提供方与降级
+
+- `ocr.provider = auto | rapidocr | tesseract`
+- `auto`：优先本地 RapidOCR，失败回退 Tesseract
+- RapidOCR 使用独立 Python venv，不把 OCR 依赖装进 Node 项目
+- 同一图片按 hash 缓存 OCR 结果，避免重复识别
+- 非 @ 扫描使用 OCR 做相关性；@/批准后的截图仍优先原生视觉
+- 在线 OCR 暂不默认启用，避免内部截图出网
+
+
 ### 28. 媒体上下文关联（候选 + LLM）
 
 新 @ 消息带图片/文件时：

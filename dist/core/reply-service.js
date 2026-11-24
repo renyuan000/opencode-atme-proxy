@@ -607,7 +607,7 @@ export class ReplyService {
                             url: `data:${resource.mime};base64,${resource.data.toString("base64")}`,
                             ...(attachment.name ? { filename: attachment.name } : {}),
                         });
-                        const text = await ocrImage(resource.data, resource.mime);
+                        const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
                         if (text)
                             ocrParts.push(`[${item.messageId}] ${text}`);
                     }
@@ -659,7 +659,7 @@ export class ReplyService {
                     const resource = await this.options.platform.fetchResource?.(item.messageId, attachment.key, "image");
                     if (!resource || resource.data.length > 3 * 1024 * 1024)
                         continue;
-                    const text = await ocrImage(resource.data, resource.mime);
+                    const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
                     if (text)
                         ocrParts.push(text);
                 }
@@ -723,7 +723,7 @@ export class ReplyService {
                 const resource = await platform.fetchResource(message.messageId, item.key, "image");
                 if (resource.data.length > 3 * 1024 * 1024)
                     continue;
-                const text = await ocrImage(resource.data, resource.mime);
+                const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
                 if (text)
                     texts.push(text);
             }

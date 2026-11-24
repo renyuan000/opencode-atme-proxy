@@ -142,7 +142,7 @@ npx @neomei/agentsoul setup
 
 ### 8.1 先修体验与回归（1–2 天）
 
-> 2026-11-24 进展：N-1/N-2/N-3/N-5 已验证，N-4 文档同步随本次提交。
+> 2026-11-24 进展：N-1/N-2/N-3/N-5 已验证，N-4 文档同步随本次提交；N-6 OCR 本地增强已实现。
 
 | ID | 类型 | 事项 | 验收标准 |
 |---|---|---|---|
@@ -151,6 +151,7 @@ npx @neomei/agentsoul setup
 | N-3 | verify | 群名卡片实卡验证 | 真实飞书截图确认：群消息分析标题 `群消息分析 · 群名`、未完成提醒右侧群名、候选卡标题 `候选任务 · 群名` 均正常；空白占位列不显示异常 |
 | N-4 | docs | 提交本轮设计文档更新 | `FILE-INGESTION-DESIGN` 与 `OPTIMIZATION-DESIGN` 已同步，测试/基线一致 |
 | N-5 | feat | 消息级深链 | 优先 `message_app_link`，缺失用 `openChatId + position`；卡片显示“打开原消息/查看原消息”，无链接回退群链接 |
+| N-6 | feat | OCR 本地增强 | RapidOCR 优先、Tesseract 回退；图片 hash 缓存；在线 OCR 不默认启用 |
 
 ### 8.2 文件摄取 P0（3–5 天）
 

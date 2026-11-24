@@ -185,7 +185,7 @@ export class ScanService {
           "image",
         );
         if (resource.data.length > 8 * 1024 * 1024) continue;
-        const text = await ocrImage(resource.data, resource.mime);
+        const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
         if (text) {
           parts.push(`[图片 OCR，仅作文字参考]\n${clip(text, 8000, "图片 OCR")}`);
         }

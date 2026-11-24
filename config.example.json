@@ -161,6 +161,12 @@
     "ackText": "收到，处理中…",
     "ackReaction": "OK"
   },
+  "ocr": {
+    "provider": "auto",
+    "timeoutMs": 30000,
+    "maxChars": 8000,
+    "language": "chi_sim+eng"
+  },
   "concurrency": {
     "global": 8,
     "mentionConcurrency": 4,

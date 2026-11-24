@@ -40,7 +40,16 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **群摘要**：每群一个持久摘要会话，保留决策、被否决方案、假设、未解决问题，以及讨论主题/阶段；摘要按新增消息密度/字符量/信号触发，低密度消息不反复摘要，失败后 5 分钟退避。
 - **私聊长期上下文**：owner 私聊独立保存摘要、偏好、决策、目标、未解决问题和 `sessionEpoch`，并注入私聊回复。
 - **证据回查**：普通群消息按日期存 `groups/<群名__短ID>/replies/<date>.jsonl`，AI 按需 grep 最近 7 天原文。
-- **图片理解**：@我/@机器人 的图片会下载为视觉附件交给支持图片的 OpenCode 模型；最多 2 张、单张 3MB。非 @ 群消息扫描也会对图片做 OCR；模型不支持图片时回退 `tesseract`（需安装 `tesseract` 和 `chi_sim` 语言包）。
+- **图片理解**：@我/@机器人 的图片会下载为视觉附件交给支持图片的 OpenCode 模型；最多 2 张、单张 3MB。非 @ 群消息扫描也会对图片做 OCR；默认优先本地 RapidOCR，失败回退 `tesseract`（需安装 `tesseract` 和 `chi_sim` 语言包）；OCR 结果按图片 hash 缓存。
+
+OCR 可选安装（推荐，中文截图更准）：
+
+```bash
+python3 -m venv ~/.local/share/atme-ocr-venv
+~/.local/share/atme-ocr-venv/bin/pip install rapidocr_onnxruntime
+```
+
+`ocr.provider` 可取 `auto`、`rapidocr`、`tesseract`；默认 `auto`，没有 RapidOCR 时自动回退 Tesseract。
 - **文件关联**：引用链最多回溯 5 层；最近 24 小时群文件不限定发送人，最多读取 2 个。支持 docx/pdf/doc/html/xlsx/xls/txt/md/csv/json 等；doc 用 `antiword`，xlsx/xls 用 SheetJS，docx 优先 `pandoc` 再回退 `unzip`。非 @ 群媒体先本地 OCR/文本提取并判断相关性，深层分析需私聊 `/分析 <taskId>` 批准，不自动执行；不会把原文件/图片转发成副本。
 - **在线文档**：按 @消息/引用里的 `/docx/`、`/wiki/`、`/docs/`、`/sheets/` 读取正文；wiki 下的 sheet 也支持。
 - **联网策略**：群聊默认禁用 `websearch/webfetch`；主人私聊默认允许 `websearch`，`webfetch` 需要私聊明确说“允许抓取/允许联网”。

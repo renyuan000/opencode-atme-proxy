@@ -333,6 +333,16 @@ export const WorkspaceSchema = z
     root: z.string().default("/mnt/d/Work/atme-groups"),
 })
     .default({});
+const OcrSchema = z
+    .object({
+    provider: z.enum(["auto", "tesseract", "rapidocr"]).default("auto"),
+    timeoutMs: z.number().int().min(1_000).max(120_000).default(30_000),
+    maxChars: z.number().int().min(1_000).max(200_000).default(8_000),
+    language: z.string().default("chi_sim+eng"),
+    rapidocrPython: z.string().optional(),
+    rapidocrScript: z.string().optional(),
+})
+    .default({});
 export const AppConfigSchema = z.object({
     version: z.number().int().default(1),
     app: z
@@ -359,6 +369,7 @@ export const AppConfigSchema = z.object({
     project: ProjectSchema,
     botReply: BotReplySchema,
     reply: ReplySchema.default({}),
+    ocr: OcrSchema.optional(),
     concurrency: ConcurrencySchema.default({}),
     repos: z.array(RepoSchema).default([]),
     policy: PolicySchema.default({}),

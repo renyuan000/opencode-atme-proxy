@@ -1009,6 +1009,28 @@ export declare const AppConfigSchema: z.ZodObject<{
         ackText?: string | undefined;
         ackReaction?: string | undefined;
     }>>;
+    ocr: z.ZodOptional<z.ZodDefault<z.ZodObject<{
+        provider: z.ZodDefault<z.ZodEnum<["auto", "tesseract", "rapidocr"]>>;
+        timeoutMs: z.ZodDefault<z.ZodNumber>;
+        maxChars: z.ZodDefault<z.ZodNumber>;
+        language: z.ZodDefault<z.ZodString>;
+        rapidocrPython: z.ZodOptional<z.ZodString>;
+        rapidocrScript: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        timeoutMs: number;
+        maxChars: number;
+        provider: "auto" | "tesseract" | "rapidocr";
+        language: string;
+        rapidocrPython?: string | undefined;
+        rapidocrScript?: string | undefined;
+    }, {
+        timeoutMs?: number | undefined;
+        maxChars?: number | undefined;
+        provider?: "auto" | "tesseract" | "rapidocr" | undefined;
+        language?: string | undefined;
+        rapidocrPython?: string | undefined;
+        rapidocrScript?: string | undefined;
+    }>>>;
     concurrency: z.ZodDefault<z.ZodObject<{
         global: z.ZodDefault<z.ZodNumber>;
         mentionConcurrency: z.ZodDefault<z.ZodNumber>;
@@ -1404,6 +1426,14 @@ export declare const AppConfigSchema: z.ZodObject<{
         summaryMinNewChars?: number | undefined;
         summaryMaxAgeMinutes?: number | undefined;
     } | undefined;
+    ocr?: {
+        timeoutMs: number;
+        maxChars: number;
+        provider: "auto" | "tesseract" | "rapidocr";
+        language: string;
+        rapidocrPython?: string | undefined;
+        rapidocrScript?: string | undefined;
+    } | undefined;
 }, {
     platforms: {
         feishu: {
@@ -1646,6 +1676,14 @@ export declare const AppConfigSchema: z.ZodObject<{
         ackDelayMs?: number | undefined;
         ackText?: string | undefined;
         ackReaction?: string | undefined;
+    } | undefined;
+    ocr?: {
+        timeoutMs?: number | undefined;
+        maxChars?: number | undefined;
+        provider?: "auto" | "tesseract" | "rapidocr" | undefined;
+        language?: string | undefined;
+        rapidocrPython?: string | undefined;
+        rapidocrScript?: string | undefined;
     } | undefined;
     concurrency?: {
         global?: number | undefined;

@@ -334,12 +334,12 @@ maxXlsxRows          500（预览/提取）
 | Word | docx | pandoc，失败回退 document.xml | 已有 |
 | 旧 Word | doc | antiword | 已有，依赖本机工具 |
 | PDF | pdf | pdftotext | 已有；页级/扫描页图待做 |
-| 图片 | png/jpg/jpeg/webp | OCR/视觉附件 | 已有，走图片路径，不是文档提取 |
+| 图片 | png/jpg/jpeg/webp | RapidOCR/Tesseract/视觉附件 | 已有，走图片路径，不是文档提取 |
 
 | 能力 | 状态 | 说明 |
 |:--|:--|:--|
 | 文本/HTML/Excel/Word/PDF 基础提取 | 已有 | `document.ts`；Excel `.xlsx/.xls` 走 SheetJS，最多 20 个 sheet；固定 20k 截断 |
-| 图片 OCR、媒体簇 | 已有 | 扫描 OCR；回复路径可传图片附件，失败回退 OCR |
+| 图片 OCR、媒体簇 | 已有 | RapidOCR 优先，Tesseract 回退；回复路径可传图片附件，失败回退 OCR；OCR 按 hash 缓存 |
 | 非 @ 媒体候选/审批 | 已有 | 本地提取/OCR → 相关性 → `needs_info` 候选 |
 | 文件 hash/manifest | 基础已实现 | `src/core/file-envelope.ts` 提供 `FileEnvelope/ExtractedDocument`；服务尚未接入 |
 | 目录/选段/`readRanges` | 基础已实现 | 已记录字符 `readRanges`；页/节选段未做 |
