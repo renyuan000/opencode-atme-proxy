@@ -389,7 +389,8 @@ export class ScanService {
       : "未知群";
     const view: NotificationView = {
       title: "群消息分析",
-      subtitle: `${group} · ${summary}`,
+      ...(first ? { headerMeta: { right: group } } : {}),
+      subtitle: summary,
       sections: highlighted.slice(0, 8).map((message) => {
         const item = byId.get(message.messageId);
         return {

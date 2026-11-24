@@ -6,7 +6,7 @@ import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
 import type { PromptAttachment } from "./opencode.js";
-import type { Classification, IncomingMessage, TaskAnalysis, TaskRecord } from "./types.js";
+import type { Classification, IncomingMessage, NotificationView, TaskAnalysis, TaskRecord } from "./types.js";
 export interface TaskServiceOptions {
     config: AppConfig;
     stateDir: string;
@@ -37,8 +37,10 @@ export interface TaskServiceOptions {
         workspaceDocs?: string[];
     }>;
     projectId(chatId: string): string | undefined;
+    chatLabelFor?(chatId: string): Promise<string | undefined>;
     startAnalysis(task: TaskRecord): void;
     sendToApprover(text: string): Promise<boolean>;
+    sendOwnerNotification?(view: NotificationView): Promise<boolean>;
     sendApproval(task: TaskRecord, analysis: TaskAnalysis): Promise<void>;
 }
 export declare class TaskService {

@@ -463,6 +463,10 @@ export class ProxyRuntime {
             },
             memory: this.memory,
             projectId: (chatId) => this.projectStore.get(chatId)?.projectId,
+            chatLabelFor: async (chatId) => {
+                const configured = this.config.platforms.feishu.groups.find((group) => group.chatId === chatId);
+                return configured?.name ?? (await this.notificationService.fetchChatName(chatId));
+            },
             startAnalysis: (task) => {
                 this.track(this.taskService.analyzeTask(task)).catch((error) => {
                     this.logger.error("task analysis failed", {
@@ -472,6 +476,7 @@ export class ProxyRuntime {
                 });
             },
             sendToApprover: (text) => this.sendToApprover(text),
+            sendOwnerNotification: (view) => this.notificationService.sendOwnerNotification(view),
             sendApproval: (task, analysis) => this.sendApproval(task, analysis),
         });
         this.executor = new GitExecutor({

@@ -48,8 +48,12 @@ export class NotificationService {
         if (!openId)
             return false;
         const rendered = this.options.platform.renderNotification?.(view);
+        const headerMeta = [view.headerMeta?.left, view.headerMeta?.right]
+            .filter((value) => Boolean(value))
+            .join(" · ");
         const fallback = [
             view.title,
+            ...(headerMeta ? [headerMeta] : []),
             ...(view.subtitle ? [view.subtitle] : []),
             "",
             ...view.sections.flatMap((section) => [

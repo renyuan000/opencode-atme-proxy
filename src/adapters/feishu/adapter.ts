@@ -3,6 +3,7 @@ import type {
   ActorRef,
   IncomingMessage,
   OutboundMessage,
+  NotificationView,
   OutboundTarget,
   PlatformAction,
   PlatformActionResult,
@@ -414,34 +415,7 @@ export class FeishuAdapter implements PlatformAdapter {
   renderNotification(
     view: Parameters<NonNullable<PlatformAdapter["renderNotification"]>>[0],
   ): OutboundMessage {
-    const elements: Array<Record<string, unknown>> = [];
-    view.sections.forEach((section, index) => {
-      if (index > 0) elements.push({ tag: "hr" });
-      const lines = [`**${section.title}**${section.meta ? ` · ${section.meta}` : ""}`];
-      if (section.quote) lines.push(`> ${section.quote}`);
-      if (section.detail) lines.push(`<font color='grey'>${section.detail}</font>`);
-      elements.push({ tag: "div", text: { tag: "lark_md", content: lines.join("\n") } });
-    });
-    if (view.footer) {
-      elements.push({ tag: "div", text: { tag: "lark_md", content: view.footer } });
-    }
-    if (view.link) {
-      elements.push({
-        tag: "div",
-        text: { tag: "lark_md", content: `[${view.link.label}](${view.link.url})` },
-      });
-    }
-    return {
-      kind: "card",
-      card: {
-        config: { wide_screen_mode: true },
-        header: {
-          template: "blue",
-          title: { tag: "plain_text", content: view.title },
-        },
-        elements,
-      },
-    };
+    return renderNotificationCard(view);
   }
 
   renderApproval(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage {
@@ -755,6 +729,90 @@ function resolutionLine(view: Parameters<PlatformAdapter["renderApproval"]>[0]):
             ? "已请求修改"
             : "已过期";
   return `\n**处理结果**：${label}${view.resolutionNote ? `（${view.resolutionNote}）` : ""}`;
+}
+
+function renderNotificationHeaderMeta(
+  meta: NotificationView["headerMeta"],
+): Record<string, unknown> | undefined {
+  const left = meta?.left?.trim();
+  const right = meta?.right?.trim();
+  if (!left && !right) return undefined;
+  const columns: Array<Record<string, unknown>> = [];
+  if (right) {
+    columns.push(
+      left
+        ? {
+            tag: "column",
+            width: "weighted",
+            weight: 1,
+            vertical_align: "center",
+            elements: [{ tag: "div", text: { tag: "lark_md", content: left } }],
+          }
+        : {
+            tag: "column",
+            width: "weighted",
+            weight: 1,
+            vertical_align: "center",
+            elements: [{ tag: "div", text: { tag: "lark_md", content: " " } }],
+          },
+    );
+    columns.push({
+      tag: "column",
+      width: "auto",
+      vertical_align: "center",
+      elements: [{ tag: "div", text: { tag: "lark_md", content: right } }],
+    });
+  } else if (left) {
+    columns.push({
+      tag: "column",
+      width: "auto",
+      vertical_align: "center",
+      elements: [{ tag: "div", text: { tag: "lark_md", content: left } }],
+    });
+  }
+  return {
+    tag: "column_set",
+    flex_mode: columns.length > 1 ? "stretch" : "none",
+    horizontal_spacing: "default",
+    columns,
+  };
+}
+
+export function renderNotificationCard(view: NotificationView): OutboundMessage {
+  const elements: Array<Record<string, unknown>> = [];
+  const headerMeta = renderNotificationHeaderMeta(view.headerMeta);
+  if (headerMeta) elements.push(headerMeta);
+  if (view.subtitle) {
+    elements.push({ tag: "div", text: { tag: "lark_md", content: view.subtitle } });
+  }
+  if (headerMeta || view.subtitle) elements.push({ tag: "hr" });
+  view.sections.forEach((section, index) => {
+    if (index > 0) elements.push({ tag: "hr" });
+    const lines = [`**${section.title}**${section.meta ? ` · ${section.meta}` : ""}`];
+    if (section.quote) lines.push(`> ${section.quote}`);
+    if (section.detail) lines.push(`<font color='grey'>${section.detail}</font>`);
+    elements.push({ tag: "div", text: { tag: "lark_md", content: lines.join("\n") } });
+  });
+  if (view.footer) {
+    elements.push({ tag: "div", text: { tag: "lark_md", content: view.footer } });
+  }
+  if (view.link) {
+    elements.push({
+      tag: "div",
+      text: { tag: "lark_md", content: `[${view.link.label}](${view.link.url})` },
+    });
+  }
+  return {
+    kind: "card",
+    card: {
+      config: { wide_screen_mode: true },
+      header: {
+        template: "blue",
+        title: { tag: "plain_text", content: view.title },
+      },
+      elements,
+    },
+  };
 }
 
 export function renderApprovalCard(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage {

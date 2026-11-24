@@ -208,9 +208,14 @@ export interface NotificationSection {
     quote?: string;
     detail?: string;
 }
+export interface NotificationHeaderMeta {
+    left?: string;
+    right?: string;
+}
 export interface NotificationView {
     title: string;
     subtitle?: string;
+    headerMeta?: NotificationHeaderMeta;
     sections: NotificationSection[];
     link?: {
         label: string;

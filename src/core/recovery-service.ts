@@ -6,6 +6,12 @@ import type { TaskStore } from "./task-store.js";
 import type { IncomingMessage, NotificationView, TaskRecord } from "./types.js";
 import { toErrorMessage } from "./util.js";
 
+interface PendingTaskNotice {
+  task: TaskRecord;
+  chatLabel: string;
+  senderLabel: string;
+}
+
 export interface RecoveryServiceOptions {
   config: AppConfig;
   logger: Logger;
@@ -141,6 +147,55 @@ export class RecoveryService {
     }
   }
 
+  private async sendPendingTaskNotices(
+    title: string,
+    notices: PendingTaskNotice[],
+    footer: string,
+  ): Promise<void> {
+    const groups = new Map<string, { chatLabel: string; notices: PendingTaskNotice[] }>();
+    for (const notice of notices) {
+      const existing = groups.get(notice.task.chatId);
+      if (existing) existing.notices.push(notice);
+      else groups.set(notice.task.chatId, { chatLabel: notice.chatLabel, notices: [notice] });
+    }
+    for (const group of groups.values()) {
+      const first = group.notices[0]!;
+      const states = [...new Set(group.notices.map((notice) => notice.task.state))];
+      const status =
+        states.length === 1 ? `${states[0]} · ${group.notices.length} 条` : `${group.notices.length} 条待处理`;
+      const link = {
+        label: "打开群聊",
+        url: `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(first.task.chatId)}`,
+      };
+      const text = [
+        title,
+        `${group.chatLabel} · ${status}`,
+        ...group.notices.flatMap((notice) => [
+          "━━━━━━━━━━",
+          `${notice.task.title} · ${notice.task.state}`,
+          `来源：${notice.chatLabel} / ${notice.senderLabel}`,
+        ]),
+        footer,
+        `群聊：${link.url}`,
+      ].join("\n");
+      if (this.options.sendOwnerNotification) {
+        await this.options.sendOwnerNotification({
+          title,
+          headerMeta: { right: `${group.chatLabel} · ${status}` },
+          sections: group.notices.map((notice) => ({
+            title: notice.task.title,
+            meta: notice.task.state,
+            detail: `来源：${notice.chatLabel} / ${notice.senderLabel}`,
+          })),
+          link,
+          footer,
+        });
+      } else {
+        await this.options.sendToOwner(text);
+      }
+    }
+  }
+
   private async sendTaskNotice(
     title: string,
     subtitle: string,
@@ -149,7 +204,7 @@ export class RecoveryService {
     labels: { chatLabel: string; senderLabel: string },
   ): Promise<void> {
     const text = [
-      `${title}（${labels.chatLabel}）：${task.title}`,
+      `${title} · ${labels.chatLabel}：${task.title}`,
       `状态：${task.state}`,
       `来源：${labels.chatLabel} / ${labels.senderLabel}`,
       `群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
@@ -157,7 +212,7 @@ export class RecoveryService {
     ].join("\n");
     if (this.options.sendOwnerNotification) {
       await this.options.sendOwnerNotification({
-        title,
+        title: `${title} · ${labels.chatLabel}`,
         subtitle,
         sections: [
           { title: task.title, meta: task.state, detail: `来源：${labels.chatLabel} / ${labels.senderLabel}` },
@@ -180,6 +235,7 @@ export class RecoveryService {
     const tasks = await this.options.tasks.list();
     let resumed = 0;
     let interrupted = 0;
+    const pendingNotices: PendingTaskNotice[] = [];
     for (const task of tasks) {
       if (now - task.updatedAt > maxAgeMs) continue;
       if (task.state === "done" || task.state === "rejected" || task.state === "canceled") {
@@ -198,7 +254,7 @@ export class RecoveryService {
         };
         await this.sendTaskNotice(
           "执行中断",
-          `${labels.chatLabel} · ${task.state}`,
+          task.state,
           task,
           "上次执行被中断，已暂停等待你重新批准；不会自动重放代码修改。",
           labels,
@@ -236,15 +292,20 @@ export class RecoveryService {
           chatLabel: task.chatName ?? "群",
           senderLabel: task.requester.displayName ?? "成员",
         };
-        await this.sendTaskNotice(
-          "未完成任务提醒",
-          `${labels.chatLabel} · ${task.state}`,
+        pendingNotices.push({
           task,
-          "请在原审批卡或群里处理。",
-          labels,
-        );
+          chatLabel: labels.chatLabel,
+          senderLabel: labels.senderLabel,
+        });
         resumed++;
       }
+    }
+    if (pendingNotices.length > 0) {
+      await this.sendPendingTaskNotices(
+        "未完成任务提醒",
+        pendingNotices,
+        "请在原审批卡或群里处理。",
+      );
     }
     this.options.logger.info("task resume finished", { resumed, interrupted });
     if (resumed > 0 || interrupted > 0) {

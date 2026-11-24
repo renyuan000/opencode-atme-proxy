@@ -243,9 +243,15 @@ export interface NotificationSection {
   detail?: string;
 }
 
+export interface NotificationHeaderMeta {
+  left?: string;
+  right?: string;
+}
+
 export interface NotificationView {
   title: string;
   subtitle?: string;
+  headerMeta?: NotificationHeaderMeta;
   sections: NotificationSection[];
   link?: { label: string; url: string };
   footer?: string;

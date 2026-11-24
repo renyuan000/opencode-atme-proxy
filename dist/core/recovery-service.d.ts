@@ -42,6 +42,7 @@ export declare class RecoveryService {
     constructor(options: RecoveryServiceOptions);
     recoverOnStartup(): Promise<void>;
     private pullStartupWindow;
+    private sendPendingTaskNotices;
     private sendTaskNotice;
     private resumeOpenTasks;
 }

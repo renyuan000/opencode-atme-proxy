@@ -3,7 +3,7 @@ import { deterministicVerification, mergeVerification, parseVerification, } from
 import { parseAnalysis } from "./analysis.js";
 import { buildAnalysisPrompt } from "./prompts.js";
 import { makeDedupKey } from "./relevance.js";
-import { sha256, toErrorMessage, truncate, writeJsonAtomic } from "./util.js";
+import { formatLocalTime, sha256, toErrorMessage, truncate, writeJsonAtomic } from "./util.js";
 export class TaskService {
     options;
     constructor(options) {
@@ -148,8 +148,59 @@ export class TaskService {
         if (!autoAnalyze) {
             task.state = "needs_info";
             task.updatedAt = Date.now();
+            task.lastNudgeAt = task.updatedAt;
             await this.options.tasks.save(task);
-            await this.options.sendToApprover(`已记录候选任务，暂不自动分析：${task.title}\n如需分析，回复 /分析 ${task.id}`);
+            let group = task.chatName?.trim();
+            if (!group && this.options.chatLabelFor) {
+                try {
+                    group = (await this.options.chatLabelFor(task.chatId))?.trim();
+                }
+                catch (error) {
+                    this.options.logger.warn("failed to resolve task chat name", {
+                        chatId: task.chatId,
+                        error: toErrorMessage(error),
+                    });
+                }
+            }
+            group = group || "未知群";
+            if (!task.chatName && group !== "未知群") {
+                task.chatName = group;
+                await this.options.tasks.save(task);
+            }
+            const sender = task.requester.displayName?.trim() || "成员";
+            const meta = `${formatLocalTime(task.createdAt)} ${sender} · task`;
+            const link = {
+                label: "打开群聊",
+                url: `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
+            };
+            if (this.options.sendOwnerNotification) {
+                await this.options.sendOwnerNotification({
+                    title: `候选任务 · ${group}`,
+                    headerMeta: { right: meta },
+                    sections: [
+                        {
+                            title: task.title,
+                            meta: "待确认",
+                            ...(task.excerpt
+                                ? { quote: truncate(task.excerpt.replace(/\s+/g, " "), 160) }
+                                : {}),
+                            detail: "暂不自动分析",
+                        },
+                    ],
+                    link,
+                    footer: `如需分析，回复 /分析 ${task.id}`,
+                });
+            }
+            else {
+                await this.options.sendToApprover([
+                    "已记录候选任务，暂不自动分析",
+                    `群：${group}`,
+                    `${meta}`,
+                    `任务：${task.title}`,
+                    `如需分析，回复 /分析 ${task.id}`,
+                    `群聊：${link.url}`,
+                ].join("\n"));
+            }
             return task;
         }
         this.options.startAnalysis(task);

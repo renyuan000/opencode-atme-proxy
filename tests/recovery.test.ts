@@ -168,7 +168,47 @@ test("resume re-analyzes candidate tasks and nudges stale approvals", async () =
     assert.ok(wait);
     assert.notEqual(open?.state, "candidate");
     assert.ok(wait?.lastNudgeAt);
-    assert.ok(adapter.sent.some((text) => text.includes("未完成任务提醒")));
+    assert.ok(
+      adapter.sent.some(
+        (text) =>
+          text.includes("未完成任务提醒") && text.includes("群 · awaiting_approval · 1 条"),
+      ),
+    );
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("groups pending task reminders by chat into one card", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
+  try {
+    await ensureTestGroup(dir, "chat");
+    const store = new TaskStore(testGroupDir(dir, "chat"));
+    await store.load();
+    await store.save({
+      ...task("needs_info", Date.now() - 2 * 3600_000),
+      id: "task_needs_a",
+      dedupKey: "dedup_needs_a",
+      title: "任务 A",
+    });
+    await store.save({
+      ...task("needs_info", Date.now() - 3600_000),
+      id: "task_needs_b",
+      dedupKey: "dedup_needs_b",
+      title: "任务 B",
+    });
+    await store.close();
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    await runtime.recoverOnStartup();
+    await new Promise((r) => setTimeout(r, 150));
+    const reminders = adapter.sent.filter((text) => text.includes("未完成任务提醒"));
+    assert.equal(reminders.length, 1);
+    assert.match(reminders[0]!, /群 · needs_info · 2 条/);
+    assert.match(reminders[0]!, /任务 A/);
+    assert.match(reminders[0]!, /任务 B/);
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });
