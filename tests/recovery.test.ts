@@ -215,6 +215,33 @@ test("groups pending task reminders by chat into one card", async () => {
   }
 });
 
+test("recent nudge timestamp suppresses duplicate pending reminder", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
+  try {
+    await ensureTestGroup(dir, "chat");
+    const store = new TaskStore(testGroupDir(dir, "chat"));
+    await store.load();
+    await store.save({
+      ...task("needs_info", Date.now() - 2 * 3600_000),
+      id: "task_nudged",
+      dedupKey: "dedup_nudged",
+      lastNudgeAt: Date.now(),
+    });
+    await store.close();
+    const cfg = config(dir);
+    cfg.config.recovery.nudgeHours = 24;
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: cfg });
+    await runtime.start();
+    await runtime.recoverOnStartup();
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(!adapter.sent.some((text) => text.includes("未完成任务提醒")));
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("resume pauses stale executing tasks instead of replaying", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
   try {

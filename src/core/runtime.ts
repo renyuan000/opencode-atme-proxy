@@ -631,6 +631,7 @@ export class ProxyRuntime {
         );
         return configured?.name ?? (await this.notificationService.fetchChatName(chatId));
       },
+      senderLabelFor: (userId, messageId) => this.resolveSenderLabel(userId, messageId),
       startAnalysis: (task) => {
         this.track(this.taskService.analyzeTask(task)).catch((error) => {
           this.logger.error("task analysis failed", {
@@ -1068,22 +1069,31 @@ export class ProxyRuntime {
       task.chatName && task.chatName !== task.chatId
         ? task.chatName
         : configured?.name ?? (await this.notificationService.fetchChatName(task.chatId)) ?? "群";
-    let senderLabel = task.requester.displayName ?? "";
-    if (!senderLabel) {
+    const senderLabel =
+      task.requester.displayName?.trim() ||
+      (await this.resolveSenderLabel(task.requester.id, task.messageIds[0])) ||
+      "成员";
+    return { chatLabel, senderLabel };
+  }
+
+  private async resolveSenderLabel(
+    userId: string,
+    messageId?: string,
+  ): Promise<string | undefined> {
+    let label = "";
+    try {
+      label = (await this.options.platform.fetchUserName?.(userId)) ?? "";
+    } catch {
+      label = "";
+    }
+    if (!label && messageId && this.options.platform.fetchMessage) {
       try {
-        senderLabel = (await this.options.platform.fetchUserName?.(task.requester.id)) ?? "";
+        label = (await this.options.platform.fetchMessage(messageId))?.sender.displayName ?? "";
       } catch {
-        senderLabel = "";
+        label = "";
       }
     }
-    if (!senderLabel && task.messageIds[0] && this.options.platform.fetchMessage) {
-      try {
-        senderLabel = (await this.options.platform.fetchMessage(task.messageIds[0]))?.sender.displayName ?? "";
-      } catch {
-        senderLabel = "";
-      }
-    }
-    return { chatLabel, senderLabel: senderLabel || "成员" };
+    return label.trim() || undefined;
   }
 
   private sendToOwner(text: string, sourceMessageId?: string): Promise<boolean> {

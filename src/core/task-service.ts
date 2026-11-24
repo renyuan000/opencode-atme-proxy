@@ -52,6 +52,7 @@ export interface TaskServiceOptions {
   }>;
   projectId(chatId: string): string | undefined;
   chatLabelFor?(chatId: string): Promise<string | undefined>;
+  senderLabelFor?(userId: string, messageId?: string): Promise<string | undefined>;
   startAnalysis(task: TaskRecord): void;
   sendToApprover(text: string): Promise<boolean>;
   sendOwnerNotification?(view: NotificationView): Promise<boolean>;
@@ -232,7 +233,6 @@ export class TaskService {
       task.state = "needs_info";
       task.updatedAt = Date.now();
       task.lastNudgeAt = task.updatedAt;
-      await this.options.tasks.save(task);
       let group = task.chatName?.trim();
       if (!group && this.options.chatLabelFor) {
         try {
@@ -245,11 +245,25 @@ export class TaskService {
         }
       }
       group = group || "未知群";
-      if (!task.chatName && group !== "未知群") {
-        task.chatName = group;
-        await this.options.tasks.save(task);
+      let sender = task.requester.displayName?.trim();
+      if (!sender && this.options.senderLabelFor) {
+        try {
+          sender = (
+            await this.options.senderLabelFor(task.requester.id, task.messageIds[0])
+          )?.trim();
+        } catch (error) {
+          this.options.logger.warn("failed to resolve task sender name", {
+            userId: task.requester.id,
+            error: toErrorMessage(error),
+          });
+        }
       }
-      const sender = task.requester.displayName?.trim() || "成员";
+      sender = sender || "成员";
+      if (!task.chatName && group !== "未知群") task.chatName = group;
+      if (!task.requester.displayName && sender !== "成员") {
+        task.requester.displayName = sender;
+      }
+      await this.options.tasks.save(task);
       const meta = `${formatLocalTime(task.createdAt)} ${sender} · task`;
       const link = {
         label: "打开群聊",

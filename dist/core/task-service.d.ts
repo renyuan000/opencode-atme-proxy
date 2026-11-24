@@ -38,6 +38,7 @@ export interface TaskServiceOptions {
     }>;
     projectId(chatId: string): string | undefined;
     chatLabelFor?(chatId: string): Promise<string | undefined>;
+    senderLabelFor?(userId: string, messageId?: string): Promise<string | undefined>;
     startAnalysis(task: TaskRecord): void;
     sendToApprover(text: string): Promise<boolean>;
     sendOwnerNotification?(view: NotificationView): Promise<boolean>;

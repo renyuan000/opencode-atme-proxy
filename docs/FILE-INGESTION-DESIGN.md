@@ -4,7 +4,7 @@
 |---|---|
 | 日期 | 2026-11-24 |
 | 范围 | 文件、图片、PDF、Office、消息/上下文进入模型前的预处理 |
-| 基线 | `4db1f3e` + 未提交文件摄取/通知卡片改动；测试 153/153；`atme-proxy.service` active（截至 2026-11-24） |
+| 基线 | 2026-11-24 开发版；测试 155/155；`atme-proxy.service` active |
 | 用途 | 对比 OpenClaw、OpenCode、Codex、Claude Code，记录 atme-proxy 的取舍和后续落地顺序 |
 | 状态 | 设计参考；文中“建议”不代表已经实现 |
 
@@ -89,6 +89,25 @@
 - 强在 PDF 分页：大 PDF 必须给页范围，单次最多 20 页；扫描件可提取页图。
 - 强在去重：文件未变化时返回“内容未变”stub，避免重复读。
 - 弱在大文件直接抛错，聊天场景体验偏硬；分页依赖模型；25k 输出 token 成本较高。
+
+### 2.2 分层边界：Core 共用，Adapter 平台专用
+
+文件处理不是飞书专用能力，必须放在 core；Feishu/微信/企业微信只负责提供平台原始数据。
+
+| 层 | 职责 | 当前实现 |
+|:--|:--|:--|
+| Core 文件管道 | 类型判断、大小/页数/像素门禁、文本/PDF/Office 提取、OCR、目录/选段、预算、hash 缓存 | `src/core/document.ts`、`scan-service.ts`、`reply-service.ts` |
+| Core 上下文 | 附件 manifest、读取范围、未读标记、prompt 注入、执行阶段复用 | `task-service.ts`、`prompts.ts`（部分待做） |
+| Core 存储 | 原文、提取结果、页图、任务只读副本、TTL 清理 | `group-workspace.ts`、`document-cache.ts`（部分待做） |
+| Adapter | 取附件 bytes/mime、取在线文档正文、附件映射、群链接、卡片/文本降级 | `src/adapters/feishu/*` |
+| 平台 UI | 命令文案、AppLink、审批卡片、消息历史接口 | Adapter / runtime 中平台分支 |
+
+约束：
+
+- PDF/Office 解析、页数/像素限制、选段算法、缓存和预算都放在 core。
+- Adapter 不得重复实现文档解析，只返回 `bytes + mime + 文件名/URL` 和平台元数据。
+- 在线文档抓取可由 adapter 提供，但正文清洗、缓存键、截断和 prompt 围栏仍在 core。
+- 卡片右对齐、群名展示属于通知层；无卡片平台回退为文本。
 
 ---
 
@@ -301,7 +320,28 @@ maxXlsxRows          500（预览/提取）
 
 ---
 
-## 6. 对当前代码的改造点
+## 6. 实现状态与改造点
+
+### 6.1 当前实现状态（2026-11-24）
+
+| 能力 | 状态 | 说明 |
+|:--|:--|:--|
+| 文本/HTML/xlsx/docx/pdf/doc 基础提取 | 已有 | `document.ts`，固定 20k 截断 |
+| 图片 OCR、媒体簇 | 已有 | 扫描 OCR；回复路径可传图片附件，失败回退 OCR |
+| 非 @ 媒体候选/审批 | 已有 | 本地提取/OCR → 相关性 → `needs_info` 候选 |
+| 文件 hash/manifest | 未做 | 无统一 `FileEnvelope` |
+| 目录/选段/`readRanges` | 未做 | 仍按固定字符截断 |
+| PDF 页级/扫描页图 | 未做 | 仅 `pdftotext` 全文 |
+| 原生视觉能力协商 | 部分 | 回复路径传图；扫描路径仍以 OCR 为主 |
+| 原始字节/页像素/超时/并发门禁 | 未做 | 仅 8MB 文件门禁和最多 2 个附件 |
+| 内容 hash 缓存 | 未做 | 在线文档按 URL 缓存，不是内容 hash |
+| 在线文档 contentHash/etag | 未做 | 仍是 chatId + URL |
+| 执行阶段附件 manifest | 未做 | 分析阶段有附件，执行 prompt 未复用 |
+| Prompt 注入围栏 | 未做 | 设计已定，代码未统一 |
+| 附件/页图 TTL 清理 | 未做 | 无配额和清理任务 |
+| 多平台 adapter 边界 | 部分 | 已有 `fetchResource/fetchDocumentText`，但通知/AppLink 仍有平台分支 |
+
+### 6.2 改造点
 
 | 文件 | 改造 |
 |---|---|
