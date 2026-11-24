@@ -60,6 +60,10 @@ export interface Classification {
     confidence: number;
     keywordHit: boolean;
     ownerAttention?: boolean;
+    ownership?: "ours" | "external" | "unclear";
+    ownershipConfidence?: number;
+    affectedProjects?: string[];
+    ownershipReason?: string;
     task?: TaskHint;
 }
 export interface FilterStats {

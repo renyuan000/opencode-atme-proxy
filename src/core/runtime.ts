@@ -769,6 +769,14 @@ export class ProxyRuntime {
                 direction: inferred.summary || inferred.product,
                 ownerDirection: inferred.ownerDirection,
                 ownerKeywords: inferred.ownerKeywords,
+                ownProjects: [
+                  ...new Set([
+                    ...(project?.primary ? [project.primary] : []),
+                    ...(project?.core ?? []),
+                    ...(group?.workspace?.projects ?? []).map((item) => item.name),
+                  ]),
+                ],
+                excludedProjects: inferred.excludes,
                 terms: inferred.terms,
               }
             : {}),

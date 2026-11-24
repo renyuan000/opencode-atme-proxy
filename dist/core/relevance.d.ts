@@ -64,6 +64,8 @@ export interface RelevanceOptions {
         direction?: string;
         ownerDirection?: string;
         ownerKeywords?: string[];
+        ownProjects?: string[];
+        excludedProjects?: string[];
         terms?: Record<string, string>;
         responsibility?: {
             summary: string;

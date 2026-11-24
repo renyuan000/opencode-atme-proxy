@@ -196,6 +196,12 @@ export class ScanService {
         const classification = await this.options.intentService.classifyOne(enriched, signal);
         if (!classification?.relevant)
             return;
+        if (classification.ownership === "external" &&
+            (classification.ownershipConfidence ?? 0) >= 0.6) {
+            await this.notifyOwnership(message, classification);
+            await this.options.markProcessed(message);
+            return;
+        }
         if (this.hasMedia(message) &&
             (classification.ownerAttention || classification.actionability === "task")) {
             await this.queueMediaApproval(enriched, classification);
@@ -270,6 +276,12 @@ export class ScanService {
                 continue;
             }
             this.appendContextForScan(message);
+            if (item.ownership === "external" &&
+                (item.ownershipConfidence ?? 0) >= 0.6) {
+                await this.notifyOwnership(message, item);
+                await this.options.markProcessed(message);
+                continue;
+            }
             if (this.hasMedia(message) &&
                 (item.ownerAttention || item.actionability === "task")) {
                 await this.queueMediaApproval(message, item);
@@ -390,6 +402,20 @@ export class ScanService {
             // keep id as last resort
         }
         return message.sender.id;
+    }
+    async notifyOwnership(message, classification) {
+        const group = message.chat.name ?? message.chat.id;
+        const reason = classification.ownershipReason ?? classification.reason;
+        return this.options.sendToApprover([
+            "群消息可能不属于你的开发范围",
+            `群：${group}`,
+            `发送人：${message.sender.displayName ?? message.sender.id}`,
+            `内容：${truncate(message.text, 200)}`,
+            `归属：${classification.ownership === "external" ? "平台/外部系统" : "不确定"}`,
+            `影响项目：${classification.affectedProjects?.join("、") || "未判断"}`,
+            `原因：${reason}`,
+            `群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(message.chat.id)}`,
+        ].join("\n"));
     }
     hasMedia(message) {
         return (message.attachments ?? []).some((attachment) => attachment.kind === "image" || attachment.kind === "file");

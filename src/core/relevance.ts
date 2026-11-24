@@ -145,6 +145,8 @@ export interface RelevanceOptions {
     direction?: string;
     ownerDirection?: string;
     ownerKeywords?: string[];
+    ownProjects?: string[];
+    excludedProjects?: string[];
     terms?: Record<string, string>;
     responsibility?: {
       summary: string;
@@ -375,6 +377,8 @@ export class RelevanceService {
     direction?: string;
     ownerDirection?: string;
     ownerKeywords?: string[];
+    ownProjects?: string[];
+    excludedProjects?: string[];
     terms?: Record<string, string>;
     responsibility?: {
       summary: string;
@@ -434,6 +438,8 @@ function buildPrompt(
     direction?: string;
     ownerDirection?: string;
     ownerKeywords?: string[];
+    ownProjects?: string[];
+    excludedProjects?: string[];
     terms?: Record<string, string>;
     responsibility?: {
       summary: string;
@@ -456,7 +462,8 @@ function buildPrompt(
     "如果用户画像为空，把项目群里的需求、方案、接口/字段、测试、故障、任务安排、评审意见都视为可能相关；只有寒暄、通知、纯表情、已明确解决的问题才判 noise。",
     "不要把“用户不是项目负责人”当作无关理由。",
     "关键词命中是强信号之一，不是唯一依据：没命中也可能相关，命中也可能只是转发、反讽或别人的话题。",
-    "必须结合 group_direction、owner_direction、owner_keywords、group_terms、group_responsibility、recent_history 和语义综合判断。",
+    "必须结合 group_direction、owner_direction、owner_keywords、own_projects、excluded_projects、group_terms、group_responsibility、recent_history 和语义综合判断。",
+    "额外输出 ownership：ours（明确属于 own_projects/owner_direction 的代码或职责）、external（平台/管理平台/其他系统）、unclear（证据不足）。关键词和产品名不能单独决定 ownership。",
     "结合 group_responsibility 和 recent_history 判断；如果消息只是 @ 别人、且没有指向用户或本群职责的任务/问题/影响，判 relevant=false。",
     "不要仅因为消息出现在项目群、或泛泛提到“更新/进度”，就判为用户相关。",
     "group_projects.core 是该群的核心项目；reference 只是可能提到的参考项目。只有消息明确涉及核心项目或用户负责的工作才判相关；仅提到参考项目不等于用户任务。",
@@ -484,6 +491,8 @@ function buildPrompt(
     group_direction: projectContext.direction ?? "",
     owner_direction: projectContext.ownerDirection ?? "",
     owner_keywords: projectContext.ownerKeywords ?? [],
+    own_projects: projectContext.ownProjects ?? [],
+    excluded_projects: projectContext.excludedProjects ?? [],
     group_terms: projectContext.terms ?? {},
     group_responsibility: projectContext.responsibility ?? null,
     recent_history: history.slice(-12).map((message) => ({
@@ -519,6 +528,13 @@ export function parseClassification(
     const confidence = clamp(Number(item.confidence ?? 0), 0, 1);
     const relevant = Boolean(item.relevant) && actionability !== "noise";
     const task = normalizeTaskHint(item.task);
+    const ownership =
+      item.ownership === "ours" || item.ownership === "external" || item.ownership === "unclear"
+        ? item.ownership
+        : undefined;
+    const affectedProjects = Array.isArray(item.affected_projects)
+      ? item.affected_projects.filter((value: unknown): value is string => typeof value === "string")
+      : [];
     const classification: Classification = {
       messageId,
       relevant,
@@ -527,6 +543,14 @@ export function parseClassification(
       confidence,
       keywordHit: false,
       ownerAttention: Boolean(item.owner_attention),
+      ...(ownership ? { ownership } : {}),
+      ...(typeof item.ownership_confidence === "number"
+        ? { ownershipConfidence: clamp(item.ownership_confidence, 0, 1) }
+        : {}),
+      ...(affectedProjects.length > 0 ? { affectedProjects } : {}),
+      ...(typeof item.ownership_reason === "string"
+        ? { ownershipReason: item.ownership_reason }
+        : {}),
       ...(task ? { task } : {}),
     };
     if (classification.relevant) {

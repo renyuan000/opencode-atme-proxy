@@ -1317,3 +1317,42 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - 显示时间、发送人姓名、消息摘要
 - 附群聊 AppLink
 - 不转发附件副本
+
+
+### 37. 归属判断（Ownership Triage）
+
+群消息分诊增加归属字段：
+
+```json
+{
+  "ownership": "ours|external|unclear",
+  "ownership_confidence": 0.0,
+  "affected_projects": [],
+  "ownership_reason": ""
+}
+```
+
+判断依据：
+
+- group_direction
+- owner_direction
+- own_projects
+- excluded_projects
+- group_terms
+- group_responsibility
+- recent_history
+- 语义
+
+规则：
+
+- `ours`：明确属于自己负责的项目/代码
+- `external`：平台、管理平台、外部系统
+- `unclear`：证据不足
+- 关键词命中不能单独决定 ownership
+
+外部归属且置信度 >= 0.6 时：
+
+- 不自动建开发任务
+- 私聊 owner 说明“可能不属于你的开发范围”
+- 附群聊链接
+- 等 owner 判断
