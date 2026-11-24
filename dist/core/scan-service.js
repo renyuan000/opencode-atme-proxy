@@ -280,6 +280,25 @@ export class ScanService {
             relevant: items.filter((item) => item.relevant).length,
         });
     }
+    async runManualDigest(messages, signal) {
+        const usable = messages.filter((message) => message.senderType === "user" && message.text.trim().length > 0);
+        if (usable.length === 0)
+            return 0;
+        const enriched = await this.enrichFiles(usable);
+        const first = enriched[0];
+        const history = first
+            ? this.options.chatContext
+                .recent(`${first.platform}:${first.chat.id}`, 12)
+                .map((item) => ({
+                sender: item.senderName ?? item.senderId,
+                text: item.text,
+                time: item.at,
+            }))
+            : [];
+        const { items } = await this.options.relevance().classify(enriched, signal, history);
+        await this.sendOwnerDigest(enriched, items);
+        return enriched.length;
+    }
     async digestWithoutFilter(messages) {
         const usable = messages.filter((message) => message.senderType === "user" && message.text.trim().length > 0);
         if (usable.length === 0) {
@@ -331,8 +350,7 @@ export class ScanService {
         const firstLink = messageLinks.find((link) => Boolean(link)) ??
             (first ? await this.resolveMessageLink(first) : undefined);
         const view = {
-            title: "群消息分析",
-            ...(first ? { headerMeta: { right: group } } : {}),
+            title: `群消息分析 · ${group}`,
             subtitle: summary,
             sections: highlightedMessages.map((message, index) => {
                 const item = byId.get(message.messageId);

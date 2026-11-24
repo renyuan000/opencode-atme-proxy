@@ -35,6 +35,10 @@ test("parses slash commands", () => {
     command: "group_messages",
     arg: "产品-流分装置 告警 20",
   });
+  assert.deepEqual(parseOwnerCommand("/群消息分析 产品-资产测绘 20"), {
+    command: "analyze_group",
+    arg: "产品-资产测绘 20",
+  });
   assert.deepEqual(parseOwnerCommand("/提及 流分 20"), {
     command: "mentions",
     arg: "流分 20",

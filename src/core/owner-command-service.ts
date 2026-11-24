@@ -32,6 +32,7 @@ export interface OwnerCommandServiceOptions {
   setOwnerFocus(arg: string, kind: "direction" | "keywords"): Promise<string>;
   analyzeTask(arg: string): Promise<string>;
   queryGroupMessages(arg: string): Promise<string>;
+  analyzeGroupMessages(arg: string): Promise<string>;
   queryMentions(arg: string): Promise<string>;
   listOwnerTargets(): string;
   selectOwnerTarget(arg: string): string;
@@ -64,6 +65,7 @@ export class OwnerCommandService {
         "/方向 <群名|chatId> <说明> 设置我在该群的研发方向",
         "/关键词 <群名|chatId> <关键词1,关键词2> 设置我在该群的研发关键词",
         "/分析 <taskId> 手动触发待分析任务",
+        "/群消息分析 <群名关键词> [数量] 主动生成群消息分析卡片",
         "/群消息 <群名关键词> [关键词] [数量] 查询群消息",
         "/提及 <群名关键词> [数量] 查询 @我/@机器人 的消息",
         "/目标 [编号|chatId|messageId] 查看/选择私聊目标",
@@ -95,6 +97,10 @@ export class OwnerCommandService {
     if (command.command === "analyze") {
       if (!command.arg) return "用法：/分析 <taskId>";
       return this.options.analyzeTask(command.arg);
+    }
+    if (command.command === "analyze_group") {
+      if (!command.arg) return "用法：/群消息分析 <群名关键词> [数量]";
+      return this.options.analyzeGroupMessages(command.arg);
     }
     if (command.command === "group_messages") {
       if (!command.arg) return "用法：/群消息 <群名关键词> [关键词] [数量]";

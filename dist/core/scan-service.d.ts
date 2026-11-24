@@ -41,6 +41,7 @@ export declare class ScanService {
     private enrichFiles;
     handleGroupScan(message: IncomingMessage, signal: AbortSignal): Promise<void>;
     private handlePolledBatchJob;
+    runManualDigest(messages: IncomingMessage[], signal?: AbortSignal): Promise<number>;
     private digestWithoutFilter;
     private sendOwnerDigest;
     private chatLink;

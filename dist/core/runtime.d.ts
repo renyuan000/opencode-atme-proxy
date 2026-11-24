@@ -120,6 +120,7 @@ export declare class ProxyRuntime {
     private selectOwnerTarget;
     private setGroupResponsibility;
     private analyzePendingTask;
+    private analyzeGroupMessages;
     private queryGroupMessages;
     private queryMentions;
     private normalizeGroupQuery;

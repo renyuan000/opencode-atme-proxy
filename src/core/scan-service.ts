@@ -331,6 +331,27 @@ export class ScanService {
     });
   }
 
+  async runManualDigest(messages: IncomingMessage[], signal?: AbortSignal): Promise<number> {
+    const usable = messages.filter(
+      (message) => message.senderType === "user" && message.text.trim().length > 0,
+    );
+    if (usable.length === 0) return 0;
+    const enriched = await this.enrichFiles(usable);
+    const first = enriched[0];
+    const history = first
+      ? this.options.chatContext
+          .recent(`${first.platform}:${first.chat.id}`, 12)
+          .map((item) => ({
+            sender: item.senderName ?? item.senderId,
+            text: item.text,
+            time: item.at,
+          }))
+      : [];
+    const { items } = await this.options.relevance().classify(enriched, signal, history);
+    await this.sendOwnerDigest(enriched, items);
+    return enriched.length;
+  }
+
   private async digestWithoutFilter(messages: IncomingMessage[]): Promise<void> {
     const usable = messages.filter(
       (message) => message.senderType === "user" && message.text.trim().length > 0,
@@ -395,8 +416,7 @@ export class ScanService {
       messageLinks.find((link): link is string => Boolean(link)) ??
       (first ? await this.resolveMessageLink(first) : undefined);
     const view: NotificationView = {
-      title: "群消息分析",
-      ...(first ? { headerMeta: { right: group } } : {}),
+      title: `群消息分析 · ${group}`,
       subtitle: summary,
       sections: highlightedMessages.map((message, index) => {
         const item = byId.get(message.messageId);

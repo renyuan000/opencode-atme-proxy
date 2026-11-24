@@ -148,7 +148,7 @@ npx @neomei/agentsoul setup
 |---|---|---|---|
 | N-1 | bug | 候选任务发送人显示“成员” | 解析顺序 `task.requester.displayName → fetchUserName → fetchMessage.sender.displayName → 成员`，候选卡显示真实姓名 |
 | N-2 | test | 候选卡群名/发送人/重复提醒回归 | 新候选卡标题含真实群名和姓名；创建后重启不立刻重复发“未完成任务提醒” |
-| N-3 | verify | 右侧群名卡片实卡验证 | 真实飞书截图确认：群消息分析右侧群名、未完成提醒右侧群名、候选卡标题 `候选任务 · 群名` 均正常；空白占位列不显示异常 |
+| N-3 | verify | 群名卡片实卡验证 | 真实飞书截图确认：群消息分析标题 `群消息分析 · 群名`、未完成提醒右侧群名、候选卡标题 `候选任务 · 群名` 均正常；空白占位列不显示异常 |
 | N-4 | docs | 提交本轮设计文档更新 | `FILE-INGESTION-DESIGN` 与 `OPTIMIZATION-DESIGN` 已同步，测试/基线一致 |
 | N-5 | feat | 消息级深链 | 优先 `message_app_link`，缺失用 `openChatId + position`；卡片显示“打开原消息/查看原消息”，无链接回退群链接 |
 

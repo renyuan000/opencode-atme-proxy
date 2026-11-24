@@ -454,6 +454,7 @@ export class ProxyRuntime {
       setOwnerFocus: (arg, kind) => this.setOwnerFocus(arg, kind),
       analyzeTask: (arg) => this.analyzePendingTask(arg),
       queryGroupMessages: (arg) => this.queryGroupMessages(arg),
+      analyzeGroupMessages: (arg) => this.analyzeGroupMessages(arg),
       queryMentions: (arg) => this.queryMentions(arg),
       listOwnerTargets: () => this.listOwnerTargets(),
       selectOwnerTarget: (arg) => this.selectOwnerTarget(arg),
@@ -1735,6 +1736,45 @@ export class ProxyRuntime {
       });
     });
     return `已开始分析任务：${task.title}\n${task.id}`;
+  }
+
+  private async analyzeGroupMessages(arg: string): Promise<string> {
+    if (!this.options.platform.capabilities().groupHistory) {
+      return "当前平台不支持群历史分析。";
+    }
+    const match = arg.trim().match(/^(\S+)(?:\s+(\d{1,3}))?$/);
+    if (!match) return "用法：/群消息分析 <群名关键词> [数量]";
+    const key = match[1] ?? "";
+    const requested = match[2] ? Math.max(1, Math.min(200, Number(match[2]))) : 200;
+    const candidates = this.matchGroups(key);
+    if (candidates.length === 0) {
+      if (key.startsWith("oc_")) return "请用群名关键词查询，不需要输入 chatId。";
+      return `找不到群：${key}\n可用群：\n${this.config.platforms.feishu.groups.map((group) => `- ${group.name ?? group.chatId}`).join("\n")}`;
+    }
+    if (candidates.length > 1) {
+      return [
+        "匹配到多个群，请用更完整的群名：",
+        ...candidates.map((group) => `- ${group.name ?? "未命名群"}`),
+      ].join("\n");
+    }
+    const group = candidates[0]!;
+    const endTime = Date.now();
+    const startTime = endTime - 7 * 24 * 3600_000;
+    let result;
+    try {
+      result = await this.options.platform.listMessages({
+        chatId: group.chatId,
+        startTime,
+        endTime,
+        maxPages: 5,
+        maxMessages: requested,
+      });
+    } catch (error) {
+      return `读取群消息失败：${toErrorMessage(error)}`;
+    }
+    const count = await this.scanService.runManualDigest(result.messages);
+    if (count === 0) return `没有找到可分析消息。\n群：${group.name ?? "未命名群"}`;
+    return `已生成群消息分析卡片。\n群：${group.name ?? "未命名群"}\n本次候选：${count} 条`;
   }
 
   private async queryGroupMessages(arg: string): Promise<string> {
