@@ -119,6 +119,7 @@ export class TaskService {
                 : {}),
             ...(message.chat.name ? { chatName: message.chat.name } : {}),
             messageIds: message.messageIds ?? [message.messageId],
+            ...(message.messageLink ? { messageLink: message.messageLink } : {}),
             source,
             requester: message.sender,
             title,
@@ -175,16 +176,31 @@ export class TaskService {
                 }
             }
             sender = sender || "成员";
+            let messageLink = task.messageLink;
+            if (!messageLink && this.options.messageLinkFor) {
+                try {
+                    messageLink = await this.options.messageLinkFor(task.chatId, task.messageIds[0]);
+                }
+                catch (error) {
+                    this.options.logger.warn("failed to resolve task message link", {
+                        chatId: task.chatId,
+                        error: toErrorMessage(error),
+                    });
+                }
+            }
             if (!task.chatName && group !== "未知群")
                 task.chatName = group;
             if (!task.requester.displayName && sender !== "成员") {
                 task.requester.displayName = sender;
             }
+            if (!task.messageLink && messageLink)
+                task.messageLink = messageLink;
             await this.options.tasks.save(task);
             const meta = `${formatLocalTime(task.createdAt)} ${sender} · task`;
             const link = {
-                label: "打开群聊",
-                url: `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
+                label: messageLink ? "打开原消息" : "打开群聊",
+                url: messageLink ??
+                    `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
             };
             if (this.options.sendOwnerNotification) {
                 await this.options.sendOwnerNotification({

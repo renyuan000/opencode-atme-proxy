@@ -12,6 +12,8 @@ interface FeishuRawMessage {
     parent_id?: string;
     root_id?: string;
     thread_id?: string;
+    message_app_link?: string;
+    message_position?: string;
     mentions?: Array<{
         key?: string;
         id?: {

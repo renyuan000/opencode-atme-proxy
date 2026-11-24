@@ -632,6 +632,7 @@ export class ProxyRuntime {
         return configured?.name ?? (await this.notificationService.fetchChatName(chatId));
       },
       senderLabelFor: (userId, messageId) => this.resolveSenderLabel(userId, messageId),
+      messageLinkFor: (_chatId, messageId) => this.resolveMessageLink(messageId),
       startAnalysis: (task) => {
         this.track(this.taskService.analyzeTask(task)).catch((error) => {
           this.logger.error("task analysis failed", {
@@ -716,6 +717,7 @@ export class ProxyRuntime {
       track: (promise) => this.track(promise),
       sendToOwner: (text) => this.sendToOwner(text),
       sendOwnerNotification: (view) => this.notificationService.sendOwnerNotification(view),
+      messageLinkFor: (_chatId, messageId) => this.resolveMessageLink(messageId),
       describeTask: (task) => this.describeTask(task),
     });
     this.poller = new PollingService({
@@ -1074,6 +1076,14 @@ export class ProxyRuntime {
       (await this.resolveSenderLabel(task.requester.id, task.messageIds[0])) ||
       "成员";
     return { chatLabel, senderLabel };
+  }
+
+  private async resolveMessageLink(messageId: string): Promise<string | undefined> {
+    try {
+      return (await this.options.platform.fetchMessage?.(messageId))?.messageLink;
+    } catch {
+      return undefined;
+    }
   }
 
   private async resolveSenderLabel(

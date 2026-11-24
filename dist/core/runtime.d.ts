@@ -89,6 +89,7 @@ export declare class ProxyRuntime {
     private ownerName;
     private claimOwner;
     private describeTask;
+    private resolveMessageLink;
     private resolveSenderLabel;
     private sendToOwner;
     private acknowledge;

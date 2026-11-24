@@ -191,6 +191,7 @@ test("groups pending task reminders by chat into one card", async () => {
       id: "task_needs_a",
       dedupKey: "dedup_needs_a",
       title: "任务 A",
+      messageLink: "https://applink.feishu.cn/client/chat/open?openChatId=chat&position=7",
     });
     await store.save({
       ...task("needs_info", Date.now() - 3600_000),
@@ -209,6 +210,8 @@ test("groups pending task reminders by chat into one card", async () => {
     assert.match(reminders[0]!, /群 · needs_info · 2 条/);
     assert.match(reminders[0]!, /任务 A/);
     assert.match(reminders[0]!, /任务 B/);
+    assert.match(reminders[0]!, /打开原消息/);
+    assert.match(reminders[0]!, /position=7/);
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -46,6 +46,7 @@ export interface IncomingMessage {
   mentions: ActorRef[];
   createdAt: number;
   threadId?: string;
+  messageLink?: string;
   rawType: string;
   attachments?: AttachmentRef[];
 }
@@ -117,6 +118,7 @@ export interface TaskRecord {
   conversationId?: string;
   chatName?: string;
   messageIds: string[];
+  messageLink?: string;
   source: "mention_me" | "mention_bot" | "group_scan";
   requester: ActorRef;
   title: string;
@@ -241,6 +243,7 @@ export interface NotificationSection {
   meta?: string;
   quote?: string;
   detail?: string;
+  link?: { label: string; url: string };
 }
 
 export interface NotificationHeaderMeta {

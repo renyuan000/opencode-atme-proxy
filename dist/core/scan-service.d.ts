@@ -44,6 +44,7 @@ export declare class ScanService {
     private digestWithoutFilter;
     private sendOwnerDigest;
     private chatLink;
+    private resolveMessageLink;
     private resolveSenderLabel;
     private notifyOwnership;
     private hasMedia;

@@ -32,6 +32,7 @@ export interface RecoveryServiceOptions {
     track<T>(promise: Promise<T>): Promise<T>;
     sendToOwner(text: string): Promise<boolean>;
     sendOwnerNotification?(view: NotificationView): Promise<boolean>;
+    messageLinkFor?(chatId: string, messageId: string): Promise<string | undefined>;
     describeTask?(task: TaskRecord): Promise<{
         chatLabel: string;
         senderLabel: string;
@@ -40,6 +41,7 @@ export interface RecoveryServiceOptions {
 export declare class RecoveryService {
     private readonly options;
     constructor(options: RecoveryServiceOptions);
+    private resolveMessageLink;
     recoverOnStartup(): Promise<void>;
     private pullStartupWindow;
     private sendPendingTaskNotices;

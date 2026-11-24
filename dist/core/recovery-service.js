@@ -4,6 +4,16 @@ export class RecoveryService {
     constructor(options) {
         this.options = options;
     }
+    async resolveMessageLink(task) {
+        if (task.messageLink)
+            return task.messageLink;
+        try {
+            return await this.options.messageLinkFor?.(task.chatId, task.messageIds[0]);
+        }
+        catch {
+            return undefined;
+        }
+    }
     async recoverOnStartup() {
         const recovery = this.options.config.recovery;
         if (!recovery.enabled)
@@ -121,10 +131,21 @@ export class RecoveryService {
             const first = group.notices[0];
             const states = [...new Set(group.notices.map((notice) => notice.task.state))];
             const status = states.length === 1 ? `${states[0]} · ${group.notices.length} 条` : `${group.notices.length} 条待处理`;
+            const firstLink = await this.resolveMessageLink(first.task);
             const link = {
-                label: "打开群聊",
-                url: `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(first.task.chatId)}`,
+                label: firstLink ? "打开原消息" : "打开群聊",
+                url: firstLink ??
+                    `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(first.task.chatId)}`,
             };
+            const sections = await Promise.all(group.notices.map(async (notice) => {
+                const noticeLink = await this.resolveMessageLink(notice.task);
+                return {
+                    title: notice.task.title,
+                    meta: notice.task.state,
+                    detail: `来源：${notice.chatLabel} / ${notice.senderLabel}`,
+                    ...(noticeLink ? { link: { label: "查看原消息", url: noticeLink } } : {}),
+                };
+            }));
             const text = [
                 title,
                 `${group.chatLabel} · ${status}`,
@@ -134,17 +155,13 @@ export class RecoveryService {
                     `来源：${notice.chatLabel} / ${notice.senderLabel}`,
                 ]),
                 footer,
-                `群聊：${link.url}`,
+                `${link.label}：${link.url}`,
             ].join("\n");
             if (this.options.sendOwnerNotification) {
                 await this.options.sendOwnerNotification({
                     title,
                     headerMeta: { right: `${group.chatLabel} · ${status}` },
-                    sections: group.notices.map((notice) => ({
-                        title: notice.task.title,
-                        meta: notice.task.state,
-                        detail: `来源：${notice.chatLabel} / ${notice.senderLabel}`,
-                    })),
+                    sections,
                     link,
                     footer,
                 });
@@ -155,11 +172,17 @@ export class RecoveryService {
         }
     }
     async sendTaskNotice(title, subtitle, task, footer, labels) {
+        const messageLink = await this.resolveMessageLink(task);
+        const link = {
+            label: messageLink ? "打开原消息" : "打开群聊",
+            url: messageLink ??
+                `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
+        };
         const text = [
             `${title} · ${labels.chatLabel}：${task.title}`,
             `状态：${task.state}`,
             `来源：${labels.chatLabel} / ${labels.senderLabel}`,
-            `群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
+            `${link.label}：${link.url}`,
             footer,
         ].join("\n");
         if (this.options.sendOwnerNotification) {
@@ -167,12 +190,14 @@ export class RecoveryService {
                 title: `${title} · ${labels.chatLabel}`,
                 subtitle,
                 sections: [
-                    { title: task.title, meta: task.state, detail: `来源：${labels.chatLabel} / ${labels.senderLabel}` },
+                    {
+                        title: task.title,
+                        meta: task.state,
+                        detail: `来源：${labels.chatLabel} / ${labels.senderLabel}`,
+                        ...(messageLink ? { link: { label: "查看原消息", url: messageLink } } : {}),
+                    },
                 ],
-                link: {
-                    label: "打开群聊",
-                    url: `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
-                },
+                link,
                 footer,
             });
         }

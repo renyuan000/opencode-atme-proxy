@@ -4,7 +4,7 @@
 |---|---|
 | 日期 | 2026-11-24 |
 | 范围 | 文件、图片、PDF、Office、消息/上下文进入模型前的预处理 |
-| 基线 | 2026-11-24 开发版；测试 155/155；`atme-proxy.service` active |
+| 基线 | 2026-11-24 开发版；测试 157/157；`atme-proxy.service` active |
 | 用途 | 对比 OpenClaw、OpenCode、Codex、Claude Code，记录 atme-proxy 的取舍和后续落地顺序 |
 | 状态 | 设计参考；文中“建议”不代表已经实现 |
 

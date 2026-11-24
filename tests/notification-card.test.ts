@@ -67,3 +67,26 @@ test("notification card renders subtitle when present", () => {
   assert.equal(rendered.elements[0].tag, "div");
   assert.equal(rendered.elements[0].text.content, "产品-流分装置 · 本轮 3 条");
 });
+
+
+test("notification section renders its own message link", () => {
+  const rendered = card(
+    renderNotificationCard(
+      view({
+        headerMeta: undefined,
+        sections: [
+          {
+            title: "消息",
+            link: {
+              label: "查看原消息",
+              url: "https://applink.feishu.cn/client/chat/open?openChatId=chat&position=12",
+            },
+          },
+        ],
+      }),
+    ),
+  );
+  const text = rendered.elements[0].text.content as string;
+  assert.match(text, /\[查看原消息\]/);
+  assert.match(text, /position=12/);
+});

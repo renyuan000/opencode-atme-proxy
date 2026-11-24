@@ -387,21 +387,32 @@ export class ScanService {
         first.chat.name ??
         first.chat.id)
       : "未知群";
+    const highlightedMessages = highlighted.slice(0, 8);
+    const messageLinks = await Promise.all(
+      highlightedMessages.map((message) => this.resolveMessageLink(message)),
+    );
+    const firstLink = first ? await this.resolveMessageLink(first) : undefined;
     const view: NotificationView = {
       title: "群消息分析",
       ...(first ? { headerMeta: { right: group } } : {}),
       subtitle: summary,
-      sections: highlighted.slice(0, 8).map((message) => {
+      sections: highlightedMessages.map((message, index) => {
         const item = byId.get(message.messageId);
+        const link = messageLinks[index];
         return {
           title: `${formatLocalTime(message.createdAt)} ${senderNames.get(message.messageId) ?? message.sender.id}`,
           ...(item?.actionability ? { meta: item.actionability } : {}),
           quote: truncate(message.text.replace(/\s+/g, " "), 160),
           ...(item?.reason ? { detail: `判断：${truncate(item.reason, 80)}` } : {}),
+          ...(link ? { link: { label: "查看原消息", url: link } } : {}),
         };
       }),
       ...(first
-        ? { link: { label: "打开群聊", url: this.chatLink(first.chat.id) } }
+        ? {
+            link: firstLink
+              ? { label: "打开原消息", url: firstLink }
+              : { label: "打开群聊", url: this.chatLink(first.chat.id) },
+          }
         : {}),
     };
     if (this.options.sendOwnerNotification) {
@@ -419,6 +430,15 @@ export class ScanService {
 
   private chatLink(chatId: string): string {
     return `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}`;
+  }
+
+  private async resolveMessageLink(message: IncomingMessage): Promise<string | undefined> {
+    if (message.messageLink) return message.messageLink;
+    try {
+      return (await this.options.platform.fetchMessage?.(message.messageId))?.messageLink;
+    } catch {
+      return undefined;
+    }
   }
 
   private async resolveSenderLabel(message: IncomingMessage): Promise<string> {

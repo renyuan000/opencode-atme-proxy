@@ -82,6 +82,7 @@ export class NotificationService {
         `${section.title}${section.meta ? ` · ${section.meta}` : ""}`,
         ...(section.quote ? [`> ${section.quote}`] : []),
         ...(section.detail ? [section.detail] : []),
+        ...(section.link ? [`${section.link.label}：${section.link.url}`] : []),
       ]),
       ...(view.footer ? ["", view.footer] : []),
       ...(view.link ? [`${view.link.label}：${view.link.url}`] : []),

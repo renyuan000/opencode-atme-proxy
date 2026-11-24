@@ -78,3 +78,36 @@ test("bot sender is normalized", () => {
   });
   assert.equal(mapped?.senderType, "bot");
 });
+
+
+test("maps message-level app link and position fallback", () => {
+  const direct = mapFeishuMessage({
+    message_id: "om_6",
+    chat_id: "oc_1",
+    chat_type: "group",
+    message_type: "text",
+    content: JSON.stringify({ text: "linked" }),
+    create_time: "1700000000000",
+    message_app_link: "https://applink.feishu.cn/client/chat/open?openChatId=oc_1&position=42",
+    sender: { sender_id: { open_id: "ou_li" }, sender_type: "user" },
+  });
+  assert.equal(
+    direct?.messageLink,
+    "https://applink.feishu.cn/client/chat/open?openChatId=oc_1&position=42",
+  );
+
+  const fallback = mapFeishuMessage({
+    message_id: "om_7",
+    chat_id: "oc_1",
+    chat_type: "group",
+    message_type: "text",
+    content: JSON.stringify({ text: "position" }),
+    create_time: "1700000000000",
+    message_position: "43",
+    sender: { sender_id: { open_id: "ou_li" }, sender_type: "user" },
+  });
+  assert.equal(
+    fallback?.messageLink,
+    "https://applink.feishu.cn/client/chat/open?openChatId=oc_1&position=43",
+  );
+});

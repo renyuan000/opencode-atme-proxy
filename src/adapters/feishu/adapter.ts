@@ -25,6 +25,8 @@ interface FeishuRawMessage {
   parent_id?: string;
   root_id?: string;
   thread_id?: string;
+  message_app_link?: string;
+  message_position?: string;
   mentions?: Array<{
     key?: string;
     id?: { open_id?: string; user_id?: string; union_id?: string };
@@ -35,6 +37,17 @@ interface FeishuRawMessage {
     sender_type?: string;
     sender_name?: string;
   };
+}
+
+function buildMessageLink(
+  chatId: string,
+  raw: Pick<FeishuRawMessage, "message_app_link" | "message_position">,
+): string | undefined {
+  if (raw.message_app_link) return raw.message_app_link;
+  if (raw.message_position) {
+    return `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}&position=${encodeURIComponent(raw.message_position)}`;
+  }
+  return undefined;
 }
 
 export function mapFeishuMessage(raw: FeishuRawMessage): IncomingMessage | undefined {
@@ -68,6 +81,7 @@ export function mapFeishuMessage(raw: FeishuRawMessage): IncomingMessage | undef
     mentions,
     ...(raw.parent_id ? { replyToMessageId: raw.parent_id } : {}),
     ...(raw.root_id ?? raw.thread_id ? { threadId: raw.root_id ?? raw.thread_id } : {}),
+    ...(buildMessageLink(chatId, raw) ? { messageLink: buildMessageLink(chatId, raw)! } : {}),
     createdAt: Number(raw.create_time ?? Date.now()),
     rawType: raw.message_type ?? "unknown",
     ...(attachments.length > 0 ? { attachments } : {}),
@@ -85,6 +99,8 @@ function mapHistoryItem(item: any): IncomingMessage | undefined {
     parent_id: item?.parent_id,
     root_id: item?.root_id,
     thread_id: item?.thread_id,
+    message_app_link: item?.message_app_link,
+    message_position: item?.message_position,
     sender: item?.sender
       ? {
           sender_id: {
@@ -791,6 +807,7 @@ export function renderNotificationCard(view: NotificationView): OutboundMessage 
     const lines = [`**${section.title}**${section.meta ? ` · ${section.meta}` : ""}`];
     if (section.quote) lines.push(`> ${section.quote}`);
     if (section.detail) lines.push(`<font color='grey'>${section.detail}</font>`);
+    if (section.link) lines.push(`[${section.link.label}](${section.link.url})`);
     elements.push({ tag: "div", text: { tag: "lark_md", content: lines.join("\n") } });
   });
   if (view.footer) {

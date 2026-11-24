@@ -1,6 +1,14 @@
 import * as Lark from "@larksuiteoapi/node-sdk";
 import { createLogger } from "../../core/logger.js";
 import { toErrorMessage } from "../../core/util.js";
+function buildMessageLink(chatId, raw) {
+    if (raw.message_app_link)
+        return raw.message_app_link;
+    if (raw.message_position) {
+        return `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}&position=${encodeURIComponent(raw.message_position)}`;
+    }
+    return undefined;
+}
 export function mapFeishuMessage(raw) {
     const messageId = raw.message_id;
     const chatId = raw.chat_id;
@@ -32,6 +40,7 @@ export function mapFeishuMessage(raw) {
         mentions,
         ...(raw.parent_id ? { replyToMessageId: raw.parent_id } : {}),
         ...(raw.root_id ?? raw.thread_id ? { threadId: raw.root_id ?? raw.thread_id } : {}),
+        ...(buildMessageLink(chatId, raw) ? { messageLink: buildMessageLink(chatId, raw) } : {}),
         createdAt: Number(raw.create_time ?? Date.now()),
         rawType: raw.message_type ?? "unknown",
         ...(attachments.length > 0 ? { attachments } : {}),
@@ -48,6 +57,8 @@ function mapHistoryItem(item) {
         parent_id: item?.parent_id,
         root_id: item?.root_id,
         thread_id: item?.thread_id,
+        message_app_link: item?.message_app_link,
+        message_position: item?.message_position,
         sender: item?.sender
             ? {
                 sender_id: {
@@ -717,6 +728,8 @@ export function renderNotificationCard(view) {
             lines.push(`> ${section.quote}`);
         if (section.detail)
             lines.push(`<font color='grey'>${section.detail}</font>`);
+        if (section.link)
+            lines.push(`[${section.link.label}](${section.link.url})`);
         elements.push({ tag: "div", text: { tag: "lark_md", content: lines.join("\n") } });
     });
     if (view.footer) {

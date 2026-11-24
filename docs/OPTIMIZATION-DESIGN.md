@@ -429,7 +429,7 @@ xlsx > 20 sheet 或 > 500 行：分块
 7. 非 @ 群媒体相关时只建候选任务，深度分析需 owner 批准
 8. 审批等待不触发生成超时
 9. 群知识/证据可回溯到消息或文件
-10. 155 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
+10. 157 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
 
 ## 16. 开源与给同事使用前的检查
 
@@ -1263,10 +1263,12 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 带来源消息的 owner 私聊通知：
 
 - 先发送可读摘要
-- 附 `applink.feishu.cn/client/chat/open?openChatId=<chatId>` 群聊链接
+- 优先使用消息 API 的 `message_app_link`；缺失时使用 `client/chat/open?openChatId=<chatId>&position=<message_position>`
+- 没有消息深链时回退到群链接
 - 不把原图片/文件转发成私聊副本
-- 群聊链接只能打开群，不能精确滚动到单条消息；飞书没有公开的 message_id → message link API
-- 不再依赖 `ou_`、`chat_id`、`message_id` 作为主要定位方式
+- `position` 不是 `message_id`；实时事件缺字段时通过 `im.message.get` 获取
+- 群消息分析每条消息带“查看原消息”；候选任务/未完成提醒底部优先“打开原消息”
+- 客户端“复制消息链接”的 `client/message/link/open?token=...` 没有稳定公开 API，不依赖
 - 转发失败不阻断文字通知，只记录日志
 
 
