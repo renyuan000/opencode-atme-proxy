@@ -39,13 +39,27 @@ interface FeishuRawMessage {
   };
 }
 
+function normalizeAppLink(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  return `https://${trimmed.replace(/^\/+/, "")}`;
+}
+
+function isMessageAppLink(value: string): boolean {
+  return /\/client\/message\/link\/open\?/.test(value) || /[?&](position|thread_position)=/.test(value);
+}
+
 function buildMessageLink(
   chatId: string,
   raw: Pick<FeishuRawMessage, "message_app_link" | "message_position">,
 ): string | undefined {
-  if (raw.message_app_link) return raw.message_app_link;
-  if (raw.message_position) {
-    return `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}&position=${encodeURIComponent(raw.message_position)}`;
+  const appLink = normalizeAppLink(raw.message_app_link);
+  if (appLink && isMessageAppLink(appLink)) return appLink;
+  const position = raw.message_position == null ? "" : String(raw.message_position).trim();
+  if (position) {
+    return `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(chatId)}&position=${encodeURIComponent(position)}`;
   }
   return undefined;
 }
@@ -64,6 +78,7 @@ export function mapFeishuMessage(raw: FeishuRawMessage): IncomingMessage | undef
   }));
   const text = extractText(raw, mentions);
   const attachments = extractAttachments(raw);
+  const messageLink = buildMessageLink(chatId, raw);
   return {
     platform: "feishu",
     messageId,
@@ -81,7 +96,7 @@ export function mapFeishuMessage(raw: FeishuRawMessage): IncomingMessage | undef
     mentions,
     ...(raw.parent_id ? { replyToMessageId: raw.parent_id } : {}),
     ...(raw.root_id ?? raw.thread_id ? { threadId: raw.root_id ?? raw.thread_id } : {}),
-    ...(buildMessageLink(chatId, raw) ? { messageLink: buildMessageLink(chatId, raw)! } : {}),
+    ...(messageLink ? { messageLink } : {}),
     createdAt: Number(raw.create_time ?? Date.now()),
     rawType: raw.message_type ?? "unknown",
     ...(attachments.length > 0 ? { attachments } : {}),

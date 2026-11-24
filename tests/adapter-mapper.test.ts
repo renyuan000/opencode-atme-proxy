@@ -110,4 +110,20 @@ test("maps message-level app link and position fallback", () => {
     fallback?.messageLink,
     "https://applink.feishu.cn/client/chat/open?openChatId=oc_1&position=43",
   );
+
+  const chatOnly = mapFeishuMessage({
+    message_id: "om_8",
+    chat_id: "oc_1",
+    chat_type: "group",
+    message_type: "text",
+    content: JSON.stringify({ text: "chat link only" }),
+    create_time: "1700000000000",
+    message_app_link: "https://applink.feishu.cn/client/chat/open?openChatId=oc_1",
+    message_position: "44",
+    sender: { sender_id: { open_id: "ou_li" }, sender_type: "user" },
+  });
+  assert.equal(
+    chatOnly?.messageLink,
+    "https://applink.feishu.cn/client/chat/open?openChatId=oc_1&position=44",
+  );
 });

@@ -1263,7 +1263,7 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 带来源消息的 owner 私聊通知：
 
 - 先发送可读摘要
-- 优先使用消息 API 的 `message_app_link`；缺失时使用 `client/chat/open?openChatId=<chatId>&position=<message_position>`
+- 优先使用消息 API 的 `message_app_link`；如果它只是群链接（不含 position/thread_position），改用 `client/chat/open?openChatId=<chatId>&position=<message_position>`
 - 没有消息深链时回退到群链接
 - 不把原图片/文件转发成私聊副本
 - `position` 不是 `message_id`；实时事件缺字段时通过 `im.message.get` 获取

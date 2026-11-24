@@ -391,7 +391,9 @@ export class ScanService {
     const messageLinks = await Promise.all(
       highlightedMessages.map((message) => this.resolveMessageLink(message)),
     );
-    const firstLink = first ? await this.resolveMessageLink(first) : undefined;
+    const firstLink =
+      messageLinks.find((link): link is string => Boolean(link)) ??
+      (first ? await this.resolveMessageLink(first) : undefined);
     const view: NotificationView = {
       title: "群消息分析",
       ...(first ? { headerMeta: { right: group } } : {}),

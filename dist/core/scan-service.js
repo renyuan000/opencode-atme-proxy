@@ -328,7 +328,8 @@ export class ScanService {
             : "未知群";
         const highlightedMessages = highlighted.slice(0, 8);
         const messageLinks = await Promise.all(highlightedMessages.map((message) => this.resolveMessageLink(message)));
-        const firstLink = first ? await this.resolveMessageLink(first) : undefined;
+        const firstLink = messageLinks.find((link) => Boolean(link)) ??
+            (first ? await this.resolveMessageLink(first) : undefined);
         const view = {
             title: "群消息分析",
             ...(first ? { headerMeta: { right: group } } : {}),
