@@ -25,6 +25,7 @@ export interface MessageIngressOptions {
     acknowledge?(message: IncomingMessage): Promise<void>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
     dispatch(message: IncomingMessage, limited: boolean, wait: boolean, force: boolean): Promise<void>;
+    supplement?(message: IncomingMessage): Promise<boolean>;
 }
 export declare class MessageIngress {
     private readonly options;

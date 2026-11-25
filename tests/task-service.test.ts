@@ -73,3 +73,46 @@ test("candidate card resolves group and sender and records nudge time", async ()
   assert.match(view.link?.url ?? "", /position=99/);
   assert.equal(saved.get(task.id)?.chatName, "产品-资产测绘");
 });
+
+
+test("appends a reply supplement to the task", async () => {
+  const saved = new Map<string, TaskRecord>();
+  const service = new TaskService({
+    config: {
+      policy: { autoAnalyzeTasks: false },
+      filter: { profile: { keywords: [] } },
+    } as unknown as AppConfig,
+    stateDir: "/tmp",
+    tasks: {
+      findByDedupKey: () => undefined,
+      get: async (taskId: string) => saved.get(taskId),
+      list: async () => [...saved.values()],
+      save: async (task: TaskRecord) => {
+        saved.set(task.id, task);
+      },
+    } as any,
+    audit: { append: async () => undefined } as any,
+    contextService: {} as any,
+    sessionManager: {} as any,
+    logger: { warn() {}, info() {}, error() {}, child() { return this; } } as any,
+    readOnlyPermission: [],
+    sendToApprover: async () => true,
+    resolveProject: async () => ({ worktree: "/tmp", resolved: true }),
+    projectId: () => undefined,
+    memory: {} as any,
+    startAnalysis: () => {},
+    sendApproval: async () => {},
+  });
+  const base = await service.ensureTask(message(), undefined, "group_scan", { autoAnalyze: false });
+  assert.ok(base);
+  assert.equal(base.actionability, "task");
+  const state = await service.appendSupplement(base, {
+    ...message(),
+    messageId: "m-supplement",
+    replyToMessageId: base.messageIds[0],
+    text: "补充：看 npb-engine 默认配置",
+  });
+  assert.equal(state, "needs_info");
+  assert.equal(base.supplements?.[0]?.messageId, "m-supplement");
+  assert.match(base.supplements?.[0]?.text ?? "", /npb-engine/);
+});

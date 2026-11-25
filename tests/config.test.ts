@@ -96,3 +96,21 @@ test("tightens overly permissive config", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("normalizes group project primary to array", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-config-"));
+  try {
+    const path = join(dir, "config.json");
+    const project = { primary: "/repo/a", core: ["/repo/b"] };
+    await writeFile(
+      path,
+      JSON.stringify({ ...base, platforms: { feishu: { ...base.platforms.feishu, groups: [{ chatId: "oc_1", enabled: true, project }] } } }),
+      "utf8",
+    );
+    const loaded = await loadConfig({ path, env: { HOME: dir, FEISHU_APP_SECRET: "s" } as NodeJS.ProcessEnv });
+    assert.deepEqual(loaded.config.platforms.feishu.groups[0]?.project?.primary, ["/repo/a"]);
+    assert.deepEqual(loaded.config.platforms.feishu.groups[0]?.project?.core, ["/repo/b"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

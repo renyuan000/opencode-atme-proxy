@@ -6,11 +6,17 @@ export interface OcrOptions {
     language?: string;
     rapidocrPython?: string;
     rapidocrScript?: string;
+    allowNearDuplicate?: boolean;
+    scope?: string;
 }
 export interface OcrResult {
     text: string;
     provider: "tesseract" | "rapidocr";
     confidence?: number;
+    width?: number;
+    height?: number;
+    dhash?: string;
+    nearDuplicateOf?: string;
 }
 export declare function recognizeImage(data: Buffer, mime: string, options?: OcrOptions): Promise<OcrResult | undefined>;
 export declare function ocrImage(data: Buffer, mime: string, options?: OcrOptions): Promise<string | undefined>;

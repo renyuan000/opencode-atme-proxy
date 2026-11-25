@@ -35,6 +35,9 @@ export interface TaskServiceOptions {
             description?: string;
         }>;
         workspaceDocs?: string[];
+        writableProjects?: string[];
+        coreProjects?: string[];
+        referenceProjects?: string[];
     }>;
     projectId(chatId: string): string | undefined;
     chatLabelFor?(chatId: string): Promise<string | undefined>;
@@ -49,6 +52,7 @@ export declare class TaskService {
     private readonly options;
     constructor(options: TaskServiceOptions);
     analyzeTask(task: TaskRecord): Promise<void>;
+    appendSupplement(task: TaskRecord, message: IncomingMessage): Promise<TaskRecord["state"]>;
     ensureTask(message: IncomingMessage, classification: Classification | undefined, source: TaskRecord["source"], options?: {
         autoAnalyze?: boolean;
     }): Promise<TaskRecord | undefined>;

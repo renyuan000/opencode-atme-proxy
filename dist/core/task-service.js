@@ -24,6 +24,23 @@ export class TaskService {
                     ...new Set([...analysis.openQuestions, ...verification.reasons]),
                 ];
             }
+            if ((task.actionability ?? "task") === "task") {
+                const missing = [];
+                if (analysis.scope.length === 0)
+                    missing.push("缺少任务范围");
+                if (analysis.plan.length === 0)
+                    missing.push("缺少执行计划");
+                if (!analysis.files?.length)
+                    missing.push("缺少计划文件");
+                if (analysis.acceptanceCriteria.length === 0)
+                    missing.push("缺少验收标准");
+                if (missing.length > 0) {
+                    analysis.needsInfo = true;
+                    analysis.openQuestions = [
+                        ...new Set([...analysis.openQuestions, ...missing]),
+                    ];
+                }
+            }
         }
         catch (error) {
             task.state = "needs_info";
@@ -70,6 +87,33 @@ export class TaskService {
             return;
         }
         await this.options.sendApproval(task, analysis);
+    }
+    async appendSupplement(task, message) {
+        const text = message.text.trim();
+        if (!text)
+            return task.state;
+        if (task.supplements?.some((item) => item.messageId === message.messageId)) {
+            return task.state;
+        }
+        task.supplements = [
+            ...(task.supplements ?? []),
+            {
+                messageId: message.messageId,
+                text,
+                senderId: message.sender.id,
+                ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
+                createdAt: message.createdAt,
+            },
+        ];
+        task.updatedAt = Date.now();
+        await this.options.tasks.save(task);
+        await this.options.audit.append({
+            actor: { system: true },
+            action: "task_supplement",
+            taskId: task.id,
+            details: { messageId: message.messageId },
+        });
+        return task.state;
     }
     async ensureTask(message, classification, source, options) {
         const taskHint = classification?.task;
@@ -133,6 +177,7 @@ export class TaskService {
                 reason: classification?.reason ?? "mentioned",
                 confidence: classification?.confidence ?? 1,
             },
+            actionability: classification?.actionability ?? "task",
             dedupKey,
             state: "analyzing",
             createdAt: now,
@@ -145,7 +190,8 @@ export class TaskService {
             taskId: task.id,
             details: { source, messageId: message.messageId },
         });
-        const autoAnalyze = options?.autoAnalyze ?? this.options.config.policy.autoAnalyzeTasks;
+        const autoAnalyze = options?.autoAnalyze ??
+            (source === "group_scan" ? false : this.options.config.policy.autoAnalyzeTasks);
         if (!autoAnalyze) {
             task.state = "needs_info";
             task.updatedAt = Date.now();
@@ -280,7 +326,7 @@ export class TaskService {
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs, attachments, mediaDocuments);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs, attachments, mediaDocuments, project.writableProjects, project.referenceProjects);
         }
         const repo = this.options.config.repos[0];
         if (!repo) {
@@ -288,7 +334,7 @@ export class TaskService {
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments, mediaDocuments);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments, mediaDocuments, project.writableProjects, project.referenceProjects);
         }
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
@@ -316,7 +362,7 @@ export class TaskService {
         }, prompt, signal, attachments);
         return parseAnalysis(raw, task, repo.id);
     }
-    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs, attachments = [], mediaDocuments = []) {
+    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs, attachments = [], mediaDocuments = [], writableProjects = [], referenceProjects = []) {
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
             task,
@@ -327,6 +373,8 @@ export class TaskService {
             context: ctx,
             ...(workspaceProjects ? { workspaceProjects } : {}),
             ...(workspaceDocs ? { workspaceDocs } : {}),
+            ...(writableProjects.length > 0 ? { writableProjects } : {}),
+            ...(referenceProjects.length > 0 ? { readonlyProjects: referenceProjects } : {}),
             ...(task.attachments?.length
                 ? { attachmentNames: task.attachments.map((item) => item.name ?? item.kind) }
                 : {}),
@@ -358,7 +406,8 @@ export class TaskService {
             return base;
         }
         const directory = await this.analysisDirectory(task);
-        const title = `${this.options.config.opencode.sessionTitlePrefix}:worker:review:${task.chatId}`;
+        const project = await this.options.resolveProject(task.chatId);
+        const title = `${this.options.config.opencode.sessionTitlePrefix}:analysis-check:${task.chatId}`;
         try {
             const raw = await this.options.sessionManager.runWorker({
                 platform: task.platform,
@@ -386,6 +435,8 @@ export class TaskService {
                     pinned: context.pinned,
                     memory: context.memory,
                     openTasks: context.openTasks,
+                    writableProjects: project.writableProjects ?? [],
+                    readonlyProjects: project.referenceProjects ?? [],
                 }),
                 "分析：",
                 JSON.stringify(analysis),

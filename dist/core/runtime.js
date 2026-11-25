@@ -1,4 +1,5 @@
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { createLogger } from "./logger.js";
 import { OpenAiCompatibleClient, RelevanceService, parseJsonLoose, } from "./relevance.js";
@@ -65,6 +66,53 @@ const EXECUTION_PERMISSION = [
     { permission: "websearch", pattern: "*", action: "deny" },
     { permission: "external_directory", pattern: "*", action: "deny" },
 ];
+function configuredProjectPaths(config) {
+    const paths = new Set();
+    for (const group of config.platforms.feishu.groups) {
+        const project = group.project;
+        if (project) {
+            for (const path of [
+                ...(project.primary ?? []),
+                ...(project.core ?? []),
+                ...(project.reference ?? []),
+                ...(project.secondary ?? []),
+            ]) {
+                if (path)
+                    paths.add(path);
+            }
+        }
+        for (const project of group.workspace?.projects ?? []) {
+            if (project.path)
+                paths.add(project.path);
+        }
+    }
+    for (const repo of config.repos)
+        paths.add(repo.path);
+    return [...paths];
+}
+function withProjectReadPaths(base, paths) {
+    const unique = [...new Set(paths.filter(Boolean))];
+    return [
+        ...base,
+        ...unique.flatMap((path) => [
+            { permission: "external_directory", pattern: path, action: "allow" },
+            { permission: "external_directory", pattern: `${path}/**`, action: "allow" },
+        ]),
+    ];
+}
+function executionPermissionFor(base, input) {
+    const writable = new Set((input.writableProjects ?? []).map((path) => path.toLowerCase()));
+    const readonly = [...new Set(input.referenceProjects ?? [])].filter((path) => !writable.has(path.toLowerCase()));
+    if (readonly.length === 0)
+        return base;
+    return [
+        ...base,
+        ...readonly.flatMap((path) => [
+            { permission: "edit", pattern: path, action: "deny" },
+            { permission: "edit", pattern: `${path}/**`, action: "deny" },
+        ]),
+    ];
+}
 export class ProxyRuntime {
     options;
     logger;
@@ -89,6 +137,10 @@ export class ProxyRuntime {
     llm;
     replyOptions;
     activeMessageIds = new Set();
+    readOnlyPermission;
+    webSearchPermission;
+    webFetchPermission;
+    executionPermission;
     pending;
     poller;
     executor;
@@ -136,6 +188,15 @@ export class ProxyRuntime {
         this.options = options;
         this.logger = options.logger ?? createLogger({ scope: "runtime" });
         this.config = options.loaded.config;
+        const projectPaths = configuredProjectPaths(this.config);
+        this.readOnlyPermission = withProjectReadPaths(READ_ONLY_PERMISSION, projectPaths);
+        this.webSearchPermission = withProjectReadPaths(WEB_SEARCH_PERMISSION, projectPaths);
+        this.webFetchPermission = withProjectReadPaths(WEB_FETCH_PERMISSION, projectPaths);
+        this.executionPermission = withProjectReadPaths(EXECUTION_PERMISSION, projectPaths);
+        const permissionFingerprint = createHash("sha256")
+            .update(JSON.stringify({ readOnly: this.readOnlyPermission, execution: this.executionPermission }))
+            .digest("hex")
+            .slice(0, 10);
         this.stateDir = requireStateDir(this.config);
         this.groupState = new GroupStateLayout(join(this.stateDir, "groups"), this.logger.child("group-state"));
         this.groupWorkspace = new GroupWorkspaceManager(this.config.workspace?.root ??
@@ -151,7 +212,8 @@ export class ProxyRuntime {
             sessions: this.sessions,
             config: this.config,
             logger: this.logger.child("sessions"),
-            readOnlyPermission: READ_ONLY_PERMISSION,
+            readOnlyPermission: this.readOnlyPermission,
+            permissionFingerprint,
             epochFor: (chatId) => this.dmContext.get(chatId)?.sessionEpoch ??
                 this.groupKnowledge.get(chatId)?.sessionEpoch ??
                 1,
@@ -266,6 +328,7 @@ export class ProxyRuntime {
             acknowledge: (message) => this.acknowledge(message),
             safeReply: (message, text) => this.safeReply(message, text),
             dispatch: (message, limited, wait) => this.dispatchGroupMessage(message, limited, wait),
+            supplement: (message) => this.handleTaskSupplement(message),
         });
         const filterNeedsExternal = this.config.filter.mode === "external";
         this.filterEnabled =
@@ -298,6 +361,7 @@ export class ProxyRuntime {
             sendReplyManagementCard: () => this.approvalService.sendReplyManagementCard(),
             setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
             manageWorkspace: (arg) => this.manageWorkspace(arg),
+            diagnoseProject: (arg) => this.diagnoseProject(arg),
             setOwnerFocus: (arg, kind) => this.setOwnerFocus(arg, kind),
             analyzeTask: (arg) => this.analyzePendingTask(arg),
             queryGroupMessages: (arg) => this.queryGroupMessages(arg),
@@ -339,9 +403,9 @@ export class ProxyRuntime {
             logger: this.logger.child("reply"),
             replyOptions: this.replyOptions,
             ...(this.config.opencode.replyModel ? { model: this.config.opencode.replyModel } : {}),
-            readOnlyPermission: READ_ONLY_PERMISSION,
-            webSearchPermission: WEB_SEARCH_PERMISSION,
-            webFetchPermission: WEB_FETCH_PERMISSION,
+            readOnlyPermission: this.readOnlyPermission,
+            webSearchPermission: this.webSearchPermission,
+            webFetchPermission: this.webFetchPermission,
             ownerOpenId: () => this.ownerOpenId(),
             conversationIdFor: (message) => this.conversationIdFor(message.platform, message.chat.id, message.chat.kind === "direct" ? "dm" : "group"),
             dmContextFor: (chatId) => {
@@ -366,6 +430,7 @@ export class ProxyRuntime {
                         ? { secondaryWorktrees: project.secondaryWorktrees }
                         : {}),
                     ...(project.coreProjects ? { coreProjects: project.coreProjects } : {}),
+                    ...(project.writableProjects ? { writableProjects: project.writableProjects } : {}),
                     ...(project.referenceProjects
                         ? { referenceProjects: project.referenceProjects }
                         : {}),
@@ -439,7 +504,7 @@ export class ProxyRuntime {
             contextService: this.contextService,
             sessionManager: this.sessionManager,
             logger: this.logger.child("task"),
-            readOnlyPermission: READ_ONLY_PERMISSION,
+            readOnlyPermission: this.readOnlyPermission,
             conversationIdFor: (platform, chatId) => this.conversationIdFor(platform, chatId, "group"),
             loadMedia: (task) => this.replyService.loadTaskMedia(task),
             resolveProject: async (chatId) => {
@@ -451,6 +516,7 @@ export class ProxyRuntime {
                         ? { secondaryWorktrees: project.secondaryWorktrees }
                         : {}),
                     ...(project.coreProjects ? { coreProjects: project.coreProjects } : {}),
+                    ...(project.writableProjects ? { writableProjects: project.writableProjects } : {}),
                     ...(project.referenceProjects
                         ? { referenceProjects: project.referenceProjects }
                         : {}),
@@ -499,8 +565,9 @@ export class ProxyRuntime {
             bridge: this.options.bridge,
             sessionManager: this.sessionManager,
             logger: this.logger.child("execution"),
-            executionPermission: EXECUTION_PERMISSION,
-            readOnlyPermission: READ_ONLY_PERMISSION,
+            executionPermission: this.executionPermission,
+            executionPermissionFor: (input) => executionPermissionFor(this.executionPermission, input),
+            readOnlyPermission: this.readOnlyPermission,
             conversationIdFor: (platform, chatId) => this.conversationIdFor(platform, chatId, "group"),
             latestAnalysis: (taskId) => this.latestAnalysis(taskId),
             resolveProject: async (chatId) => {
@@ -600,7 +667,7 @@ export class ProxyRuntime {
                         : undefined;
                 return {
                     core: project
-                        ? [project.primary, ...(project.core ?? [])].filter((value) => Boolean(value))
+                        ? [...(project.primary ?? []), ...(project.core ?? [])].filter(Boolean)
                         : [],
                     reference: project
                         ? [...(project.reference ?? []), ...(project.secondary ?? [])]
@@ -613,7 +680,7 @@ export class ProxyRuntime {
                             ownerKeywords: inferred.ownerKeywords,
                             ownProjects: [
                                 ...new Set([
-                                    ...(project?.primary ? [project.primary] : []),
+                                    ...(project?.primary ?? []),
                                     ...(project?.core ?? []),
                                     ...(group?.workspace?.projects ?? []).map((item) => item.name),
                                 ]),
@@ -662,7 +729,7 @@ export class ProxyRuntime {
             platform: this.options.platform,
             sendLimiter: this.sendLimiter,
             audit: this.audit,
-            readOnlyPermission: READ_ONLY_PERMISSION,
+            readOnlyPermission: this.readOnlyPermission,
             ownerOpenId: () => this.ownerOpenId(),
             ownerName: () => this.ownerName(),
             resolveProject: (chatId) => this.resolveProject(chatId),
@@ -800,7 +867,7 @@ export class ProxyRuntime {
             ...(project
                 ? {
                     project: {
-                        primary: project.primary ?? null,
+                        primary: project.primary ?? [],
                         core: project.core ?? [],
                         reference: project.reference ?? [],
                         secondary: project.secondary ?? [],
@@ -1675,6 +1742,84 @@ export class ProxyRuntime {
             });
         }
     }
+    async diagnoseProject(arg) {
+        const key = arg.trim();
+        const group = this.config.platforms.feishu.groups.find((item) => item.chatId === key || item.name === key);
+        if (!group)
+            return `找不到群：${key}`;
+        const project = group.project;
+        const paths = [];
+        for (const path of project?.primary ?? [])
+            paths.push(["primary", path]);
+        for (const path of project?.core ?? [])
+            paths.push(["core", path]);
+        for (const path of project?.reference ?? [])
+            paths.push(["reference", path]);
+        for (const path of project?.secondary ?? [])
+            paths.push(["secondary", path]);
+        for (const item of group.workspace?.projects ?? []) {
+            paths.push(["workspace", item.path]);
+        }
+        const worktree = group.workspace?.root ?? project?.primary?.[0];
+        const configPath = join(process.env.XDG_CONFIG_HOME ?? join(process.env.HOME ?? "", ".config"), "opencode", "opencode.json");
+        let fsRoots = [];
+        let fsError = "";
+        try {
+            const raw = await readJsonFile(configPath, {});
+            const command = raw?.mcp?.["fs-root"]?.command;
+            if (Array.isArray(command)) {
+                fsRoots = command.filter((item) => typeof item === "string" && isAbsolute(item));
+            }
+        }
+        catch (error) {
+            fsError = toErrorMessage(error);
+        }
+        const normalize = (path) => resolve(path).replace(/\/+$/, "").toLowerCase();
+        const roots = fsRoots.map(normalize);
+        const covered = (path) => {
+            const normalized = normalize(path);
+            return roots.some((root) => normalized === root || normalized.startsWith(`${root}/`));
+        };
+        const lines = [`配置诊断：${group.name ?? group.chatId}`];
+        if (worktree) {
+            const info = await stat(resolve(worktree)).catch(() => undefined);
+            lines.push(`worktree：${worktree}${info?.isDirectory() ? "" : "（不存在）"}`);
+        }
+        if (paths.length === 0) {
+            lines.push("项目路径：未配置");
+        }
+        else {
+            lines.push("项目路径：");
+            for (const [role, path] of paths) {
+                const info = await stat(resolve(path)).catch(() => undefined);
+                const exists = Boolean(info?.isDirectory());
+                const inRoot = covered(path);
+                lines.push(`- ${role}: ${path} [${exists ? "存在" : "不存在"}] [fs-root ${inRoot ? "已覆盖" : "未覆盖"}]`);
+            }
+        }
+        lines.push(fsError
+            ? `fs-root：读取失败（${fsError}）`
+            : `fs-root：${roots.length > 0 ? roots.join("、") : "未配置"}`);
+        const writableRoles = new Set(["primary", "core", "workspace"]);
+        const missingWritable = paths.filter(([role, path]) => writableRoles.has(role) && !covered(path));
+        const missingReadonly = paths.filter(([role, path]) => !writableRoles.has(role) && !covered(path));
+        if (missingWritable.length > 0) {
+            lines.push("", "需要加入 fs-root 的可写路径：");
+            for (const [role, path] of missingWritable)
+                lines.push(`- ${role}: ${path}`);
+            lines.push("", `修改 ${configPath} 的 mcp.fs-root.command，追加上述路径，然后执行：`, "systemctl restart opencode-serve atme-proxy");
+        }
+        else {
+            lines.push("", "可写路径已覆盖。若仍提示无权限，重启服务并新开消息会话；旧 session 会缓存旧权限。");
+        }
+        if (missingReadonly.length > 0) {
+            lines.push("", "只读路径未在 fs-root 中（不要加入 fs-root，否则会变可写）：");
+            for (const [role, path] of missingReadonly)
+                lines.push(`- ${role}: ${path}`);
+            lines.push("只读读取依赖 atme 的 reference 权限；如果读不到，检查 external_directory 配置。");
+        }
+        return lines.join("\n");
+    }
     async manageWorkspace(arg) {
         const match = arg.trim().match(/^(\S+)\s*([\s\S]*)$/);
         if (!match)
@@ -1846,6 +1991,59 @@ export class ProxyRuntime {
         if (sent)
             await this.markProcessed(message);
     }
+    async handleTaskSupplement(message) {
+        if (!message.replyToMessageId || message.text.trim().startsWith("/"))
+            return false;
+        if (message.sender.id !== this.ownerOpenId())
+            return false;
+        const tasks = await this.tasks.list();
+        const task = tasks.find((item) => item.messageIds.includes(message.replyToMessageId) ||
+            item.approvalMessageId === message.replyToMessageId ||
+            item.supplements?.some((supplement) => supplement.messageId === message.replyToMessageId));
+        if (!task)
+            return false;
+        const state = await this.taskService.appendSupplement(task, message);
+        await this.markProcessed(message);
+        if (state === "awaiting_approval" || state === "needs_info") {
+            this.pending.deleteForTask(task.id);
+            await this.pending.flush();
+            task.state = "analyzing";
+            task.updatedAt = Date.now();
+            await this.tasks.save(task);
+            this.track(this.analyzeTask(task)).catch((error) => {
+                this.logger.error("supplement analysis failed", {
+                    taskId: task.id,
+                    error: toErrorMessage(error),
+                });
+            });
+            await this.sendToOwner(`已收到补充，正在重新分析：${task.title}`);
+        }
+        else if (state === "executing") {
+            await this.sendToOwner(`已记录补充；当前执行不会中途改变：${task.title}`);
+        }
+        else {
+            await this.sendToOwner(`已收到补充：${task.title}`);
+        }
+        return true;
+    }
+    async withPermissionGuidance(message, reply) {
+        if (message.chat.kind !== "direct")
+            return reply;
+        if (reply.includes("/诊断"))
+            return reply;
+        if (!/(无权限|没有权限|无访问权限|不在.{0,12}可读范围|允许目录|permission\s+denied|access\s+denied|not\s+authorized|outside.{0,20}allowed|cannot\s+read|could\s+not\s+read|无法读取|不能读取|无法访问)/i.test(reply)) {
+            return reply;
+        }
+        const ownerId = this.ownerOpenId();
+        const target = ownerId ? this.ownerTargets.get(ownerId) : undefined;
+        const group = target
+            ? this.config.platforms.feishu.groups.find((item) => item.chatId === target.chatId || item.name === target.chatName)
+            : undefined;
+        const diagnostic = group
+            ? await this.diagnoseProject(group.name ?? group.chatId)
+            : "未找到当前关联群。请发送：/诊断 <群名|chatId>";
+        return `${reply}\n\n————\n看起来是权限或目录未放行，自动诊断如下：\n${diagnostic}`;
+    }
     async handleDirectMessage(message) {
         if (!this.config.directChat.enabled)
             return;
@@ -1864,6 +2062,10 @@ export class ProxyRuntime {
             return;
         this.activeMessageIds.add(dedupKey);
         void this.acknowledge(message);
+        if (await this.handleTaskSupplement(message)) {
+            this.activeMessageIds.delete(dedupKey);
+            return;
+        }
         const command = parseOwnerCommand(message.text);
         if (command) {
             try {
@@ -1915,7 +2117,8 @@ export class ProxyRuntime {
                         return;
                     const style = detectReplyStyle(message, this.replyOptions);
                     const reply = await this.askOpenCode(message, style, controller.signal);
-                    const ok = await this.safeReply(message, this.sanitize(reply));
+                    const finalReply = await this.withPermissionGuidance(message, this.sanitize(reply));
+                    const ok = await this.safeReply(message, finalReply);
                     if (ok) {
                         await this.markProcessed(message);
                         void this.updateDmSummary(message.platform, message.chat.id).catch((error) => {
@@ -2085,15 +2288,34 @@ export class ProxyRuntime {
         if (this.pending.get(`${task.id}:develop`) || this.pending.get(`${task.id}:reply`))
             return;
         const repo = this.config.repos.find((item) => analysis.repos.includes(item.id)) ?? this.config.repos[0];
+        const labels = await this.describeTask(task);
+        const project = await this.resolveProject(task.chatId);
+        const sourceLink = task.messageLink ?? (await this.resolveMessageLink(task.messageIds[0]));
+        const selectedProjects = (project.workspaceProjects ?? []).filter((item) => analysis.repos.includes(item.name));
+        const projectLabel = project.resolved
+            ? project.workspace
+                ? selectedProjects.map((item) => item.name).join("、") ||
+                    (project.workspaceProjects ?? []).map((item) => item.name).join("、") ||
+                    basename(project.worktree).replace(/\.git$/, "")
+                : basename(project.worktree).replace(/\.git$/, "")
+            : "未配置";
+        const planLines = analysis.plan.map((step) => step.detail ? `${step.step}：${step.detail}` : step.step);
         const view = {
             taskId: task.id,
             planHash: analysis.planHash,
             mode: "develop",
             title: task.title,
-            summary: `【${task.chatName ?? task.chatId}】${truncate(task.excerpt, 200)}`,
-            repo: repo?.id ?? "未配置",
-            baseBranch: repo?.defaultBranch ?? "main",
-            targetBranch: `atme/${task.id}`,
+            summary: `【${labels.chatLabel}】${truncate(task.excerpt, 200)}`,
+            chatLabel: labels.chatLabel,
+            ...(sourceLink ? { sourceLink: { label: "打开原消息", url: sourceLink } } : {}),
+            repo: repo?.id ?? projectLabel,
+            baseBranch: repo?.defaultBranch ?? (project.resolved ? "当前工作区" : "main"),
+            targetBranch: repo || project.workspace || (project.writableProjects?.length ?? 0) > 0
+                ? `atme/${task.id}`
+                : "不创建分支",
+            scope: analysis.scope,
+            files: analysis.files,
+            plan: planLines,
             commands: analysis.commands,
             risks: [
                 ...analysis.risks,
@@ -2110,6 +2332,10 @@ export class ProxyRuntime {
         const target = { kind: "user", userId: ownerId };
         await this.sendLimiter.take();
         const result = await this.options.platform.send(target, message);
+        if (result.messageId) {
+            task.approvalMessageId = result.messageId;
+            await this.tasks.save(task);
+        }
         this.pending.set(`${task.id}:develop`, {
             platform: task.platform,
             taskId: task.id,
@@ -2119,6 +2345,7 @@ export class ProxyRuntime {
             mode: "develop",
             ...(result.messageId ? { messageId: result.messageId } : {}),
             chatId: task.chatId,
+            view,
             createdAt: Date.now(),
         });
         await this.pending.flush();
@@ -2138,7 +2365,7 @@ export class ProxyRuntime {
     }
     async notifyMissingProject(chatId) {
         const group = this.config.platforms.feishu.groups.find((item) => item.chatId === chatId);
-        if (!group?.project || group.project.primary?.trim())
+        if (!group?.project || (group.project.primary?.length ?? 0) > 0)
             return;
         const now = Date.now();
         const last = this.missingProjectNotices.get(chatId) ?? 0;
@@ -2426,6 +2653,16 @@ export class ProxyRuntime {
             return;
         }
         const directory = (await this.resolveProject(chatId)).worktree;
+        const group = this.config.platforms.feishu.groups.find((item) => item.chatId === chatId);
+        const focus = group?.ownerFocus;
+        const profile = this.groupKnowledge.get(chatId);
+        const ownProjects = [
+            ...new Set([
+                ...(group?.project?.primary ?? []),
+                ...(group?.project?.core ?? []),
+                ...(group?.workspace?.projects ?? []).map((item) => item.name),
+            ]),
+        ];
         const sessionId = await this.createGroupSession(platform, chatId, directory);
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(new Error("summary timed out")), timeoutMs);
@@ -2436,7 +2673,11 @@ export class ProxyRuntime {
                 title: `${this.config.opencode.sessionTitlePrefix}:group:${chatId}`,
                 text: [
                     "你是群聊记录员。只维护摘要，不回答问题、不执行操作。",
+                    "只记录与 owner_direction/own_projects 相关的内容；平台资产台账、管理平台、前端页面、联调发布、性能压测/CPU/内存/IO 指标，与核心引擎或 transform 无关时不要写入摘要或 topics。",
+                    "旧摘要里如果包含上述无关内容，直接删除，不要保留。",
                     "保留：已确认决策、被否决方案及原因、当前假设、未解决问题、关键表名/接口/字段。",
+                    `owner_direction：${focus?.summary || profile?.ownerDirection || "（未配置）"}`,
+                    `own_projects：${ownProjects.join("、") || "（未配置）"}`,
                     "同时识别当前群的讨论主题、阶段性任务和阶段：topics = [{title, summary, phase, status, message_ids}]。",
                     "status 只能是 active/paused/done；phase 是当前阶段，例如需求确认、排查、开发、验证、发布。",
                     "只处理新增消息；不要重复已经摘要过的事实；旧摘要只用于保持连续。",
@@ -2576,28 +2817,31 @@ export class ProxyRuntime {
                 workspaceProjects: projects,
                 workspaceDocs: docs,
                 coreProjects: projects.map((project) => project.path),
+                writableProjects: projects.map((project) => project.path),
                 resolved: true,
                 reason: "group workspace config",
             };
         }
         const groupProject = groupConfig?.project;
         if (groupProject) {
-            const primary = groupProject.primary?.trim();
-            if (!primary) {
+            const primary = groupProject.primary ?? [];
+            if (primary.length === 0) {
                 void this.notifyMissingProject(chatId);
                 return {
                     worktree: this.config.project.worktree ?? join(this.stateDir, "scratch"),
                     secondaryWorktrees: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
                     coreProjects: groupProject.core ?? [],
+                    writableProjects: groupProject.core ?? [],
                     referenceProjects: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
                     resolved: false,
                     reason: "group project not configured",
                 };
             }
             return {
-                worktree: primary,
+                worktree: primary[0],
                 secondaryWorktrees: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
-                coreProjects: groupProject.core ?? [],
+                coreProjects: [...primary.slice(1), ...(groupProject.core ?? [])],
+                writableProjects: [...primary, ...(groupProject.core ?? [])],
                 referenceProjects: [...(groupProject.reference ?? []), ...(groupProject.secondary ?? [])],
                 resolved: true,
                 reason: "group project config",

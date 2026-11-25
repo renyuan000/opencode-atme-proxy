@@ -16,6 +16,8 @@ export interface AnalysisPromptInput {
   context: AnalysisContextPayload;
   workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
   workspaceDocs?: string[];
+  writableProjects?: string[];
+  readonlyProjects?: string[];
   attachmentNames?: string[];
   attachmentTexts?: string[];
 }
@@ -24,8 +26,9 @@ export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
   const { task, context } = input;
   return [
     "你是任务分析器，只做规划，不执行代码、不修改文件。",
-    "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, plan, commands, risks, open_questions, acceptance_criteria, estimate, assumptions, checked。",
+    "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, files, plan, commands, risks, open_questions, acceptance_criteria, estimate, assumptions, checked。",
     "先从上下文与仓库核实表名、接口、字段、配置；找不到时写进 open_questions，不要凭印象假设。",
+    "files 列出计划修改或重点检查的文件/目录；无法确定时留空，不要编造。",
     "区分事实与假设；假设必须写进 assumptions，已核对项写进 checked。",
     "repos 只能从以下白名单选择：",
     JSON.stringify(input.repositoryIds),
@@ -41,6 +44,12 @@ export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
       : []),
     ...(input.workspaceDocs?.length
       ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...input.workspaceDocs.map((path) => `- ${path}`)]
+      : []),
+    ...(input.writableProjects?.length
+      ? ["可修改项目（只能改这些）：", ...input.writableProjects.map((path) => `- ${path}`)]
+      : []),
+    ...(input.readonlyProjects?.length
+      ? ["只读项目（可读不可改）：", ...input.readonlyProjects.map((path) => `- ${path}`)]
       : []),
     ...(input.attachmentNames?.length
       ? ["任务附带图片/文件（已作为附件提供，先查看再分析）：", ...input.attachmentNames.map((name) => `- ${name}`)]

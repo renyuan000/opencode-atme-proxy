@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { hammingDistance, imageFingerprint, type ImageFingerprint } from "./image-fingerprint.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,12 +18,18 @@ export interface OcrOptions {
   language?: string;
   rapidocrPython?: string;
   rapidocrScript?: string;
+  allowNearDuplicate?: boolean;
+  scope?: string;
 }
 
 export interface OcrResult {
   text: string;
   provider: "tesseract" | "rapidocr";
   confidence?: number;
+  width?: number;
+  height?: number;
+  dhash?: string;
+  nearDuplicateOf?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -30,6 +37,9 @@ const DEFAULT_MAX_CHARS = 8_000;
 const DEFAULT_LANGUAGE = "chi_sim+eng";
 const CACHE_LIMIT = 50;
 const cache = new Map<string, OcrResult>();
+const inFlight = new Map<string, Promise<OcrResult | undefined>>();
+const visualCache: Array<{ scope: string; dhash: string; result: OcrResult }> = [];
+const NEAR_DUPLICATE_DISTANCE = 4;
 
 function imageExtension(mime: string): string {
   if (mime.includes("jpeg") || mime.includes("jpg")) return ".jpg";
@@ -119,45 +129,83 @@ async function rapidocr(data: Buffer, mime: string, options: OcrOptions): Promis
   return parsed;
 }
 
+function fingerprint(data: Buffer, mime: string, options: OcrOptions, provider: string): string {
+  const contentHash = createHash("sha256").update(data).digest("hex");
+  return [
+    contentHash,
+    mime,
+    provider,
+    String(options.maxChars ?? DEFAULT_MAX_CHARS),
+    options.language ?? DEFAULT_LANGUAGE,
+    options.scope ?? "global",
+  ].join(":");
+}
+
 export async function recognizeImage(
   data: Buffer,
   mime: string,
   options: OcrOptions = {},
 ): Promise<OcrResult | undefined> {
   const provider = options.provider ?? "auto";
-  const key = createHash("sha256")
-    .update(data)
-    .update("\0")
-    .update(mime)
-    .update("\0")
-    .update(provider)
-    .update("\0")
-    .update(String(options.maxChars ?? DEFAULT_MAX_CHARS))
-    .update("\0")
-    .update(options.language ?? DEFAULT_LANGUAGE)
-    .digest("hex");
+  const key = fingerprint(data, mime, options, provider);
   const cached = cache.get(key);
   if (cached) {
     cache.delete(key);
     cache.set(key, cached);
     return cached;
   }
-  let result: OcrResult | undefined;
-  if (provider === "rapidocr" || provider === "auto") {
-    result = await rapidocr(data, mime, options);
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const scope = options.scope ?? "global";
+  const visual = options.allowNearDuplicate
+    ? await imageFingerprint(data, mime)
+    : undefined;
+  if (visual) {
+    const match = visualCache.find(
+      (entry) =>
+        entry.scope === scope &&
+        hammingDistance(entry.dhash, visual.dhash) <= NEAR_DUPLICATE_DISTANCE,
+    );
+    if (match) return { ...match.result, nearDuplicateOf: visual.dhash };
   }
-  if (!result && provider !== "rapidocr") {
-    result = await tesseract(data, mime, options);
-  }
-  if (result) {
-    cache.set(key, result);
-    while (cache.size > CACHE_LIMIT) {
-      const oldest = cache.keys().next().value;
-      if (oldest === undefined) break;
-      cache.delete(oldest);
+  const task = (async (): Promise<OcrResult | undefined> => {
+    let result: OcrResult | undefined;
+    if (provider === "rapidocr" || provider === "auto") {
+      result = await rapidocr(data, mime, options);
     }
+    if (!result && provider !== "rapidocr") {
+      result = await tesseract(data, mime, options);
+    }
+    if (result) {
+      const enriched =
+        visual
+          ? {
+              ...result,
+              width: visual.width,
+              height: visual.height,
+              dhash: visual.dhash,
+            }
+          : result;
+      cache.set(key, enriched);
+      if (visual) {
+        visualCache.push({ scope, dhash: visual.dhash, result: enriched });
+        while (visualCache.length > CACHE_LIMIT) visualCache.shift();
+      }
+      while (cache.size > CACHE_LIMIT) {
+        const oldest = cache.keys().next().value;
+        if (oldest === undefined) break;
+        cache.delete(oldest);
+      }
+      return enriched;
+    }
+    return result;
+  })();
+  inFlight.set(key, task);
+  try {
+    return await task;
+  } finally {
+    inFlight.delete(key);
   }
-  return result;
 }
 
 export async function ocrImage(

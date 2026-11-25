@@ -49,6 +49,7 @@ export interface SessionManagerOptions {
   logger: Logger;
   readOnlyPermission: SessionPermission[];
   epochFor?: (chatId: string) => number;
+  permissionFingerprint?: string;
 }
 
 export class SessionManager {
@@ -73,7 +74,10 @@ export class SessionManager {
     conversationId?: string,
   ): string {
     const conversation = conversationId ?? `${platform}:${chatId}`;
-    return `${prefix}:${conversation}:e${this.epochFor(chatId)}`;
+    const permission = this.options.permissionFingerprint
+      ? `:p${this.options.permissionFingerprint}`
+      : "";
+    return `${prefix}:${conversation}:e${this.epochFor(chatId)}${permission}`;
   }
 
   async coordinatorSession(

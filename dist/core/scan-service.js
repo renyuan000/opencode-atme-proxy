@@ -120,7 +120,7 @@ export class ScanService {
         }
         return false;
     }
-    async enrichFile(message) {
+    async enrichFile(message, allowNearDuplicate = false) {
         const files = (message.attachments ?? []).filter((item) => item.kind === "file" && item.key);
         const images = (message.attachments ?? []).filter((item) => item.kind === "image" && item.key);
         if ((files.length === 0 && images.length === 0) || !this.options.platform.fetchResource) {
@@ -148,7 +148,11 @@ export class ScanService {
                 const resource = await this.options.platform.fetchResource(message.messageId, image.key, "image");
                 if (resource.data.length > 8 * 1024 * 1024)
                     continue;
-                const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
+                const text = await ocrImage(resource.data, resource.mime, {
+                    ...this.options.config.ocr,
+                    allowNearDuplicate,
+                    scope: message.chat.id,
+                });
                 if (text) {
                     parts.push(`[图片 OCR，仅作文字参考]\n${clip(text, 8000, "图片 OCR")}`);
                 }
@@ -162,13 +166,13 @@ export class ScanService {
         }
         return parts.length > 0 ? { ...message, text: `${message.text}\n\n${parts.join("\n\n")}` } : message;
     }
-    async enrichFiles(messages) {
-        return Promise.all(messages.map((message) => this.enrichFile(message)));
+    async enrichFiles(messages, allowNearDuplicate = false) {
+        return Promise.all(messages.map((message) => this.enrichFile(message, allowNearDuplicate)));
     }
     async handleGroupScan(message, signal) {
         if (message.sender.id === this.options.ownerOpenId())
             return;
-        const enriched = await this.enrichFile(message);
+        const enriched = await this.enrichFile(message, true);
         if (await this.skipIrrelevantFile(message, enriched.text))
             return;
         const classification = await this.options.intentService.classifyOne(enriched, signal);
@@ -176,7 +180,11 @@ export class ScanService {
             return;
         if (classification.ownership === "external" &&
             (classification.ownershipConfidence ?? 0) >= 0.6) {
-            await this.notifyOwnership(message, classification);
+            this.options.logger.info("ignored external ownership", {
+                messageId: message.messageId,
+                chatId: message.chat.id,
+                reason: classification.ownershipReason ?? classification.reason,
+            });
             await this.options.markProcessed(message);
             return;
         }
@@ -213,7 +221,7 @@ export class ScanService {
             await this.digestWithoutFilter(messages);
             return;
         }
-        const enrichedAll = await this.enrichFiles(messages);
+        const enrichedAll = await this.enrichFiles(messages, true);
         const accepted = [];
         for (const message of enrichedAll) {
             if (await this.skipIrrelevantFile(message, message.text))
@@ -254,7 +262,11 @@ export class ScanService {
             this.appendContextForScan(message);
             if (item.ownership === "external" &&
                 (item.ownershipConfidence ?? 0) >= 0.6) {
-                await this.notifyOwnership(message, item);
+                this.options.logger.info("ignored external ownership", {
+                    messageId: message.messageId,
+                    chatId: message.chat.id,
+                    reason: item.ownershipReason ?? item.reason,
+                });
                 await this.options.markProcessed(message);
                 continue;
             }
@@ -316,10 +328,15 @@ export class ScanService {
         const related = [];
         for (const message of messages) {
             const item = byId.get(message.messageId);
-            if (item?.relevant)
+            const external = item?.ownership === "external" && (item.ownershipConfidence ?? 0) >= 0.6;
+            if (item?.relevant && !external)
                 related.push(message);
         }
-        const highlighted = related.length > 0 ? related : messages.slice(0, 5);
+        const highlighted = related.length > 0
+            ? related
+            : items.length === 0
+                ? messages.slice(0, 5)
+                : [];
         const senderNames = new Map();
         await Promise.all(highlighted.slice(0, 8).map(async (message) => {
             senderNames.set(message.messageId, await this.resolveSenderLabel(message));
@@ -337,7 +354,7 @@ export class ScanService {
         }
         const summary = related.length > 0
             ? `与你相关 ${related.length} 条，共 ${messages.length} 条`
-            : `本轮 ${messages.length} 条，未识别出强相关；下面是最近的`;
+            : `本轮 ${messages.length} 条，未识别出与本群职责强相关的消息`;
         const first = messages[0];
         const group = first
             ? (this.options.chatContext.get(`${first.platform}:${first.chat.id}`)?.chatName ??
@@ -415,20 +432,6 @@ export class ScanService {
             // keep id as last resort
         }
         return message.sender.id;
-    }
-    async notifyOwnership(message, classification) {
-        const group = message.chat.name ?? message.chat.id;
-        const reason = classification.ownershipReason ?? classification.reason;
-        return this.options.sendToApprover([
-            "群消息可能不属于你的开发范围",
-            `群：${group}`,
-            `发送人：${message.sender.displayName ?? message.sender.id}`,
-            `内容：${truncate(message.text, 200)}`,
-            `归属：${classification.ownership === "external" ? "平台/外部系统" : "不确定"}`,
-            `影响项目：${classification.affectedProjects?.join("、") || "未判断"}`,
-            `原因：${reason}`,
-            `群聊：https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(message.chat.id)}`,
-        ].join("\n"));
     }
     hasMedia(message) {
         return (message.attachments ?? []).some((attachment) => attachment.kind === "image" || attachment.kind === "file");

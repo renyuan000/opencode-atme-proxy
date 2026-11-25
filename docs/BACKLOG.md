@@ -126,7 +126,24 @@ npx @neomei/agentsoul setup
 - 群摘要、全量群文本证据、持久 reply/analysis/review worker
 - 回复必要性、回执优先、引用解析、私聊改稿/撤销、卡片回复管理
 - 简洁/详细回复、审批门禁、失败降级
-- 162 个测试通过
+- 170 个测试通过
+
+## 6.1 本轮 P0 权限与评审门禁（2026-11-25）
+
+已完成：
+
+- `group.project.primary` 兼容 `string | string[]`，内部统一为数组。
+- 可写项目 = `primary + core`；只读项目 = `reference + secondary`。
+- analysis / analysis-check / execution prompt 注入可写与只读项目。
+- 显式项目执行使用任务 worktree，不直接修改源 `dev`。
+- 分析完整性检查：`actionability=task` 且缺少范围/计划/文件/验收时进入 `needs_info`。
+- execution review 输出结构化结论；`结论：需修改` 时任务进入 `needs_info`，不再直接标记完成。
+- 审批卡补充群名、原消息链接、计划文件、执行计划和项目范围。
+
+待验证：
+
+- OpenCode 全局 `permission` 与 atme session 权限的优先级。
+- 多可写项目 worktree 的真实执行、测试和 diff 汇总。
 
 ## 7. 建议顺序
 
@@ -151,7 +168,8 @@ npx @neomei/agentsoul setup
 | N-3 | verify | 群名卡片实卡验证 | 真实飞书截图确认：群消息分析标题 `群消息分析 · 群名`、未完成提醒右侧群名、候选卡标题 `候选任务 · 群名` 均正常；空白占位列不显示异常 |
 | N-4 | docs | 提交本轮设计文档更新 | `FILE-INGESTION-DESIGN` 与 `OPTIMIZATION-DESIGN` 已同步，测试/基线一致 |
 | N-5 | feat | 消息级深链 | 优先 `message_app_link`，缺失用 `openChatId + position`；卡片显示“打开原消息/查看原消息”，无链接回退群链接 |
-| N-6 | feat | OCR 本地增强 | RapidOCR 优先、Tesseract 回退；图片 hash 缓存；在线 OCR 不默认启用 |
+| N-6 | feat | OCR 本地增强 | RapidOCR 优先、Tesseract 回退；采样指纹 + dHash 近似去重；在线 OCR 不默认启用 |
+| N-7 | feat | 回复式任务补充 | owner 回复审批卡/任务来源消息自动追加；待审批重新分析，执行中只记录 |
 
 ### 8.2 文件摄取 P0（3–5 天）
 

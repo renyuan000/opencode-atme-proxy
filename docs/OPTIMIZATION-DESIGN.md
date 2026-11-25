@@ -429,7 +429,7 @@ xlsx > 20 sheet 或 > 500 行：分块
 7. 非 @ 群媒体相关时只建候选任务，深度分析需 owner 批准
 8. 审批等待不触发生成超时
 9. 群知识/证据可回溯到消息或文件
-10. 162 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
+10. 170 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
 
 ## 16. 开源与给同事使用前的检查
 
@@ -987,6 +987,7 @@ Context Manifest：告诉模型这次到底带了什么、缺了什么、是否�
 /工作空间 <群名|chatId> 测试|检查 <名称> <命令>
 /工作空间 <群名|chatId> 自动                    清空 projects，改为自动发现
 /工作空间 <群名|chatId> 清空                    删除整个 workspace 配置
+/诊断 <群名|chatId>                            检查项目路径、fs-root 白名单并给出修改建议
 ```
 
 示例：
@@ -1160,7 +1161,8 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - `ocr.provider = auto | rapidocr | tesseract`
 - `auto`：优先本地 RapidOCR，失败回退 Tesseract
 - RapidOCR 使用独立 Python venv，不把 OCR 依赖装进 Node 项目
-- 同一图片按 hash 缓存 OCR 结果，避免重复识别
+- 同一图片按采样指纹（首尾 4KB + 大小 + MIME）缓存 OCR 结果；并发请求 in-flight 去重
+- 浅层扫描额外计算 dHash，Hamming ≤4 的近似截图复用 OCR；深度分析仍重新识别
 - 非 @ 扫描使用 OCR 做相关性；@/批准后的截图仍优先原生视觉
 - 在线 OCR 暂不默认启用，避免内部截图出网
 
@@ -1323,6 +1325,24 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - 右侧对齐使用 `column_set`；只有右侧文本时用空白 weighted 左列占位。该布局需真实飞书卡片回归确认。
 
 
+### 35.2 回复式任务补充
+
+- 主人直接回复审批卡、任务来源消息或已记录补充消息；使用 `replyToMessageId` 映射任务
+- 追加到 `TaskRecord.supplements` 和审计日志，不把普通私聊误挂到任务
+- `needs_info` / `awaiting_approval`：清理旧审批卡并重新分析
+- `executing`：只记录补充并通知，不改变正在执行的 prompt
+- 其他状态：记录补充并告知，不自动重跑
+
+
+### 35.3 审批卡信息完整性
+
+- 审批卡显示群名、原消息深链、目标、范围、计划文件、执行计划、仓库/分支、命令、风险、验收
+- 仓库优先使用 `resolveProject`：显式项目显示目录名，不显示“未配置”
+- 结果卡从 pending 保存的原始 view 渲染，保留群/来源/计划，不显示“无草稿/任务 id/—”
+- 没有真实 worktree/branch 时显示“当前工作区 → 不创建分支”，不伪造 `atme/task`
+- 有 workspace/repo 时才显示计划分支 `atme/<taskId>`
+
+
 ### 36. 私聊查询群消息
 
 主人私聊：
@@ -1378,9 +1398,54 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 外部归属且置信度 >= 0.6 时：
 
 - 不自动建开发任务
-- 私聊 owner 说明“可能不属于你的开发范围”
-- 附群聊链接
-- 等 owner 判断
+- 不自动深分析
+- 不进入群消息分析卡片
+- 默认不私聊打扰 owner
+
+### 37.1 本地初筛与分层
+
+在 LLM 判断之前，本地先计算 `PrefilterResult`（`src/core/prefilter.ts`）：
+
+```json
+{
+  "score": 0,
+  "reasons": [],
+  "layerHints": ["web_ui", "performance"],
+  "addressedToOther": false,
+  "coreHits": [],
+  "externalHits": [],
+  "protocolHits": [],
+  "performanceHit": true,
+  "kafkaHit": false,
+  "strongExternal": false
+}
+```
+
+规则：
+
+- `@别人` 是强降权信号，但不是绝对排除
+- `@主人/@bot` 加权，但不能单独判相关
+- `npb-engine/npb-transform/采集/协议解析/pcap/flow/eve` 加权
+- 平台资产台账、管理平台、前端页面、联调发布降权
+- 性能压测按目标判断：目标是核心项目/我们写入的 Kafka 链路时加权；目标只是平台/前端时降权
+- Kafka 不是天然外部：我们作为 producer 或 topic 由 transform 写出时加权
+- 应用协议（HTTP/DNS/TLS/SIP/IEC104/Modbus/MQTT、app-layer、协议识别）属于 engine 链路时加权
+- 强外部候选：明确 @别人 + 外部信号 + 无核心信号 + 无协议信号，跳过 LLM 深分析
+
+LLM 输出增加：
+
+```json
+{
+  "layer": "web_ui|web_api|service|pg|kafka|engine|protocol|performance|deploy|unknown",
+  "perf_target": null,
+  "kafka_role": "producer|consumer|unknown",
+  "protocol_family": null
+}
+```
+
+`layer` 是问题所在层，`ownership` 是归属，两者不能混用。例如“资产台账显示 CPU 0%”可以是 `layer=web_ui`，但如果根因是 engine 上报字段错误，`ownership=ours`。
+
+群摘要同样只保留与 `owner_direction/own_projects` 相关的内容；平台/前端/性能压测（非核心目标）不写入摘要和 topics。
 
 
 ### 38. 讨论主题与阶段性任务

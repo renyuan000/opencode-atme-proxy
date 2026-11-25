@@ -20,6 +20,10 @@ export interface ExecutionServiceOptions {
     sessionManager: SessionManager;
     logger: Logger;
     executionPermission: SessionPermission[];
+    executionPermissionFor?(input: {
+        writableProjects?: string[];
+        referenceProjects?: string[];
+    }): SessionPermission[];
     readOnlyPermission: SessionPermission[];
     conversationIdFor?(platform: string, chatId: string): string;
     latestAnalysis(taskId: string): Promise<TaskAnalysis | undefined>;
@@ -37,6 +41,8 @@ export interface ExecutionServiceOptions {
             lintCommand?: string[][];
         }>;
         workspaceDocs?: string[];
+        writableProjects?: string[];
+        referenceProjects?: string[];
     }>;
     sendToApprover(text: string): Promise<boolean>;
     sendToOwner(text: string): Promise<boolean>;

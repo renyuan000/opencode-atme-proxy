@@ -48,6 +48,7 @@ export interface SessionManagerOptions {
     logger: Logger;
     readOnlyPermission: SessionPermission[];
     epochFor?: (chatId: string) => number;
+    permissionFingerprint?: string;
 }
 export declare class SessionManager {
     private readonly options;

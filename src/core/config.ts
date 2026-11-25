@@ -5,12 +5,21 @@ import { z } from "zod";
 import { createLogger } from "./logger.js";
 import { expandHome } from "./util.js";
 
-const GroupProjectSchema = z.object({
-  primary: z.string().optional(),
-  core: z.array(z.string()).default([]),
-  reference: z.array(z.string()).default([]),
-  secondary: z.array(z.string()).default([]),
-});
+const GroupProjectSchema = z
+  .object({
+    primary: z.union([z.string(), z.array(z.string())]).optional(),
+    core: z.array(z.string()).default([]),
+    reference: z.array(z.string()).default([]),
+    secondary: z.array(z.string()).default([]),
+  })
+  .transform((value) => ({
+    ...value,
+    primary: value.primary === undefined
+      ? []
+      : Array.isArray(value.primary)
+        ? value.primary
+        : [value.primary],
+  }));
 
 const GroupWorkspaceProjectSchema = z.object({
   name: z.string().min(1),

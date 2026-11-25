@@ -26,6 +26,7 @@ export class OwnerCommandService {
                 "/工作空间 <群名|chatId> 删除 <名称>",
                 "/工作空间 <群名|chatId> 测试|检查 <名称> <命令>",
                 "/工作空间 <群名|chatId> 自动 自动发现 worktrees 项目",
+                "/诊断 <群名|chatId> 检查项目路径、fs-root 白名单和配置建议",
                 "/方向 <群名|chatId> <说明> 设置我在该群的研发方向",
                 "/关键词 <群名|chatId> <关键词1,关键词2> 设置我在该群的研发关键词",
                 "/分析 <taskId> 手动触发待分析任务",
@@ -53,6 +54,11 @@ export class OwnerCommandService {
             if (!command.arg)
                 return "用法：/工作空间 <群名|chatId> [root|添加|删除|自动|清空]";
             return this.options.manageWorkspace(command.arg);
+        }
+        if (command.command === "diagnose") {
+            if (!command.arg)
+                return "用法：/诊断 <群名|chatId>";
+            return this.options.diagnoseProject(command.arg);
         }
         if (command.command === "direction") {
             return this.options.setOwnerFocus(command.arg, "direction");
@@ -218,6 +224,10 @@ export class OwnerCommandService {
         const outbound = this.options.platform.renderApproval(view);
         await this.options.sendLimiter.take();
         const result = await this.options.platform.send({ kind: "user", userId: ownerId }, outbound);
+        if (task && result.messageId) {
+            task.approvalMessageId = result.messageId;
+            await this.options.tasks.save(task);
+        }
         this.options.pending.set(`${pending.taskId}:reply`, {
             ...pending,
             ...(result.messageId ? { messageId: result.messageId } : {}),

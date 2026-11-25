@@ -47,7 +47,6 @@ export declare class ScanService {
     private chatLink;
     private resolveMessageLink;
     private resolveSenderLabel;
-    private notifyOwnership;
     private hasMedia;
     private queueMediaApproval;
     private appendContextForScan;

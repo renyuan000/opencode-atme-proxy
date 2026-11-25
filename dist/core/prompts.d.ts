@@ -18,6 +18,8 @@ export interface AnalysisPromptInput {
         description?: string;
     }>;
     workspaceDocs?: string[];
+    writableProjects?: string[];
+    readonlyProjects?: string[];
     attachmentNames?: string[];
     attachmentTexts?: string[];
 }

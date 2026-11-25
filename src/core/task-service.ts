@@ -49,6 +49,9 @@ export interface TaskServiceOptions {
     workspaceRoot?: string;
     workspaceProjects?: Array<{ name: string; path: string; description?: string }>;
     workspaceDocs?: string[];
+    writableProjects?: string[];
+    coreProjects?: string[];
+    referenceProjects?: string[];
   }>;
   projectId(chatId: string): string | undefined;
   chatLabelFor?(chatId: string): Promise<string | undefined>;
@@ -80,6 +83,19 @@ export class TaskService {
         analysis.openQuestions = [
           ...new Set([...analysis.openQuestions, ...verification.reasons]),
         ];
+      }
+      if ((task.actionability ?? "task") === "task") {
+        const missing: string[] = [];
+        if (analysis.scope.length === 0) missing.push("缺少任务范围");
+        if (analysis.plan.length === 0) missing.push("缺少执行计划");
+        if (!analysis.files?.length) missing.push("缺少计划文件");
+        if (analysis.acceptanceCriteria.length === 0) missing.push("缺少验收标准");
+        if (missing.length > 0) {
+          analysis.needsInfo = true;
+          analysis.openQuestions = [
+            ...new Set([...analysis.openQuestions, ...missing]),
+          ];
+        }
       }
     } catch (error) {
       task.state = "needs_info";
@@ -141,6 +157,36 @@ export class TaskService {
       return;
     }
     await this.options.sendApproval(task, analysis);
+  }
+
+  async appendSupplement(
+    task: TaskRecord,
+    message: IncomingMessage,
+  ): Promise<TaskRecord["state"]> {
+    const text = message.text.trim();
+    if (!text) return task.state;
+    if (task.supplements?.some((item) => item.messageId === message.messageId)) {
+      return task.state;
+    }
+    task.supplements = [
+      ...(task.supplements ?? []),
+      {
+        messageId: message.messageId,
+        text,
+        senderId: message.sender.id,
+        ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),
+        createdAt: message.createdAt,
+      },
+    ];
+    task.updatedAt = Date.now();
+    await this.options.tasks.save(task);
+    await this.options.audit.append({
+      actor: { system: true },
+      action: "task_supplement",
+      taskId: task.id,
+      details: { messageId: message.messageId },
+    });
+    return task.state;
   }
 
   async ensureTask(
@@ -218,6 +264,7 @@ export class TaskService {
         reason: classification?.reason ?? "mentioned",
         confidence: classification?.confidence ?? 1,
       },
+      actionability: classification?.actionability ?? "task",
       dedupKey,
       state: "analyzing",
       createdAt: now,
@@ -230,7 +277,9 @@ export class TaskService {
       taskId: task.id,
       details: { source, messageId: message.messageId },
     });
-    const autoAnalyze = options?.autoAnalyze ?? this.options.config.policy.autoAnalyzeTasks;
+    const autoAnalyze =
+      options?.autoAnalyze ??
+      (source === "group_scan" ? false : this.options.config.policy.autoAnalyzeTasks);
     if (!autoAnalyze) {
       task.state = "needs_info";
       task.updatedAt = Date.now();
@@ -377,6 +426,8 @@ export class TaskService {
         project.workspaceDocs,
         attachments,
         mediaDocuments,
+        project.writableProjects,
+        project.referenceProjects,
       );
     }
     const repo = this.options.config.repos[0];
@@ -393,6 +444,8 @@ export class TaskService {
         undefined,
         attachments,
         mediaDocuments,
+        project.writableProjects,
+        project.referenceProjects,
       );
     }
     const ctx = await this.options.contextService.analysisContext(task);
@@ -436,6 +489,8 @@ export class TaskService {
     workspaceDocs?: string[],
     attachments: PromptAttachment[] = [],
     mediaDocuments: string[] = [],
+    writableProjects: string[] = [],
+    referenceProjects: string[] = [],
   ): Promise<TaskAnalysis> {
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
@@ -447,6 +502,8 @@ export class TaskService {
       context: ctx,
       ...(workspaceProjects ? { workspaceProjects } : {}),
       ...(workspaceDocs ? { workspaceDocs } : {}),
+      ...(writableProjects.length > 0 ? { writableProjects } : {}),
+      ...(referenceProjects.length > 0 ? { readonlyProjects: referenceProjects } : {}),
       ...(task.attachments?.length
         ? { attachmentNames: task.attachments.map((item) => item.name ?? item.kind) }
         : {}),
@@ -491,7 +548,8 @@ export class TaskService {
       return base;
     }
     const directory = await this.analysisDirectory(task);
-    const title = `${this.options.config.opencode.sessionTitlePrefix}:worker:review:${task.chatId}`;
+    const project = await this.options.resolveProject(task.chatId);
+    const title = `${this.options.config.opencode.sessionTitlePrefix}:analysis-check:${task.chatId}`;
     try {
       const raw = await this.options.sessionManager.runWorker(
         {
@@ -521,6 +579,8 @@ export class TaskService {
             pinned: context.pinned,
             memory: context.memory,
             openTasks: context.openTasks,
+            writableProjects: project.writableProjects ?? [],
+            readonlyProjects: project.referenceProjects ?? [],
           }),
           "分析：",
           JSON.stringify(analysis),

@@ -13,7 +13,7 @@ import type { PlatformAdapter } from "../../core/ports.js";
 import type { FeishuConfig } from "../../core/config.js";
 import type { Logger } from "../../core/logger.js";
 import { createLogger } from "../../core/logger.js";
-import { toErrorMessage } from "../../core/util.js";
+import { toErrorMessage, truncate } from "../../core/util.js";
 
 interface FeishuRawMessage {
   message_id?: string;
@@ -908,7 +908,14 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
   }
   const lines = [
     `**来源**：${view.summary}`,
+    ...(view.chatLabel ? [`**群**：${view.chatLabel}`] : []),
+    ...(view.sourceLink
+      ? [`**原消息**：[${view.sourceLink.label}](${view.sourceLink.url})`]
+      : []),
     `**目标**：${view.title}`,
+    ...(view.scope?.length ? [`**范围**：${truncate(view.scope.join("；"), 400)}`] : []),
+    ...(view.files?.length ? [`**计划文件**：${truncate(view.files.join("；"), 400)}`] : []),
+    ...(view.plan?.length ? [`**执行计划**：${truncate(view.plan.join("；"), 800)}`] : []),
     `**仓库**：${view.repo}`,
     `**分支**：${view.baseBranch} → ${view.targetBranch}`,
     `**命令**：${view.commands.length > 0 ? view.commands.join("；") : "（无）"}`,

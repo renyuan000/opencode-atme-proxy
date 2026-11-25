@@ -36,6 +36,10 @@ export declare class ProxyRuntime {
     private readonly llm;
     private readonly replyOptions;
     private readonly activeMessageIds;
+    private readonly readOnlyPermission;
+    private readonly webSearchPermission;
+    private readonly webFetchPermission;
+    private readonly executionPermission;
     private readonly pending;
     private readonly poller;
     private readonly executor;
@@ -128,11 +132,14 @@ export declare class ProxyRuntime {
     private queryConversationMessages;
     private setOwnerFocus;
     private persistGroupOwnerFocus;
+    private diagnoseProject;
     private manageWorkspace;
     private describeWorkspace;
     private persistGroupWorkspace;
     private handleOwnerCommand;
     private notifyBlockedDirect;
+    private handleTaskSupplement;
+    private withPermissionGuidance;
     private handleDirectMessage;
     private recentKey;
     private rememberRecent;

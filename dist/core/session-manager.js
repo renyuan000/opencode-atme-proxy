@@ -16,7 +16,10 @@ export class SessionManager {
     }
     sessionKey(prefix, platform, chatId, conversationId) {
         const conversation = conversationId ?? `${platform}:${chatId}`;
-        return `${prefix}:${conversation}:e${this.epochFor(chatId)}`;
+        const permission = this.options.permissionFingerprint
+            ? `:p${this.options.permissionFingerprint}`
+            : "";
+        return `${prefix}:${conversation}:e${this.epochFor(chatId)}${permission}`;
     }
     async coordinatorSession(platform, chatId, directory, title, conversationId) {
         const key = this.sessionKey("coordinator", platform, chatId, conversationId);

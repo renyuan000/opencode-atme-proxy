@@ -30,6 +30,7 @@ export function parseAnalysis(
     scope: stringArray(parsed?.scope),
     outOfScope: stringArray(parsed?.out_of_scope),
     repos: repos.length > 0 ? repos : [fallbackRepo],
+    files: stringArray(parsed?.files),
     plan: Array.isArray(parsed?.plan)
       ? parsed.plan
           .filter((step: unknown) => step && typeof step === "object")

@@ -53,6 +53,35 @@ export interface IncomingMessage {
 
 export type Actionability = "task" | "question" | "fyi" | "noise";
 
+export type AnalysisLayer =
+  | "web_ui"
+  | "web_api"
+  | "service"
+  | "pg"
+  | "kafka"
+  | "engine"
+  | "protocol"
+  | "performance"
+  | "deploy"
+  | "unknown";
+
+export type PrefilterLayer = Exclude<AnalysisLayer, "unknown">;
+
+export interface PrefilterResult {
+  score: number;
+  reasons: string[];
+  layerHints: PrefilterLayer[];
+  addressedToOther: boolean;
+  mentionedOwner: boolean;
+  mentionedBot: boolean;
+  coreHits: string[];
+  externalHits: string[];
+  protocolHits: string[];
+  performanceHit: boolean;
+  kafkaHit: boolean;
+  strongExternal: boolean;
+}
+
 export type BotReplyAction = "answer" | "need_decision" | "notify_owner" | "no_reply";
 
 export type BotMessageKind =
@@ -96,6 +125,11 @@ export interface Classification {
   ownershipConfidence?: number;
   affectedProjects?: string[];
   ownershipReason?: string;
+  layer?: AnalysisLayer;
+  perfTarget?: string;
+  kafkaRole?: "producer" | "consumer" | "unknown";
+  protocolFamily?: string;
+  prefilter?: PrefilterResult;
   task?: TaskHint;
 }
 
@@ -119,6 +153,14 @@ export interface TaskRecord {
   chatName?: string;
   messageIds: string[];
   messageLink?: string;
+  approvalMessageId?: string;
+  supplements?: Array<{
+    messageId: string;
+    text: string;
+    senderId?: string;
+    senderName?: string;
+    createdAt: number;
+  }>;
   source: "mention_me" | "mention_bot" | "group_scan";
   requester: ActorRef;
   title: string;
@@ -154,6 +196,7 @@ export interface TaskAnalysis {
   scope: string[];
   outOfScope: string[];
   repos: string[];
+  files?: string[];
   plan: TaskPlanStep[];
   commands: string[];
   risks: string[];
@@ -291,6 +334,11 @@ export interface ApprovalView {
   mode: "reply" | "develop";
   title: string;
   summary: string;
+  chatLabel?: string;
+  sourceLink?: { label: string; url: string };
+  scope?: string[];
+  files?: string[];
+  plan?: string[];
   draft?: string;
   chatId?: string;
   sourceMessageId?: string;

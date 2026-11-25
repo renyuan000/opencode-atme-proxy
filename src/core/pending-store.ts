@@ -1,5 +1,6 @@
 import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
+import type { ApprovalView } from "./types.js";
 import { readJsonFile, writeJsonAtomic, toErrorMessage } from "./util.js";
 
 export interface PendingCard {
@@ -14,6 +15,7 @@ export interface PendingCard {
   sourceMessageId?: string;
   style?: "concise" | "detailed";
   draft?: string;
+  view?: ApprovalView;
   createdAt: number;
 }
 

@@ -4,7 +4,7 @@
 |---|---|
 | 日期 | 2026-11-24 |
 | 范围 | 文件、图片、PDF、Office、消息/上下文进入模型前的预处理 |
-| 基线 | 2026-11-24 开发版；测试 162/162；`atme-proxy.service` active |
+| 基线 | 2026-11-24 开发版；测试 164/164；`atme-proxy.service` active |
 | 用途 | 对比 OpenClaw、OpenCode、Codex、Claude Code，记录 atme-proxy 的取舍和后续落地顺序 |
 | 状态 | 设计参考；文中“建议”不代表已经实现 |
 
@@ -339,7 +339,7 @@ maxXlsxRows          500（预览/提取）
 | 能力 | 状态 | 说明 |
 |:--|:--|:--|
 | 文本/HTML/Excel/Word/PDF 基础提取 | 已有 | `document.ts`；Excel `.xlsx/.xls` 走 SheetJS，最多 20 个 sheet；固定 20k 截断 |
-| 图片 OCR、媒体簇 | 已有 | RapidOCR 优先，Tesseract 回退；回复路径可传图片附件，失败回退 OCR；OCR 按 hash 缓存 |
+| 图片 OCR、媒体簇 | 已有 | RapidOCR 优先，Tesseract 回退；回复路径可传图片附件，失败回退 OCR；OCR 按采样指纹缓存并做 in-flight 去重；浅层扫描用 dHash 近似去重，深度分析重新识别 |
 | 非 @ 媒体候选/审批 | 已有 | 本地提取/OCR → 相关性 → `needs_info` 候选 |
 | 文件 hash/manifest | 基础已实现 | `src/core/file-envelope.ts` 提供 `FileEnvelope/ExtractedDocument`；服务尚未接入 |
 | 目录/选段/`readRanges` | 基础已实现 | 已记录字符 `readRanges`；页/节选段未做 |

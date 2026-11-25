@@ -260,25 +260,30 @@ ${task.title}
     resolution: "approved" | "rejected" | "self" | "revised",
   ): unknown {
     const taskId = pending.taskId;
-    const title =
+    const fallbackTitle =
       pending.mode === "reply"
         ? pending.style === "detailed"
           ? "对方要求详细回答"
           : "代答"
         : `任务 ${taskId}`;
     const view = {
+      ...(pending.view ?? {
+        taskId,
+        planHash: pending.planHash,
+        mode: pending.mode,
+        title: fallbackTitle,
+        summary: pending.draft ?? "（无草稿）",
+        repo: "—",
+        baseBranch: "—",
+        targetBranch: "—",
+        commands: [],
+        risks: [],
+        acceptanceCriteria: [],
+        openQuestions: [],
+      }),
       taskId,
       planHash: pending.planHash,
       mode: pending.mode,
-      title,
-      summary: pending.draft ?? "（无草稿）",
-      repo: "—",
-      baseBranch: "—",
-      targetBranch: "—",
-      commands: [],
-      risks: [],
-      acceptanceCriteria: [],
-      openQuestions: [],
       resolution,
     };
     const rendered = this.options.platform.renderApproval(view);

@@ -19,6 +19,10 @@ test("parses slash commands", () => {
     command: "workspace",
     arg: "产品-资产测绘 添加 asd-engine worktrees/asd-engine.git",
   });
+  assert.deepEqual(parseOwnerCommand("/诊断 产品-流分装置"), {
+    command: "diagnose",
+    arg: "产品-流分装置",
+  });
   assert.deepEqual(parseOwnerCommand("/方向 产品-资产测绘 负责采集与加工链路"), {
     command: "direction",
     arg: "产品-资产测绘 负责采集与加工链路",

@@ -79,8 +79,8 @@ export declare const AppConfigSchema: z.ZodObject<{
                 chatId: z.ZodString;
                 name: z.ZodOptional<z.ZodString>;
                 enabled: z.ZodDefault<z.ZodBoolean>;
-                project: z.ZodOptional<z.ZodObject<{
-                    primary: z.ZodOptional<z.ZodString>;
+                project: z.ZodOptional<z.ZodEffects<z.ZodObject<{
+                    primary: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString, "many">]>>;
                     core: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
                     reference: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
                     secondary: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -88,9 +88,19 @@ export declare const AppConfigSchema: z.ZodObject<{
                     core: string[];
                     reference: string[];
                     secondary: string[];
-                    primary?: string | undefined;
+                    primary?: string | string[] | undefined;
                 }, {
-                    primary?: string | undefined;
+                    primary?: string | string[] | undefined;
+                    core?: string[] | undefined;
+                    reference?: string[] | undefined;
+                    secondary?: string[] | undefined;
+                }>, {
+                    primary: string[];
+                    core: string[];
+                    reference: string[];
+                    secondary: string[];
+                }, {
+                    primary?: string | string[] | undefined;
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
@@ -180,10 +190,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: boolean;
                 name?: string | undefined;
                 project?: {
+                    primary: string[];
                     core: string[];
                     reference: string[];
                     secondary: string[];
-                    primary?: string | undefined;
                 } | undefined;
                 workspace?: {
                     projects: {
@@ -214,7 +224,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                 name?: string | undefined;
                 enabled?: boolean | undefined;
                 project?: {
-                    primary?: string | undefined;
+                    primary?: string | string[] | undefined;
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
@@ -280,10 +290,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: boolean;
                 name?: string | undefined;
                 project?: {
+                    primary: string[];
                     core: string[];
                     reference: string[];
                     secondary: string[];
-                    primary?: string | undefined;
                 } | undefined;
                 workspace?: {
                     projects: {
@@ -344,7 +354,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                 name?: string | undefined;
                 enabled?: boolean | undefined;
                 project?: {
-                    primary?: string | undefined;
+                    primary?: string | string[] | undefined;
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
@@ -406,10 +416,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: boolean;
                 name?: string | undefined;
                 project?: {
+                    primary: string[];
                     core: string[];
                     reference: string[];
                     secondary: string[];
-                    primary?: string | undefined;
                 } | undefined;
                 workspace?: {
                     projects: {
@@ -472,7 +482,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                 name?: string | undefined;
                 enabled?: boolean | undefined;
                 project?: {
-                    primary?: string | undefined;
+                    primary?: string | string[] | undefined;
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;
@@ -1225,10 +1235,10 @@ export declare const AppConfigSchema: z.ZodObject<{
                 enabled: boolean;
                 name?: string | undefined;
                 project?: {
+                    primary: string[];
                     core: string[];
                     reference: string[];
                     secondary: string[];
-                    primary?: string | undefined;
                 } | undefined;
                 workspace?: {
                     projects: {
@@ -1462,7 +1472,7 @@ export declare const AppConfigSchema: z.ZodObject<{
                 name?: string | undefined;
                 enabled?: boolean | undefined;
                 project?: {
-                    primary?: string | undefined;
+                    primary?: string | string[] | undefined;
                     core?: string[] | undefined;
                     reference?: string[] | undefined;
                     secondary?: string[] | undefined;

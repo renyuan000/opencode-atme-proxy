@@ -6,7 +6,7 @@ import { groupDirName, shortGroupId } from "./group-state.js";
 import { toErrorMessage, writeJsonAtomic } from "./util.js";
 
 export interface GroupWorkspaceProject {
-  primary?: string | null;
+  primary?: string[];
   core?: string[];
   reference?: string[];
   secondary?: string[];

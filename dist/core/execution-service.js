@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { repoById } from "./opencode.js";
 import { Semaphore } from "./rate-limit.js";
 import { toErrorMessage, truncate, writeJsonAtomic } from "./util.js";
@@ -18,14 +18,18 @@ export class ExecutionService {
             const project = await this.options.resolveProject(task.chatId);
             if (!project.resolved)
                 throw new Error("no workspace resolved; refusing to execute");
-            return this.executeInWorkspace(task, analysis, project.worktree, planHash, project.workspaceProjects, project.workspaceDocs);
+            return this.executeInWorkspace(task, analysis, project.worktree, planHash, project.workspaceProjects, project.workspaceDocs, project.referenceProjects);
         }
         const repo = repoById(this.options.config.repos, analysis.repos[0] ?? "");
         if (!repo) {
             const project = await this.options.resolveProject(task.chatId);
             if (!project.resolved)
                 throw new Error("no project resolved; refusing to execute");
-            return this.executeInWorktree(task, analysis, project.worktree, planHash);
+            const writable = (project.writableProjects ?? [project.worktree]).map((path) => ({
+                name: basename(path).replace(/\.git$/, ""),
+                path,
+            }));
+            return this.executeInWorkspace(task, analysis, join(this.options.stateDir, "worktrees"), planHash, writable, undefined, project.referenceProjects);
         }
         const approved = await this.options.approvals.latest(task.id, "develop");
         if (!approved || approved.decision !== "approved" || approved.planHash !== planHash) {
@@ -42,19 +46,32 @@ export class ExecutionService {
             if (workspaceDir) {
                 await writeJsonAtomic(join(workspaceDir, "execution", `${task.id}.json`), execution);
             }
-            task.state = execution.status === "succeeded" ? "done" : "failed";
-            task.updatedAt = Date.now();
-            await this.options.tasks.save(task);
-            await this.options.sendToApprover(execution.status === "succeeded"
-                ? `任务完成：${task.title}\n分支：${execution.branch}\n${execution.diffStat}`
-                : `任务失败：${task.title}\n${execution.error ?? "未知错误"}`);
             if (execution.status === "succeeded") {
-                await this.reviewExecution({
+                const review = await this.reviewExecution({
                     task,
+                    analysis,
                     directory: execution.worktree,
                     summary: execution.testResult?.summary ?? execution.diffStat ?? "",
                     ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
                 });
+                if (review?.verdict === "changes") {
+                    task.state = "needs_info";
+                    task.updatedAt = Date.now();
+                    await this.options.tasks.save(task);
+                    await this.options.sendToApprover(`任务已执行，但评审未通过：${task.title}\n分支：${execution.branch}\n${review.text}`);
+                }
+                else {
+                    task.state = "done";
+                    task.updatedAt = Date.now();
+                    await this.options.tasks.save(task);
+                    await this.options.sendToApprover(`任务完成：${task.title}\n分支：${execution.branch}\n${execution.diffStat}`);
+                }
+            }
+            else {
+                task.state = "failed";
+                task.updatedAt = Date.now();
+                await this.options.tasks.save(task);
+                await this.options.sendToApprover(`任务失败：${task.title}\n${execution.error ?? "未知错误"}`);
             }
             await this.options.audit.append({
                 actor: { system: true },
@@ -68,7 +85,7 @@ export class ExecutionService {
             release();
         }
     }
-    async executeInWorkspace(task, analysis, workspaceRoot, planHash, workspaceProjects, workspaceDocs) {
+    async executeInWorkspace(task, analysis, workspaceRoot, planHash, workspaceProjects, workspaceDocs, readonlyProjects) {
         const approved = await this.options.approvals.latest(task.id, "develop");
         if (!approved || approved.decision !== "approved" || approved.planHash !== planHash) {
             throw new Error("approval missing or stale");
@@ -103,7 +120,7 @@ export class ExecutionService {
                 });
                 worktrees.push({ project, repo, worktree });
             }
-            const prompt = this.workspaceExecutionPrompt(task, analysis, taskWorkspace, worktrees, workspaceDocs);
+            const prompt = this.workspaceExecutionPrompt(task, analysis, taskWorkspace, worktrees, workspaceDocs, readonlyProjects);
             const executionAgent = this.options.config.opencode.executionAgent ?? this.options.config.opencode.agent;
             const { sessionId, release: releaseChild } = await this.options.sessionManager.createChildSession({
                 platform: task.platform,
@@ -114,7 +131,10 @@ export class ExecutionService {
                 ...(this.options.conversationIdFor?.(task.platform, task.chatId)
                     ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
                     : {}),
-                permission: this.options.executionPermission,
+                permission: this.options.executionPermissionFor?.({
+                    writableProjects: targets.map((project) => project.path),
+                    ...(readonlyProjects ? { referenceProjects: readonlyProjects } : {}),
+                }) ?? this.options.executionPermission,
                 ...(executionAgent ? { agent: executionAgent } : {}),
                 taskId: task.id,
             });
@@ -168,19 +188,32 @@ export class ExecutionService {
             if (workspaceDir) {
                 await writeJsonAtomic(join(workspaceDir, "execution", `${task.id}.json`), execution);
             }
-            task.state = passed ? "done" : "failed";
-            task.updatedAt = Date.now();
-            await this.options.tasks.save(task);
-            await this.options.sendToApprover(passed
-                ? `任务完成：${task.title}\n工作空间：${taskWorkspace}\n${checkSummary}\n${execution.diffStat}`
-                : `任务失败：${task.title}\n${checkSummary}\n${execution.diffStat}`);
             if (passed) {
-                await this.reviewExecution({
+                const review = await this.reviewExecution({
                     task,
+                    analysis,
                     directory: taskWorkspace,
                     summary: execution.diffStat ?? "",
                     ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
                 });
+                if (review?.verdict === "changes") {
+                    task.state = "needs_info";
+                    task.updatedAt = Date.now();
+                    await this.options.tasks.save(task);
+                    await this.options.sendToApprover(`任务已执行，但评审未通过：${task.title}\n工作空间：${taskWorkspace}\n${review.text}`);
+                }
+                else {
+                    task.state = "done";
+                    task.updatedAt = Date.now();
+                    await this.options.tasks.save(task);
+                    await this.options.sendToApprover(`任务完成：${task.title}\n工作空间：${taskWorkspace}\n${checkSummary}\n${execution.diffStat}`);
+                }
+            }
+            else {
+                task.state = "failed";
+                task.updatedAt = Date.now();
+                await this.options.tasks.save(task);
+                await this.options.sendToApprover(`任务失败：${task.title}\n${checkSummary}\n${execution.diffStat}`);
             }
             await this.options.audit.append({
                 actor: { system: true },
@@ -256,16 +289,25 @@ export class ExecutionService {
                 finishedAt: Date.now(),
             };
             await writeJsonAtomic(join(this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir, "executions", `${task.id}.json`), execution);
-            task.state = "done";
-            task.updatedAt = Date.now();
-            await this.options.tasks.save(task);
-            await this.options.sendToApprover(`任务完成：${task.title}\n目录：${worktree}\n${execution.diffStat}`);
-            await this.reviewExecution({
+            const review = await this.reviewExecution({
                 task,
+                analysis,
                 directory: worktree,
                 summary: execution.diffStat ?? "",
                 ...(execution.diffStat ? { diffStat: execution.diffStat } : {}),
             });
+            if (review?.verdict === "changes") {
+                task.state = "needs_info";
+                task.updatedAt = Date.now();
+                await this.options.tasks.save(task);
+                await this.options.sendToApprover(`任务已执行，但评审未通过：${task.title}\n目录：${worktree}\n${review.text}`);
+            }
+            else {
+                task.state = "done";
+                task.updatedAt = Date.now();
+                await this.options.tasks.save(task);
+                await this.options.sendToApprover(`任务完成：${task.title}\n目录：${worktree}\n${execution.diffStat}`);
+            }
             await this.options.audit.append({
                 actor: { system: true },
                 action: "execution_succeeded",
@@ -287,8 +329,8 @@ export class ExecutionService {
     }
     async reviewExecution(input) {
         if (!this.options.config.subagents.enabled || !this.options.config.subagents.reviewer)
-            return;
-        const title = `${this.options.config.opencode.sessionTitlePrefix}:review:${input.task.id}`;
+            return undefined;
+        const title = `${this.options.config.opencode.sessionTitlePrefix}:execution-review:${input.task.id}`;
         try {
             const { sessionId, release } = await this.options.sessionManager.createChildSession({
                 platform: input.task.platform,
@@ -309,13 +351,25 @@ export class ExecutionService {
                     text: [
                         "你是只读评审。不要修改文件，不要执行写操作。",
                         "检查这次改动是否满足任务验收标准，指出风险或遗漏。",
-                        "输出最多 5 行，先给结论（通过/需修改），再给发现。",
+                        "第一行必须只输出：结论：通过 或 结论：需修改。",
+                        "总输出最多 5 行，结论后给发现。",
                         `任务：${input.task.title}`,
+                        `验收标准：${input.analysis.acceptanceCriteria.length > 0 ? truncate(input.analysis.acceptanceCriteria.join("；"), 800) : "未提供"}`,
+                        `计划文件：${input.analysis.files?.length ? truncate(input.analysis.files.join("；"), 800) : "未提供"}`,
+                        `执行计划：${input.analysis.plan.length > 0 ? truncate(input.analysis.plan.map((step) => step.detail ? `${step.step}：${step.detail}` : step.step).join("；"), 800) : "未提供"}`,
                         `执行摘要：${truncate(input.summary, 800)}`,
                         ...(input.diffStat ? [`diff：${truncate(input.diffStat, 1200)}`] : []),
                     ].join("\n"),
                 });
-                await this.options.sendToOwner(`评审结果：${input.task.title}\n${truncate(review.trim(), 800)}`);
+                const text = truncate(review.trim(), 800);
+                await this.options.sendToOwner(`评审结果：${input.task.title}\n${text}`);
+                const conclusion = /结论\s*[:：]\s*(通过|需修改)/.exec(text)?.[1];
+                return {
+                    verdict: conclusion === "需修改" || /不通过|未通过/.test(text)
+                        ? "changes"
+                        : "passed",
+                    text,
+                };
             }
             finally {
                 release();
@@ -327,6 +381,7 @@ export class ExecutionService {
                 taskId: input.task.id,
                 error: toErrorMessage(error),
             });
+            return undefined;
         }
     }
     async runOpenCodeExecution(task, repo, analysis) {
@@ -395,7 +450,7 @@ export class ExecutionService {
             };
         }
     }
-    workspaceExecutionPrompt(task, analysis, directory, worktrees, workspaceDocs) {
+    workspaceExecutionPrompt(task, analysis, directory, worktrees, workspaceDocs, readonlyProjects) {
         return [
             "你已获得用户批准，在群工作空间内执行以下任务。",
             "只允许修改下面列出的工作树；不要 push，不要合并，不要 force push，不要删除仓库。",
@@ -416,6 +471,9 @@ export class ExecutionService {
             ...(workspaceDocs?.length
                 ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...workspaceDocs.map((path) => `- ${path}`)]
                 : []),
+            ...(readonlyProjects?.length
+                ? ["只读项目（可读不可改）：", ...readonlyProjects.map((path) => `- ${path}`)]
+                : []),
             JSON.stringify({
                 task: task.title,
                 goal: analysis.goal,
@@ -428,7 +486,7 @@ export class ExecutionService {
             }),
         ].join("\n");
     }
-    executionPrompt(task, analysis, directory, workspaceProjects, workspaceDocs) {
+    executionPrompt(task, analysis, directory, workspaceProjects, workspaceDocs, readonlyProjects) {
         return [
             "你已获得用户批准，执行以下任务。",
             "只允许在指定工作目录内修改；不要 push，不要合并，不要 force push，不要删除仓库。",
@@ -442,6 +500,9 @@ export class ExecutionService {
                 : []),
             ...(workspaceDocs?.length
                 ? ["关键开发公共文档（可读取，未读不要编造内容）：", ...workspaceDocs.map((path) => `- ${path}`)]
+                : []),
+            ...(readonlyProjects?.length
+                ? ["只读项目（可读不可改）：", ...readonlyProjects.map((path) => `- ${path}`)]
                 : []),
             JSON.stringify({
                 task: task.title,

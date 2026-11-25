@@ -1,4 +1,5 @@
 import type { Logger } from "./logger.js";
+import type { ApprovalView } from "./types.js";
 export interface PendingCard {
     platform: string;
     taskId: string;
@@ -11,6 +12,7 @@ export interface PendingCard {
     sourceMessageId?: string;
     style?: "concise" | "detailed";
     draft?: string;
+    view?: ApprovalView;
     createdAt: number;
 }
 export declare class PendingStore {

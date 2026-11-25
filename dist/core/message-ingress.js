@@ -11,6 +11,12 @@ export class MessageIngress {
         }
         this.options.activeMessageIds.add(dedupKey);
         this.options.rememberRecent(message);
+        if (await this.options.supplement?.(message)) {
+            this.options.dedup.add(dedupKey, message.chat.id);
+            await this.options.dedup.flush();
+            this.options.activeMessageIds.delete(dedupKey);
+            return;
+        }
         const mentionBot = this.isMentionBot(message);
         const ownerId = this.options.ownerOpenId();
         const fromOwner = Boolean(ownerId) && message.sender.id === ownerId;

@@ -1,6 +1,6 @@
 import type { Logger } from "./logger.js";
 export interface GroupWorkspaceProject {
-    primary?: string | null;
+    primary?: string[];
     core?: string[];
     reference?: string[];
     secondary?: string[];

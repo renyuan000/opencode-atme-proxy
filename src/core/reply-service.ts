@@ -248,6 +248,10 @@ export class ReplyService {
       mode: "reply" as const,
       title: style === "detailed" ? "对方要求详细回答，将给出完整信息" : "将用极简格式代答",
       summary: `【${message.chat.name ?? message.chat.id}】${message.sender.displayName ?? message.sender.id} 在群里提到你：${truncate(message.text, 120)}`,
+      chatLabel: task.chatName ?? message.chat.name ?? "群聊",
+      ...(message.messageLink
+        ? { sourceLink: { label: "打开原消息", url: message.messageLink } }
+        : {}),
       ...(draft ? { draft } : {}),
       chatId: message.chat.id,
       sourceMessageId: message.messageId,
@@ -266,6 +270,10 @@ export class ReplyService {
     const target = { kind: "user" as const, userId: ownerId };
     await this.options.sendLimiter.take();
     const result = await this.options.platform.send(target, outbound);
+    if (result.messageId) {
+      task.approvalMessageId = result.messageId;
+      await this.options.tasks.save(task);
+    }
     this.options.pending.set(`${task.id}:reply`, {
       platform: task.platform,
       taskId: task.id,
@@ -278,6 +286,7 @@ export class ReplyService {
       sourceMessageId: message.messageId,
       style,
       ...(draft ? { draft } : {}),
+      view,
       createdAt: Date.now(),
     });
     await this.options.pending.flush();
@@ -779,7 +788,10 @@ export class ReplyService {
               url: `data:${resource.mime};base64,${resource.data.toString("base64")}`,
               ...(attachment.name ? { filename: attachment.name } : {}),
             });
-            const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
+            const text = await ocrImage(resource.data, resource.mime, {
+            ...this.options.config.ocr,
+            scope: message.chat.id,
+          });
             if (text) ocrParts.push(`[${item.messageId}] ${text}`);
           } catch (error) {
             this.options.logger.warn("failed to load clustered image", {
@@ -835,7 +847,10 @@ export class ReplyService {
             "image",
           );
           if (!resource || resource.data.length > 3 * 1024 * 1024) continue;
-          const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
+          const text = await ocrImage(resource.data, resource.mime, {
+            ...this.options.config.ocr,
+            scope: message.chat.id,
+          });
           if (text) ocrParts.push(text);
         } catch (error) {
           this.options.logger.warn("failed to OCR media candidate", {
@@ -895,7 +910,10 @@ export class ReplyService {
       try {
         const resource = await platform.fetchResource(message.messageId, item.key!, "image");
         if (resource.data.length > 3 * 1024 * 1024) continue;
-        const text = await ocrImage(resource.data, resource.mime, this.options.config.ocr);
+        const text = await ocrImage(resource.data, resource.mime, {
+          ...this.options.config.ocr,
+          scope: message.chat.id,
+        });
         if (text) texts.push(text);
       } catch (error) {
         this.options.logger.warn("failed to OCR image attachment", {
