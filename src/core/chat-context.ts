@@ -115,6 +115,23 @@ export class ChatContextStore {
     this.prune();
   }
 
+  redact(chatKey: string, messageId: string): boolean {
+    const existing = this.chats.get(chatKey);
+    if (!existing) return false;
+    let changed = false;
+    for (const message of existing.messages) {
+      if (message.messageId !== messageId) continue;
+      message.text = "[已撤回]";
+      delete message.attachments;
+      changed = true;
+    }
+    if (changed) {
+      existing.updatedAt = this.now();
+      this.dirty = true;
+    }
+    return changed;
+  }
+
   bindProject(chatKey: string, projectId: string, worktree: string): void {
     const existing = this.chats.get(chatKey);
     if (!existing) {

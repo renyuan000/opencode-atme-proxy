@@ -157,6 +157,23 @@ export class TaskStore {
             return [];
         }
     }
+    async redactMessage(messageId) {
+        const tasks = await this.list();
+        for (const task of tasks) {
+            if (!task.supplements?.some((item) => item.messageId === messageId))
+                continue;
+            task.supplements = task.supplements.map((item) => item.messageId === messageId ? { ...item, text: "[已撤回]" } : item);
+            task.updatedAt = Date.now();
+            await this.save(task);
+        }
+    }
+    async saveWithLinks(task, messageIds) {
+        if (!this.state)
+            return false;
+        this.state.saveTaskWithLinks(task.id, JSON.stringify(task), task.updatedAt, task.dedupKey, messageIds);
+        this.index.set(task.dedupKey, task.id);
+        return true;
+    }
     async save(task) {
         if (this.state) {
             this.state.saveTask(task.id, JSON.stringify(task), task.updatedAt, task.dedupKey);
@@ -221,6 +238,7 @@ export class TaskStore {
                 this.logger.warn("legacy task migration skipped", { file, error: toErrorMessage(error) });
             }
         }
+        this.state.markLegacyTasksImported();
     }
     async migrateLegacyToDb() {
         if (!this.db)

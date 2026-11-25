@@ -43,6 +43,7 @@ export declare class EvidenceStore {
         messageId: string;
         days?: number;
     }): EvidenceRecord | undefined;
+    redact(chatId: string, messageId: string): void;
     prune(): void;
     private findChatDirs;
     private chatDir;

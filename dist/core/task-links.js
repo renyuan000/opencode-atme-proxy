@@ -110,6 +110,18 @@ export class ScopedTaskLinks {
     findBySession(chatId, sessionId) {
         return this.store(chatId).findBySession(sessionId);
     }
+    recordNotification(input) {
+        return this.store(input.chatId).recordNotification(input);
+    }
+    notificationsForTask(taskId, limit = 20) {
+        return [...this.stores.values()].flatMap((store) => store.notificationsForTask(taskId, limit));
+    }
+    recentNotifications(limit = 5) {
+        return [...this.stores.values()]
+            .flatMap((store) => store.recentNotifications(limit))
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .slice(0, limit);
+    }
     findByTask(taskId) {
         return [...this.stores.entries()].flatMap(([chatId, store]) => store.findByTask(taskId).map((item) => ({ chatId, ...item })));
     }

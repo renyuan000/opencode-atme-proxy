@@ -18,6 +18,7 @@ export interface ContextServiceOptions {
 
 export interface AnalysisContext {
   sourceMessages: string[];
+  supplements: string[];
   recentContext: string[];
   pinned: string[];
   memory: string[];
@@ -190,6 +191,9 @@ export class ContextService {
     const sourceMessages = source.map(
       (item) => `${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 400)}`,
     );
+    const supplements = (task.supplements ?? []).map(
+      (item) => `${item.senderName ?? item.senderId ?? "owner"}: ${truncateMiddle(item.text, 400)}`,
+    );
     const recentContext = recent.map(
       (item) => `${item.senderName ?? item.senderId}: ${truncateMiddle(item.text, 300)}`,
     );
@@ -209,6 +213,7 @@ export class ContextService {
     const summary = this.summaryText(task.platform, task.chatId);
     return {
       sourceMessages,
+      supplements,
       recentContext,
       pinned,
       memory: memoryItems,
@@ -219,6 +224,7 @@ export class ContextService {
         task.excerpt,
         ...(task.messageIds ?? []),
         ...sourceMessages,
+        ...supplements,
         ...recentContext,
         ...pinned,
         ...memoryItems,

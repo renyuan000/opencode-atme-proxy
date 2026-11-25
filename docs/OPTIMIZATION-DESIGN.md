@@ -1481,8 +1481,36 @@ LLM 输出增加：
 - 每群 `cache/state.db` 记录任务生命周期事件（创建、补充、分析完成/失败、重新分析、归档），供后续 outbox/重放使用；旧 `task-links.json/events.jsonl` 首次启动导入
 - LLM 不允许直接删除任务，不允许绕过 owner
 - 自动归档由 `taskArchive` 配置控制：`needsInfoAfterDays` 90 天、`awaitingApprovalAfterDays` 30 天、`terminalAfterDays` 90 天；只写 `archivedAt`，不删除
-- `linkRetentionDays` 90 天、`eventRetentionDays` 180 天用于清理 `task_links/task_events` 历史记录
+- `linkRetentionDays` 90 天、`eventRetentionDays` 180 天用于清理 `task_links/task_events` 历史记录；links 只清理已归档/终态任务
+- 首次从旧 JSON 迁移前会 checkpoint 并备份为 `state.db.pre-migration-*.bak`
+- 撤回消息会脱敏 `chat-context`、evidence 和任务补充正文，映射/审计保留
 - `sweepTaskArchive` 启动时和后台定时执行，执行中/已批准任务永不自动归档
+
+### 37.3 私聊通知与任务承接
+
+通知不直接塞进 OpenCode session，而是先落库：
+
+```text
+task_notifications(task_id, card_message_id, kind, source_chat_id, source_message_id, source_url, title, summary, created_at)
+```
+
+- 候选卡、审批卡发送成功后记录
+- DM prompt 注入最近 5 条通知摘要，不注入完整卡片
+- 普通 DM 如果命中“刚才/继续/补充/这个文档”等指代，解析到最近 active task
+- 多个候选任务时不猜测，让 owner 明确选择
+- 任务补充 `supplements` 现在进入分析上下文
+- 通知保留期跟随 `eventRetentionDays`
+
+### 37.4 Session 复用策略
+
+默认复用少量持久 session：
+
+- 分析/评审/回复按群和角色复用
+- `taskId -> sessionId` 允许多对一
+- 同一 session 通过队列/锁串行处理任务，避免上下文串台
+- 任务暂停、恢复、重新分析不主动换 session
+- 任务多、独立、敏感或上下文超预算时才创建独立 session
+- 执行仍按 task/worktree 创建 child session
 
 ### 38. 讨论主题与阶段性任务
 

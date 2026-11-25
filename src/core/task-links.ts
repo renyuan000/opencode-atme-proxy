@@ -4,7 +4,7 @@ import type { GroupStateLayout } from "./group-state.js";
 import type { Logger } from "./logger.js";
 import { createLogger } from "./logger.js";
 import { readJsonFile, toErrorMessage, writeJsonAtomic } from "./util.js";
-import { TaskStateDb } from "./task-state-db.js";
+import { TaskStateDb, type TaskNotification } from "./task-state-db.js";
 
 interface TaskLinkFile {
   version: 1;
@@ -136,6 +136,21 @@ export class ScopedTaskLinks {
 
   findBySession(chatId: string, sessionId: string): { taskId: string; role: string } | undefined {
     return this.store(chatId).findBySession(sessionId);
+  }
+
+  recordNotification(input: Omit<TaskNotification, "id" | "createdAt">): TaskNotification {
+    return this.store(input.chatId).recordNotification(input);
+  }
+
+  notificationsForTask(taskId: string, limit = 20): TaskNotification[] {
+    return [...this.stores.values()].flatMap((store) => store.notificationsForTask(taskId, limit));
+  }
+
+  recentNotifications(limit = 5): TaskNotification[] {
+    return [...this.stores.values()]
+      .flatMap((store) => store.recentNotifications(limit))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, limit);
   }
 
   findByTask(taskId: string): Array<{ chatId: string; sessionId: string; role: string }> {

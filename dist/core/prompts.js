@@ -39,6 +39,7 @@ export function buildAnalysisPrompt(input) {
             project: task.project,
             messageIds: task.messageIds,
             sourceMessages: context.sourceMessages,
+            supplements: context.supplements ?? [],
             recentContext: context.recentContext,
             pinned: context.pinned,
             memory: context.memory,

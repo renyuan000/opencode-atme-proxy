@@ -762,6 +762,7 @@ export class ProxyRuntime {
         this.taskLinks.linkMessage(chatId, messageId, taskId),
       publishTaskEvent: ({ chatId, taskId, type, payload }) =>
         this.taskEvents.publish(chatId, { type, taskId, chatId, ...(payload ? { payload } : {}) }),
+      recordTaskNotification: async (input) => this.taskLinks.recordNotification(input),
       sendApproval: (task, analysis) => this.sendApproval(task, analysis),
     });
     this.executor = new GitExecutor({
@@ -1262,6 +1263,11 @@ export class ProxyRuntime {
       this.messageControllers.delete(key);
     }
     this.activeMessageIds.delete(key);
+    this.chatContext.redact(key, event.messageId);
+    if (event.chatId) {
+      this.evidence.redact(event.chatId, event.messageId);
+      await this.tasks.redactMessage(event.chatId, event.messageId);
+    }
     this.dedup.add(key, event.chatId);
     await this.dedup.flush();
     const replies = this.sentReplies.listBySource(event.messageId);
@@ -2643,23 +2649,47 @@ export class ProxyRuntime {
     if (sent) await this.markProcessed(message);
   }
 
+  private isDmTaskFollowup(message: IncomingMessage): boolean {
+    if (message.chat.kind !== "direct") return false;
+    return /(刚才|刚刚|继续|接着|补充|上面|前面|之前|那个|这个文档|这个任务|这个需求|这条|文档|任务)/.test(message.text);
+  }
+
+  private async findActiveDmTask(): Promise<TaskRecord | undefined> {
+    const notifications = this.taskLinks.recentNotifications(10);
+    const cutoff = Date.now() - 24 * 3600_000;
+    for (const notification of notifications) {
+      if (notification.createdAt < cutoff) continue;
+      const task = await this.tasks.get(notification.taskId);
+      if (!task || task.archivedAt) continue;
+      if (!["needs_info", "awaiting_approval", "failed", "expired"].includes(task.state)) continue;
+      return task;
+    }
+    return undefined;
+  }
+
   private async handleTaskSupplement(message: IncomingMessage): Promise<boolean> {
-    if (!message.replyToMessageId || message.text.trim().startsWith("/")) return false;
+    if (message.text.trim().startsWith("/")) return false;
     if (message.sender.id !== this.ownerOpenId()) return false;
+    const replyTo = message.replyToMessageId;
+    const activeTask =
+      !replyTo && this.isDmTaskFollowup(message)
+        ? await this.findActiveDmTask()
+        : undefined;
+    if (!replyTo && !activeTask) return false;
     const tasks = await this.tasks.list();
-    const linkedTaskId = this.taskLinks.findByMessageAny(message.replyToMessageId);
-    let task = linkedTaskId ? tasks.find((item) => item.id === linkedTaskId && !item.archivedAt) : undefined;
+    const linkedTaskId = replyTo ? this.taskLinks.findByMessageAny(replyTo) : undefined;
+    let task = activeTask ?? (linkedTaskId ? tasks.find((item) => item.id === linkedTaskId && !item.archivedAt) : undefined);
     task ??= tasks.find(
       (item) =>
         !item.archivedAt &&
-        (item.messageIds.includes(message.replyToMessageId!) ||
-          item.candidateMessageId === message.replyToMessageId ||
-          item.approvalMessageId === message.replyToMessageId ||
-          item.supplements?.some((supplement) => supplement.messageId === message.replyToMessageId)),
+        (item.messageIds.includes(replyTo!) ||
+          item.candidateMessageId === replyTo ||
+          item.approvalMessageId === replyTo ||
+          item.supplements?.some((supplement) => supplement.messageId === replyTo)),
     );
-    if (!task && this.options.platform.fetchMessage) {
+    if (!task && replyTo && this.options.platform.fetchMessage) {
       try {
-        const fetched = await this.options.platform.fetchMessage(message.replyToMessageId);
+        const fetched = await this.options.platform.fetchMessage(replyTo);
         const ids = fetched?.text.match(/task_[a-f0-9]{6,}/gi) ?? [];
         for (const id of ids) {
           const candidate = await this.tasks.get(id);
@@ -2670,7 +2700,7 @@ export class ProxyRuntime {
         }
       } catch (error) {
         this.logger.warn("failed to resolve task from replied card", {
-          messageId: message.replyToMessageId,
+          messageId: replyTo,
           error: toErrorMessage(error),
         });
       }
@@ -3054,6 +3084,16 @@ export class ProxyRuntime {
       task.approvalMessageId = result.messageId;
       await this.tasks.save(task);
       await this.taskLinks.linkMessage(task.chatId, result.messageId, task.id);
+      await this.taskLinks.recordNotification({
+        taskId: task.id,
+        chatId: task.chatId,
+        kind: "approval",
+        title: `待审批 · ${labels.chatLabel}`,
+        summary: truncate(task.title, 160),
+        cardMessageId: result.messageId,
+        ...(task.messageIds[0] ? { sourceMessageId: task.messageIds[0] } : {}),
+        ...(sourceLink ? { sourceUrl: sourceLink } : {}),
+      });
     }
     this.pending.set(`${task.id}:develop`, {
       platform: task.platform,

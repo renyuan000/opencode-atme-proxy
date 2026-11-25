@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Logger } from "./logger.js";
 import { createLogger } from "./logger.js";
@@ -9,6 +9,19 @@ import { toErrorMessage } from "./util.js";
 interface LegacyLinks {
   byMessage?: Record<string, string>;
   bySession?: Record<string, { taskId: string; role: string }>;
+}
+
+export interface TaskNotification {
+  id: string;
+  taskId: string;
+  chatId: string;
+  kind: "candidate" | "approval" | "result" | "reminder";
+  title: string;
+  summary: string;
+  cardMessageId?: string;
+  sourceMessageId?: string;
+  sourceUrl?: string;
+  createdAt: number;
 }
 
 export class TaskStateDb {
@@ -34,8 +47,8 @@ export class TaskStateDb {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_task_links_message
         ON task_links(chat_id, message_id);
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_task_links_session
-        ON task_links(chat_id, session_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_task_links_session_task
+        ON task_links(chat_id, session_id, task_id);
       CREATE INDEX IF NOT EXISTS idx_task_links_task
         ON task_links(chat_id, task_id);
       CREATE TABLE IF NOT EXISTS migrations (
@@ -45,7 +58,9 @@ export class TaskStateDb {
       CREATE TABLE IF NOT EXISTS tasks (
         task_id TEXT PRIMARY KEY,
         data TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        state TEXT,
+        archived_at INTEGER
       );
       CREATE TABLE IF NOT EXISTS task_index (
         dedup_key TEXT PRIMARY KEY,
@@ -61,6 +76,22 @@ export class TaskStateDb {
       );
       CREATE INDEX IF NOT EXISTS idx_task_events_task
         ON task_events(chat_id, task_id, at);
+      CREATE TABLE IF NOT EXISTS task_notifications (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        card_message_id TEXT,
+        source_message_id TEXT,
+        source_url TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_notifications_task
+        ON task_notifications(task_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_task_notifications_recent
+        ON task_notifications(created_at);
       CREATE TABLE IF NOT EXISTS outbox (
         event_id TEXT PRIMARY KEY,
         target TEXT NOT NULL,
@@ -73,7 +104,54 @@ export class TaskStateDb {
       CREATE INDEX IF NOT EXISTS idx_outbox_pending
         ON outbox(status, next_at);
     `);
+    this.ensureTaskColumns();
+    this.ensureLinkIndexes();
+    this.backupBeforeMigration();
     this.migrateLegacy();
+  }
+
+  markLegacyTasksImported(): void {
+    this.markMigration("legacy-tasks");
+  }
+
+  private ensureTaskColumns(): void {
+    const columns = new Set(
+      (this.db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>).map((row) => row.name),
+    );
+    if (!columns.has("state")) this.db.exec("ALTER TABLE tasks ADD COLUMN state TEXT");
+    if (!columns.has("archived_at")) this.db.exec("ALTER TABLE tasks ADD COLUMN archived_at INTEGER");
+  }
+
+  private ensureLinkIndexes(): void {
+    const indexes = new Set(
+      (this.db.prepare("PRAGMA index_list(task_links)").all() as Array<{ name: string }>).map((row) => row.name),
+    );
+    if (indexes.has("idx_task_links_session")) {
+      this.db.exec("DROP INDEX idx_task_links_session");
+    }
+    this.db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_task_links_session_task ON task_links(chat_id, session_id, task_id)",
+    );
+  }
+
+  private backupBeforeMigration(): void {
+    const cacheDir = join(this.path, "..");
+    const legacyLinks = join(cacheDir, "task-links.json");
+    const legacyEvents = join(cacheDir, "events.jsonl");
+    const legacyTasks = join(cacheDir, "..", "tasks");
+    const needsMigration =
+      (existsSync(legacyLinks) && !this.hasMigration("legacy-task-links")) ||
+      (existsSync(legacyEvents) && !this.hasMigration("legacy-task-events")) ||
+      (existsSync(legacyTasks) && !this.hasMigration("legacy-tasks"));
+    if (!needsMigration || !existsSync(this.path)) return;
+    try {
+      this.db.pragma("wal_checkpoint(TRUNCATE)");
+      const backup = `${this.path}.pre-migration-${Date.now()}.bak`;
+      copyFileSync(this.path, backup);
+      this.logger.info("task state backup created before migration", { backup });
+    } catch (error) {
+      this.logger.warn("failed to back up task state before migration", { error: toErrorMessage(error) });
+    }
   }
 
   private hasMigration(name: string): boolean {
@@ -168,7 +246,7 @@ export class TaskStateDb {
       .prepare(
         `INSERT INTO task_links(chat_id, session_id, task_id, role, created_at)
          VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(chat_id, session_id) DO UPDATE SET task_id = excluded.task_id, role = excluded.role`,
+         ON CONFLICT(chat_id, session_id, task_id) DO UPDATE SET role = excluded.role`,
       )
       .run(this.chatId, sessionId, taskId, role, Date.now());
   }
@@ -182,7 +260,7 @@ export class TaskStateDb {
 
   findBySession(sessionId: string): { taskId: string; role: string } | undefined {
     const row = this.db
-      .prepare("SELECT task_id, role FROM task_links WHERE chat_id = ? AND session_id = ?")
+      .prepare("SELECT task_id, role FROM task_links WHERE chat_id = ? AND session_id = ? ORDER BY created_at DESC LIMIT 1")
       .get(this.chatId, sessionId) as { task_id?: string; role?: string } | undefined;
     return row?.task_id ? { taskId: row.task_id, role: row.role ?? "" } : undefined;
   }
@@ -208,11 +286,65 @@ export class TaskStateDb {
     return Number(row?.count ?? 0);
   }
 
+  recordNotification(input: Omit<TaskNotification, "id" | "createdAt"> & Partial<Pick<TaskNotification, "id" | "createdAt">>): TaskNotification {
+    const value: TaskNotification = {
+      ...input,
+      id: input.id ?? `ntf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      chatId: input.chatId ?? this.chatId,
+      createdAt: input.createdAt ?? Date.now(),
+    };
+    this.db.prepare(
+      "INSERT OR IGNORE INTO task_notifications(id, task_id, chat_id, kind, title, summary, card_message_id, source_message_id, source_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      value.id,
+      value.taskId,
+      value.chatId,
+      value.kind,
+      value.title,
+      value.summary,
+      value.cardMessageId ?? null,
+      value.sourceMessageId ?? null,
+      value.sourceUrl ?? null,
+      value.createdAt,
+    );
+    return value;
+  }
+
+  notificationsForTask(taskId: string, limit = 20): TaskNotification[] {
+    const rows = this.db.prepare(
+      "SELECT * FROM task_notifications WHERE task_id = ? ORDER BY created_at DESC LIMIT ?",
+    ).all(taskId, limit) as Array<Record<string, unknown>>;
+    return rows.map((row) => this.mapNotification(row));
+  }
+
+  recentNotifications(limit = 5): TaskNotification[] {
+    const rows = this.db.prepare(
+      "SELECT * FROM task_notifications ORDER BY created_at DESC LIMIT ?",
+    ).all(limit) as Array<Record<string, unknown>>;
+    return rows.map((row) => this.mapNotification(row));
+  }
+
+  private mapNotification(row: Record<string, unknown>): TaskNotification {
+    return {
+      id: String(row.id ?? ""),
+      taskId: String(row.task_id ?? ""),
+      chatId: String(row.chat_id ?? this.chatId),
+      kind: String(row.kind ?? "candidate") as TaskNotification["kind"],
+      title: String(row.title ?? ""),
+      summary: String(row.summary ?? ""),
+      ...(row.card_message_id ? { cardMessageId: String(row.card_message_id) } : {}),
+      ...(row.source_message_id ? { sourceMessageId: String(row.source_message_id) } : {}),
+      ...(row.source_url ? { sourceUrl: String(row.source_url) } : {}),
+      createdAt: Number(row.created_at ?? 0),
+    };
+  }
+
   saveTask(taskId: string, data: string, updatedAt: number, dedupKey: string): void {
+    const parsed = JSON.parse(data) as { state?: string; archivedAt?: number };
     const transaction = this.db.transaction(() => {
       this.db.prepare(
-        "INSERT INTO tasks(task_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(task_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
-      ).run(taskId, data, updatedAt);
+        "INSERT INTO tasks(task_id, data, updated_at, state, archived_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(task_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, state = excluded.state, archived_at = excluded.archived_at",
+      ).run(taskId, data, updatedAt, parsed.state ?? null, parsed.archivedAt ?? null);
       this.db.prepare(
         "INSERT INTO task_index(dedup_key, task_id) VALUES (?, ?) ON CONFLICT(dedup_key) DO UPDATE SET task_id = excluded.task_id",
       ).run(dedupKey, taskId);
@@ -223,6 +355,20 @@ export class TaskStateDb {
   taskIndex(): Array<{ dedupKey: string; taskId: string }> {
     const rows = this.db.prepare("SELECT dedup_key, task_id FROM task_index").all() as Array<{ dedup_key: string; task_id: string }>;
     return rows.map((row) => ({ dedupKey: row.dedup_key, taskId: row.task_id }));
+  }
+
+  saveTaskWithLinks(
+    taskId: string,
+    data: string,
+    updatedAt: number,
+    dedupKey: string,
+    messageIds: string[],
+  ): void {
+    const transaction = this.db.transaction(() => {
+      this.saveTask(taskId, data, updatedAt, dedupKey);
+      for (const messageId of messageIds) this.linkMessage(messageId, taskId);
+    });
+    transaction();
   }
 
   linkMessageAndTask(
@@ -259,8 +405,11 @@ export class TaskStateDb {
     const linkCutoff = now - input.linkDays * 86_400_000;
     const eventCutoff = now - input.eventDays * 86_400_000;
     const transaction = this.db.transaction(() => {
-      const links = this.db.prepare("DELETE FROM task_links WHERE created_at < ?").run(linkCutoff).changes;
+      const links = this.db.prepare(
+        "DELETE FROM task_links WHERE created_at < ? AND task_id IN (SELECT task_id FROM tasks WHERE archived_at IS NOT NULL OR state IN ('done','rejected','canceled','failed','expired'))",
+      ).run(linkCutoff).changes;
       const events = this.db.prepare("DELETE FROM task_events WHERE at < ?").run(eventCutoff).changes;
+      this.db.prepare("DELETE FROM task_notifications WHERE created_at < ?").run(eventCutoff);
       this.db.prepare("DELETE FROM outbox WHERE status = 'delivered' AND created_at < ?").run(eventCutoff);
       return { links: Number(links), events: Number(events) };
     });

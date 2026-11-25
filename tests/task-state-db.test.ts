@@ -21,8 +21,40 @@ test("stores task links and events in sqlite", async () => {
       payload: { source: "test" },
     });
     assert.equal(db.findByMessage("om_card"), "task_1");
+    db.recordNotification({
+      taskId: "task_1",
+      chatId: "chat",
+      kind: "candidate",
+      title: "候选任务",
+      summary: "test",
+      cardMessageId: "om_card",
+      sourceMessageId: "om_source",
+    });
+    assert.equal(db.recentNotifications(1)[0]?.taskId, "task_1");
+    assert.equal(db.notificationsForTask("task_1")[0]?.cardMessageId, "om_card");
+    db.saveTaskWithLinks(
+      "task_2",
+      JSON.stringify({ id: "task_2", state: "needs_info", updatedAt: Date.now() }),
+      Date.now(),
+      "dedup_2",
+      ["om_active"],
+    );
+    db.saveTaskWithLinks(
+      "task_3",
+      JSON.stringify({ id: "task_3", state: "done", archivedAt: Date.now() }),
+      Date.now(),
+      "dedup_3",
+      ["om_archived"],
+    );
+    const cleaned = db.cleanup({ linkDays: -1, eventDays: -1 });
+    assert.equal(cleaned.links, 1);
+    assert.equal(db.findByMessage("om_active"), "task_2");
+    assert.equal(db.findByMessage("om_archived"), undefined);
+    assert.equal(db.findByMessage("om_card"), "task_1");
     assert.deepEqual(db.findBySession("ses_1"), { taskId: "task_1", role: "analysis" });
+    db.linkSession("ses_1", "task_2", "analysis");
     assert.deepEqual(db.findByTask("task_1"), [{ sessionId: "ses_1", role: "analysis" }]);
+    assert.deepEqual(db.findByTask("task_2"), [{ sessionId: "ses_1", role: "analysis" }]);
     db.close();
 
     const reopened = new TaskStateDb(path, "chat");

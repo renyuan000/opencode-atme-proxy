@@ -16,6 +16,8 @@ export declare class TaskStore {
     findByDedupKey(dedupKey: string): string | undefined;
     findByMessageId(messageId: string): Promise<TaskRecord | undefined>;
     list(): Promise<TaskRecord[]>;
+    redactMessage(messageId: string): Promise<void>;
+    saveWithLinks(task: TaskRecord, messageIds: string[]): Promise<boolean>;
     save(task: TaskRecord): Promise<void>;
     flush(): Promise<void>;
     close(): Promise<void>;

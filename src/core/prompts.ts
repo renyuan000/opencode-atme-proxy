@@ -2,6 +2,7 @@ import type { TaskRecord } from "./types.js";
 
 export interface AnalysisContextPayload {
   sourceMessages: string[];
+  supplements?: string[];
   recentContext: string[];
   pinned: string[];
   memory: string[];
@@ -66,6 +67,7 @@ export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
       project: task.project,
       messageIds: task.messageIds,
       sourceMessages: context.sourceMessages,
+      supplements: context.supplements ?? [],
       recentContext: context.recentContext,
       pinned: context.pinned,
       memory: context.memory,

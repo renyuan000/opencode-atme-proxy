@@ -12,6 +12,7 @@ import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
 import type { Classification, IncomingMessage, TaskRecord } from "./types.js";
 import type { ReplyDepth, ReplyStyle, ReplyStyleOptions } from "./reply-style.js";
+import type { TaskNotification } from "./task-state-db.js";
 export interface ReplyServiceOptions {
     config: AppConfig;
     contextService: ContextService;
@@ -52,6 +53,7 @@ export interface ReplyServiceOptions {
     ownerOverview?(message: IncomingMessage): string | Promise<string>;
     responsibilityFor?(chatId: string): string;
     conversationIdFor?(message: IncomingMessage): string;
+    dmNotificationsFor?(): TaskNotification[];
     dmContextFor?(chatId: string): {
         summary?: string;
         preferences?: string[];

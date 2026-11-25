@@ -6,6 +6,7 @@ import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
 import type { TaskEventType } from "./task-events.js";
+import type { TaskNotification } from "./task-state-db.js";
 import type { PromptAttachment } from "./opencode.js";
 import type { Classification, IncomingMessage, NotificationView, TaskAnalysis, TaskRecord } from "./types.js";
 export interface TaskServiceOptions {
@@ -58,6 +59,7 @@ export interface TaskServiceOptions {
         type: TaskEventType;
         payload?: Record<string, unknown>;
     }): Promise<unknown>;
+    recordTaskNotification?(input: Omit<TaskNotification, "id" | "createdAt">): Promise<unknown>;
     sendApproval(task: TaskRecord, analysis: TaskAnalysis): Promise<void>;
 }
 export declare class TaskService {

@@ -48,6 +48,7 @@ export declare class ScopedChatContext {
     private keys;
     get(chatKey: string): ChatContext | undefined;
     append(chatKey: string, message: ContextMessage, meta?: Pick<ChatContext, "platform" | "chatId" | "chatName" | "conversationId">): void;
+    redact(chatKey: string, messageId: string): boolean;
     bindProject(chatKey: string, projectId: string, worktree: string): void;
     recent(chatKey: string, limit: number, excludeMessageId?: string): ContextMessage[];
     find(chatKey: string, messageIds: string[]): ContextMessage[];
@@ -104,6 +105,7 @@ export declare class ScopedEvidence {
         messageId: string;
         days?: number;
     }): EvidenceRecord | undefined;
+    redact(chatId: string, messageId: string): void;
     prune(): void;
 }
 export declare class ScopedTasks {
@@ -119,6 +121,7 @@ export declare class ScopedTasks {
     findByMessageId(messageId: string): Promise<import("./types.js").TaskRecord | undefined>;
     list(): Promise<import("./types.js").TaskRecord[]>;
     save(task: Parameters<TaskStore["save"]>[0]): Promise<void>;
+    redactMessage(chatId: string, messageId: string): Promise<void>;
     flush(): Promise<void>;
     close(): Promise<void>;
 }

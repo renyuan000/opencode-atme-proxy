@@ -1,6 +1,6 @@
 import type { GroupStateLayout } from "./group-state.js";
 import type { Logger } from "./logger.js";
-import { TaskStateDb } from "./task-state-db.js";
+import { TaskStateDb, type TaskNotification } from "./task-state-db.js";
 interface TaskLinkFile {
     version: 1;
     byMessage: Record<string, string>;
@@ -46,6 +46,9 @@ export declare class ScopedTaskLinks {
         taskId: string;
         role: string;
     } | undefined;
+    recordNotification(input: Omit<TaskNotification, "id" | "createdAt">): TaskNotification;
+    notificationsForTask(taskId: string, limit?: number): TaskNotification[];
+    recentNotifications(limit?: number): TaskNotification[];
     findByTask(taskId: string): Array<{
         chatId: string;
         sessionId: string;

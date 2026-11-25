@@ -241,6 +241,10 @@ export class ScopedChatContext {
     this.store(chatIdOf(key)).append(key, message, meta);
   }
 
+  redact(chatKey: string, messageId: string): boolean {
+    return this.store(chatIdOf(chatKey)).redact(chatKey, messageId);
+  }
+
   bindProject(chatKey: string, projectId: string, worktree: string): void {
     const key = this.normalizedKey(chatKey);
     this.store(chatIdOf(key)).bindProject(key, projectId, worktree);
@@ -428,6 +432,10 @@ export class ScopedEvidence {
     return this.store(chatIdOf(input.chatId)).findByMessageId(input);
   }
 
+  redact(chatId: string, messageId: string): void {
+    this.store(chatIdOf(chatId)).redact(chatIdOf(chatId), messageId);
+  }
+
   prune(): void {
     for (const info of this.layout.all()) this.store(info.chatId).prune();
   }
@@ -487,6 +495,10 @@ export class ScopedTasks {
 
   async save(task: Parameters<TaskStore["save"]>[0]): Promise<void> {
     await this.store(task.chatId).save(task);
+  }
+
+  async redactMessage(chatId: string, messageId: string): Promise<void> {
+    await this.store(chatId).redactMessage(messageId);
   }
 
   async flush(): Promise<void> {

@@ -7,6 +7,7 @@ import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
 import type { TaskEventType } from "./task-events.js";
+import type { TaskNotification } from "./task-state-db.js";
 import type { PromptAttachment } from "./opencode.js";
 import type {
   AnalysisVerification,
@@ -69,6 +70,7 @@ export interface TaskServiceOptions {
     type: TaskEventType;
     payload?: Record<string, unknown>;
   }): Promise<unknown>;
+  recordTaskNotification?(input: Omit<TaskNotification, "id" | "createdAt">): Promise<unknown>;
   sendApproval(task: TaskRecord, analysis: TaskAnalysis): Promise<void>;
 }
 
@@ -299,9 +301,12 @@ export class TaskService {
       createdAt: now,
       updatedAt: now,
     };
-    await this.options.tasks.save(task);
-    for (const messageId of task.messageIds) {
-      await this.options.linkTaskMessage?.(task.chatId, messageId, task.id);
+    const atomicSave = await this.options.tasks.saveWithLinks?.(task, task.messageIds);
+    if (atomicSave !== true) {
+      await this.options.tasks.save(task);
+      for (const messageId of task.messageIds) {
+        await this.options.linkTaskMessage?.(task.chatId, messageId, task.id);
+      }
     }
     await this.options.audit.append({
       actor: { system: true },
@@ -393,6 +398,16 @@ export class TaskService {
           task.candidateMessageId = result.messageId;
           await this.options.tasks.save(task);
           await this.options.linkTaskMessage?.(task.chatId, result.messageId, task.id);
+          await this.options.recordTaskNotification?.({
+            taskId: task.id,
+            chatId: task.chatId,
+            kind: "candidate",
+            title: `候选任务 · ${group}`,
+            summary: truncate(task.title, 160),
+            cardMessageId: result.messageId,
+            ...(task.messageIds[0] ? { sourceMessageId: task.messageIds[0] } : {}),
+            ...(task.messageLink ? { sourceUrl: task.messageLink } : {}),
+          });
         }
       } else if (this.options.sendOwnerNotification) {
         await this.options.sendOwnerNotification({

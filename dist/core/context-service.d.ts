@@ -15,6 +15,7 @@ export interface ContextServiceOptions {
 }
 export interface AnalysisContext {
     sourceMessages: string[];
+    supplements: string[];
     recentContext: string[];
     pinned: string[];
     memory: string[];

@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "./logger.js";
 import { truncateMiddle, toErrorMessage } from "./util.js";
@@ -134,6 +134,45 @@ export class EvidenceStore {
             }
         }
         return undefined;
+    }
+    redact(chatId, messageId) {
+        if (!this.enabled)
+            return;
+        for (const dir of this.findChatDirs(chatId)) {
+            let files;
+            try {
+                files = readdirSync(dir).filter((file) => file.endsWith(".jsonl"));
+            }
+            catch {
+                continue;
+            }
+            for (const file of files) {
+                const path = join(dir, file);
+                try {
+                    const lines = readFileSync(path, "utf8").split("\n");
+                    let changed = false;
+                    const next = lines.map((line) => {
+                        if (!line.trim())
+                            return line;
+                        try {
+                            const record = JSON.parse(line);
+                            if (record.messageId !== messageId)
+                                return line;
+                            changed = true;
+                            return JSON.stringify({ ...record, text: "[已撤回]", attachments: undefined });
+                        }
+                        catch {
+                            return line;
+                        }
+                    });
+                    if (changed)
+                        writeFileSync(path, next.join("\n"), "utf8");
+                }
+                catch (error) {
+                    this.logger.warn("evidence redact failed", { chatId, messageId, error: toErrorMessage(error) });
+                }
+            }
+        }
     }
     prune() {
         if (!this.enabled)

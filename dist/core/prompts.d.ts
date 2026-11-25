@@ -1,6 +1,7 @@
 import type { TaskRecord } from "./types.js";
 export interface AnalysisContextPayload {
     sourceMessages: string[];
+    supplements?: string[];
     recentContext: string[];
     pinned: string[];
     memory: string[];

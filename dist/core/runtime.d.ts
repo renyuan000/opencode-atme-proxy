@@ -152,6 +152,8 @@ export declare class ProxyRuntime {
     private persistGroupWorkspace;
     private handleOwnerCommand;
     private notifyBlockedDirect;
+    private isDmTaskFollowup;
+    private findActiveDmTask;
     private handleTaskSupplement;
     private withPermissionGuidance;
     private handleDirectMessage;
