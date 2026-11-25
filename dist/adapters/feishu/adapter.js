@@ -112,6 +112,17 @@ function extractText(raw, mentions) {
         return "[音频]";
     if (type === "media" || type === "video")
         return "[视频]";
+    if (type === "interactive") {
+        try {
+            const parsed = JSON.parse(raw.content);
+            const parts = [];
+            collectCardText(parsed, parts);
+            return parts.join(" ").trim() || "[interactive]";
+        }
+        catch {
+            return "[interactive]";
+        }
+    }
     if (type !== "text" && type !== "post")
         return `[${type}]`;
     try {
@@ -133,6 +144,28 @@ function extractText(raw, mentions) {
     }
     catch {
         return type ? `[${type}]` : "";
+    }
+}
+function collectCardText(value, parts) {
+    if (typeof value === "string") {
+        if (value.trim())
+            parts.push(value.trim());
+        return;
+    }
+    if (Array.isArray(value)) {
+        for (const item of value)
+            collectCardText(item, parts);
+        return;
+    }
+    if (!value || typeof value !== "object")
+        return;
+    for (const [key, item] of Object.entries(value)) {
+        if (key === "text" || key === "content" || key === "title") {
+            collectCardText(item, parts);
+        }
+        else if (typeof item === "object") {
+            collectCardText(item, parts);
+        }
     }
 }
 function extractPostText(content) {

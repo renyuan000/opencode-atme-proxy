@@ -18,6 +18,11 @@ import type {
 import type { OpenCodeBridge } from "../src/core/opencode.js";
 import { ensureTestGroup, testGroupDir } from "./group-state.js";
 
+function taskStore(stateDir: string): TaskStore {
+  const groupDir = testGroupDir(stateDir, "chat");
+  return new TaskStore(groupDir, undefined, join(groupDir, "cache", "state.db"));
+}
+
 function config(stateDir: string, resume = true): LoadedConfig {
   return {
     path: join(stateDir, "config.json"),
@@ -146,7 +151,7 @@ test("resume re-analyzes candidate tasks and nudges stale approvals", async () =
   const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
   try {
     await ensureTestGroup(dir, "chat");
-    const store = new TaskStore(testGroupDir(dir, "chat"));
+    const store = taskStore(dir);
     await store.load();
     await store.save(task("candidate"));
     await store.save({
@@ -160,7 +165,7 @@ test("resume re-analyzes candidate tasks and nudges stale approvals", async () =
     await runtime.start();
     await runtime.recoverOnStartup();
     await new Promise((r) => setTimeout(r, 150));
-    const reloaded = new TaskStore(testGroupDir(dir, "chat"));
+    const reloaded = taskStore(dir);
     await reloaded.load();
     const open = await reloaded.get("task_open");
     const wait = await reloaded.get("task_wait");
@@ -184,7 +189,7 @@ test("groups pending task reminders by chat into one card", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
   try {
     await ensureTestGroup(dir, "chat");
-    const store = new TaskStore(testGroupDir(dir, "chat"));
+    const store = taskStore(dir);
     await store.load();
     await store.save({
       ...task("needs_info", Date.now() - 2 * 3600_000),
@@ -222,7 +227,7 @@ test("recent nudge timestamp suppresses duplicate pending reminder", async () =>
   const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
   try {
     await ensureTestGroup(dir, "chat");
-    const store = new TaskStore(testGroupDir(dir, "chat"));
+    const store = taskStore(dir);
     await store.load();
     await store.save({
       ...task("needs_info", Date.now() - 2 * 3600_000),
@@ -249,7 +254,7 @@ test("resume pauses stale executing tasks instead of replaying", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
   try {
     await ensureTestGroup(dir, "chat");
-    const store = new TaskStore(testGroupDir(dir, "chat"));
+    const store = taskStore(dir);
     await store.load();
     await store.save(task("executing", Date.now() - 10 * 60_000));
     await store.close();
@@ -258,7 +263,7 @@ test("resume pauses stale executing tasks instead of replaying", async () => {
     await runtime.start();
     await runtime.recoverOnStartup();
     await new Promise((r) => setTimeout(r, 100));
-    const reloaded = new TaskStore(testGroupDir(dir, "chat"));
+    const reloaded = taskStore(dir);
     await reloaded.load();
     const executing = await reloaded.get("task_open");
     assert.equal(executing?.state, "awaiting_approval");

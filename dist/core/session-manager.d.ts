@@ -24,6 +24,7 @@ export interface WorkerInput {
     web?: boolean;
     webFetch?: boolean;
     conversationId?: string;
+    taskId?: string;
 }
 export interface ChildInput {
     platform: string;
@@ -49,6 +50,12 @@ export interface SessionManagerOptions {
     readOnlyPermission: SessionPermission[];
     epochFor?: (chatId: string) => number;
     permissionFingerprint?: string;
+    linkTaskSession?(input: {
+        chatId: string;
+        taskId: string;
+        role: string;
+        sessionId: string;
+    }): Promise<void>;
 }
 export declare class SessionManager {
     private readonly options;

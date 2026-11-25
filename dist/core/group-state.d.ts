@@ -109,8 +109,9 @@ export declare class ScopedEvidence {
 export declare class ScopedTasks {
     private readonly layout;
     private readonly logger?;
+    private readonly dbFor?;
     private readonly stores;
-    constructor(layout: GroupStateLayout, logger?: Logger | undefined);
+    constructor(layout: GroupStateLayout, logger?: Logger | undefined, dbFor?: ((chatId: string) => import("./task-state-db.js").TaskStateDb) | undefined);
     load(): Promise<void>;
     private store;
     get(taskId: string): Promise<import("./types.js").TaskRecord | undefined>;

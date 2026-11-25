@@ -429,7 +429,7 @@ xlsx > 20 sheet 或 > 500 行：分块
 7. 非 @ 群媒体相关时只建候选任务，深度分析需 owner 批准
 8. 审批等待不触发生成超时
 9. 群知识/证据可回溯到消息或文件
-10. 170 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
+10. 176 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
 
 ## 16. 开源与给同事使用前的检查
 
@@ -1447,6 +1447,42 @@ LLM 输出增加：
 
 群摘要同样只保留与 `owner_direction/own_projects` 相关的内容；平台/前端/性能压测（非核心目标）不写入摘要和 topics。
 
+
+### 37.2 任务管理、重分析与归档
+
+任务不再只增不减，提供统一入口：
+
+```text
+/任务 [群名] [状态] [数量]
+/任务分析 [群名|taskId] [状态] [数量]
+/任务清理 [群名] [状态] [90天] [确认]
+/任务恢复 <taskId>
+```
+
+自然语言示例：
+
+```text
+把流分装置历史任务重新分析一下
+流分装置 needs_info 的任务归档 90 天
+```
+
+规则：
+
+- 只有 owner 可用
+- `重新分析` 只处理 `needs_info/awaiting_approval/failed/expired`
+- `executing/approved/verifying/awaiting_merge` 永不自动重跑或归档
+- `清理` 的语义是归档，不删除任务 JSON、审计和分析文件
+- 归档写入 `archivedAt/archivedReason`，从 open tasks、恢复、上下文中排除
+- `/任务恢复` 取消归档
+- 自然语言由 `TaskAdminService` 让 LLM 解析成结构化意图；本地代码校验群、状态、数量和权限
+- 每群状态目录增加 `cache/state.db`（SQLite）：保存 `messageId/sessionId -> taskId`、任务快照和事件
+- 候选卡、审批卡、原始群消息都进入映射；分析 worker、执行/评审 child 的 sessionId 也写映射
+- `/任务会话 <taskId>` 查询任务关联 session
+- 每群 `cache/state.db` 记录任务生命周期事件（创建、补充、分析完成/失败、重新分析、归档），供后续 outbox/重放使用；旧 `task-links.json/events.jsonl` 首次启动导入
+- LLM 不允许直接删除任务，不允许绕过 owner
+- 自动归档由 `taskArchive` 配置控制：`needsInfoAfterDays` 90 天、`awaitingApprovalAfterDays` 30 天、`terminalAfterDays` 90 天；只写 `archivedAt`，不删除
+- `linkRetentionDays` 90 天、`eventRetentionDays` 180 天用于清理 `task_links/task_events` 历史记录
+- `sweepTaskArchive` 启动时和后台定时执行，执行中/已批准任务永不自动归档
 
 ### 38. 讨论主题与阶段性任务
 

@@ -24,6 +24,8 @@ export declare class ProxyRuntime {
     private readonly groupWorkspace;
     private readonly cursors;
     private readonly sessions;
+    private readonly taskLinks;
+    private readonly taskEvents;
     private readonly sessionManager;
     private readonly chatNames;
     private readonly recentMessages;
@@ -55,6 +57,7 @@ export declare class ProxyRuntime {
     private readonly approvalService;
     private readonly executionService;
     private readonly ownerCommandService;
+    private readonly taskAdmin;
     private readonly replyService;
     private readonly taskService;
     private readonly intentService;
@@ -102,6 +105,7 @@ export declare class ProxyRuntime {
     private track;
     private drainBackground;
     private sweepTimer?;
+    private lastTaskArchiveSweep;
     private profileTimer?;
     private groupSyncTimer?;
     start(): Promise<void>;
@@ -132,6 +136,16 @@ export declare class ProxyRuntime {
     private queryConversationMessages;
     private setOwnerFocus;
     private persistGroupOwnerFocus;
+    private taskGroupFromKey;
+    private taskScope;
+    private taskMatchesScope;
+    private listTasks;
+    private reanalyzeTasks;
+    private archiveTasks;
+    private taskSessions;
+    private restoreTask;
+    private sweepTaskArchive;
+    private handleTaskAdminIntent;
     private diagnoseProject;
     private manageWorkspace;
     private describeWorkspace;

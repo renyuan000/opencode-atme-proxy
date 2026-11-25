@@ -52,6 +52,12 @@ export class TaskService {
                 taskId: task.id,
                 details: { error: toErrorMessage(error) },
             });
+            await this.options.publishTaskEvent?.({
+                chatId: task.chatId,
+                taskId: task.id,
+                type: "analysis.failed",
+                payload: { error: toErrorMessage(error) },
+            });
             await this.options.sendToApprover(`任务分析失败：${task.title}\n原因：${toErrorMessage(error)}\n可回复 /分析 ${task.id} 重试。`);
             return;
         }
@@ -69,6 +75,7 @@ export class TaskService {
         }
         this.rememberTaskOutcome(task, analysis);
         task.state = analysis.needsInfo ? "needs_info" : "awaiting_approval";
+        task.lastAnalyzedAt = Date.now();
         task.updatedAt = Date.now();
         await this.options.tasks.save(task);
         await this.options.audit.append({
@@ -79,6 +86,12 @@ export class TaskService {
                 drift: verification?.drift ?? "unknown",
                 unverified: verification?.unverifiedIdentifiers.length ?? 0,
             },
+        });
+        await this.options.publishTaskEvent?.({
+            chatId: task.chatId,
+            taskId: task.id,
+            type: "analysis.completed",
+            payload: { needsInfo: analysis.needsInfo, drift: verification?.drift ?? "unknown" },
         });
         if (analysis.needsInfo) {
             await this.options.sendToApprover(`任务需要补充信息：${task.title}\n${analysis.openQuestions
@@ -113,6 +126,12 @@ export class TaskService {
             taskId: task.id,
             details: { messageId: message.messageId },
         });
+        await this.options.publishTaskEvent?.({
+            chatId: task.chatId,
+            taskId: task.id,
+            type: "task.supplement",
+            payload: { messageId: message.messageId },
+        });
         return task.state;
     }
     async ensureTask(message, classification, source, options) {
@@ -143,6 +162,7 @@ export class TaskService {
                 item.topic === taskHint.topic &&
                 item.requester.id === message.sender.id &&
                 now - item.updatedAt < 2 * 3600_000 &&
+                !item.archivedAt &&
                 !["done", "rejected", "canceled"].includes(item.state));
             if (recent) {
                 recent.messageIds = [...new Set([...recent.messageIds, message.messageId])];
@@ -184,11 +204,20 @@ export class TaskService {
             updatedAt: now,
         };
         await this.options.tasks.save(task);
+        for (const messageId of task.messageIds) {
+            await this.options.linkTaskMessage?.(task.chatId, messageId, task.id);
+        }
         await this.options.audit.append({
             actor: { system: true },
             action: "task_created",
             taskId: task.id,
             details: { source, messageId: message.messageId },
+        });
+        await this.options.publishTaskEvent?.({
+            chatId: task.chatId,
+            taskId: task.id,
+            type: "task.created",
+            payload: { source },
         });
         const autoAnalyze = options?.autoAnalyze ??
             (source === "group_scan" ? false : this.options.config.policy.autoAnalyzeTasks);
@@ -248,7 +277,30 @@ export class TaskService {
                 url: messageLink ??
                     `https://applink.feishu.cn/client/chat/open?openChatId=${encodeURIComponent(task.chatId)}`,
             };
-            if (this.options.sendOwnerNotification) {
+            if (this.options.sendOwnerNotificationResult) {
+                const result = await this.options.sendOwnerNotificationResult({
+                    title: `候选任务 · ${group}`,
+                    headerMeta: { right: meta },
+                    sections: [
+                        {
+                            title: task.title,
+                            meta: "待确认",
+                            ...(task.excerpt
+                                ? { quote: truncate(task.excerpt.replace(/\s+/g, " "), 160) }
+                                : {}),
+                            detail: "暂不自动分析",
+                        },
+                    ],
+                    link,
+                    footer: `如需分析，回复 /分析 ${task.id}`,
+                });
+                if (result.messageId) {
+                    task.candidateMessageId = result.messageId;
+                    await this.options.tasks.save(task);
+                    await this.options.linkTaskMessage?.(task.chatId, result.messageId, task.id);
+                }
+            }
+            else if (this.options.sendOwnerNotification) {
                 await this.options.sendOwnerNotification({
                     title: `候选任务 · ${group}`,
                     headerMeta: { right: meta },
@@ -351,6 +403,7 @@ export class TaskService {
             directory: repo.path,
             title: `${this.options.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
             role: "analysis",
+            taskId: task.id,
             ...(this.options.conversationIdFor?.(task.platform, task.chatId)
                 ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
                 : {}),
@@ -387,6 +440,7 @@ export class TaskService {
             directory: worktree,
             title: `${this.options.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
             role: "analysis",
+            taskId: task.id,
             ...(this.options.conversationIdFor?.(task.platform, task.chatId)
                 ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
                 : {}),
@@ -415,6 +469,7 @@ export class TaskService {
                 directory,
                 title,
                 role: "review",
+                taskId: task.id,
                 ...(this.options.conversationIdFor?.(task.platform, task.chatId)
                     ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
                     : {}),

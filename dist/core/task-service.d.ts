@@ -5,6 +5,7 @@ import type { Logger } from "./logger.js";
 import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
+import type { TaskEventType } from "./task-events.js";
 import type { PromptAttachment } from "./opencode.js";
 import type { Classification, IncomingMessage, NotificationView, TaskAnalysis, TaskRecord } from "./types.js";
 export interface TaskServiceOptions {
@@ -46,6 +47,17 @@ export interface TaskServiceOptions {
     startAnalysis(task: TaskRecord): void;
     sendToApprover(text: string): Promise<boolean>;
     sendOwnerNotification?(view: NotificationView): Promise<boolean>;
+    sendOwnerNotificationResult?(view: NotificationView): Promise<{
+        ok: boolean;
+        messageId?: string;
+    }>;
+    linkTaskMessage?(chatId: string, messageId: string, taskId: string): Promise<void>;
+    publishTaskEvent?(input: {
+        chatId: string;
+        taskId: string;
+        type: TaskEventType;
+        payload?: Record<string, unknown>;
+    }): Promise<unknown>;
     sendApproval(task: TaskRecord, analysis: TaskAnalysis): Promise<void>;
 }
 export declare class TaskService {

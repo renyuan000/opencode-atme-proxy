@@ -68,6 +68,40 @@ test("parseClassification maps results and drops unknown ids", () => {
   assert.deepEqual(parsed.missingIds, ["m2"]);
 });
 
+test("validates layer and parses triage metadata", () => {
+  const parsed = parseClassification(
+    JSON.stringify({
+      results: [
+        {
+          message_id: "m1",
+          relevant: true,
+          actionability: "task",
+          reason: "kafka",
+          confidence: 0.9,
+          layer: "kafka",
+          kafka_role: "producer",
+          protocol_family: "http",
+        },
+        {
+          message_id: "m2",
+          relevant: true,
+          actionability: "fyi",
+          reason: "bad layer",
+          confidence: 0.9,
+          layer: "garbage",
+        },
+      ],
+    }),
+    [message("m1", "kafka"), message("m2", "x")],
+    options,
+  );
+  const byId = new Map(parsed.items.map((item) => [item.messageId, item]));
+  assert.equal(byId.get("m1")?.layer, "kafka");
+  assert.equal(byId.get("m1")?.kafkaRole, "producer");
+  assert.equal(byId.get("m1")?.protocolFamily, "http");
+  assert.equal(byId.get("m2")?.layer, undefined);
+});
+
 test("low confidence tasks are demoted", () => {
   const parsed = parseClassification(
     JSON.stringify({

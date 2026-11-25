@@ -68,6 +68,18 @@ function timeoutError(timeoutMs) {
     return error;
 }
 const actionabilities = ["task", "question", "fyi", "noise"];
+const layers = new Set([
+    "web_ui",
+    "web_api",
+    "service",
+    "pg",
+    "kafka",
+    "engine",
+    "protocol",
+    "performance",
+    "deploy",
+    "unknown",
+]);
 const botActions = new Set(["answer", "need_decision", "notify_owner", "no_reply"]);
 const botKinds = new Set([
     "question",
@@ -410,7 +422,7 @@ export function parseClassification(raw, batch, options) {
             ...(typeof item.ownership_reason === "string"
                 ? { ownershipReason: item.ownership_reason }
                 : {}),
-            ...(typeof item.layer === "string" && item.layer.trim()
+            ...(typeof item.layer === "string" && layers.has(item.layer.trim())
                 ? { layer: item.layer.trim() }
                 : {}),
             ...(typeof item.perf_target === "string" && item.perf_target.trim()

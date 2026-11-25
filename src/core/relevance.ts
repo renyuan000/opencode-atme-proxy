@@ -162,6 +162,18 @@ export interface RelevanceOptions {
 }
 
 const actionabilities: Actionability[] = ["task", "question", "fyi", "noise"];
+const layers = new Set([
+  "web_ui",
+  "web_api",
+  "service",
+  "pg",
+  "kafka",
+  "engine",
+  "protocol",
+  "performance",
+  "deploy",
+  "unknown",
+]);
 
 export interface BotIntentInput {
   text: string;
@@ -599,7 +611,7 @@ export function parseClassification(
       ...(typeof item.ownership_reason === "string"
         ? { ownershipReason: item.ownership_reason }
         : {}),
-      ...(typeof item.layer === "string" && item.layer.trim()
+      ...(typeof item.layer === "string" && layers.has(item.layer.trim())
         ? { layer: item.layer.trim() as Classification["layer"] }
         : {}),
       ...(typeof item.perf_target === "string" && item.perf_target.trim()

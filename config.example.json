@@ -36,6 +36,15 @@
     "staleRunningMinutes": 30,
     "nudgeHours": 24
   },
+  "taskArchive": {
+    "enabled": true,
+    "sweepHours": 12,
+    "needsInfoAfterDays": 90,
+    "awaitingApprovalAfterDays": 30,
+    "terminalAfterDays": 90,
+    "linkRetentionDays": 90,
+    "eventRetentionDays": 180
+  },
   "polling": {
     "enabled": true,
     "intervalSeconds": 180,

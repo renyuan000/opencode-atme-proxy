@@ -439,6 +439,7 @@ export class ScopedTasks {
   constructor(
     private readonly layout: GroupStateLayout,
     private readonly logger?: Logger,
+    private readonly dbFor?: (chatId: string) => import("./task-state-db.js").TaskStateDb,
   ) {}
 
   async load(): Promise<void> {
@@ -448,7 +449,9 @@ export class ScopedTasks {
   private store(chatId: string): TaskStore {
     const existing = this.stores.get(chatId);
     if (existing) return existing;
-    const store = new TaskStore(this.layout.dirFor(chatId), this.logger);
+    const dir = this.layout.dirFor(chatId);
+    const state = this.dbFor?.(chatId);
+    const store = new TaskStore(dir, this.logger, state ? undefined : join(dir, "cache", "state.db"), state);
     this.stores.set(chatId, store);
     return store;
   }

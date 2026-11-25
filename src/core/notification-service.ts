@@ -66,8 +66,14 @@ export class NotificationService {
   }
 
   async sendOwnerNotification(view: NotificationView): Promise<boolean> {
+    return (await this.sendOwnerNotificationResult(view)).ok;
+  }
+
+  async sendOwnerNotificationResult(
+    view: NotificationView,
+  ): Promise<{ ok: boolean; messageId?: string }> {
     const openId = this.options.ownerOpenId();
-    if (!openId) return false;
+    if (!openId) return { ok: false };
     const rendered = this.options.platform.renderNotification?.(view);
     const headerMeta = [view.headerMeta?.left, view.headerMeta?.right]
       .filter((value): value is string => Boolean(value))
@@ -90,16 +96,16 @@ export class NotificationService {
     const message = rendered ?? { kind: "text" as const, text: fallback };
     try {
       await this.options.sendLimiter.take();
-      await this.options.platform.send(
+      const result = await this.options.platform.send(
         { kind: "user", userId: openId },
         { ...message, uuid: stableUuid("owner", openId, sha256(fallback).slice(0, 16)) },
       );
-      return true;
+      return { ok: true, ...(result.messageId ? { messageId: result.messageId } : {}) };
     } catch (error) {
       this.options.logger.warn("failed to send owner notification card", {
         error: toErrorMessage(error),
       });
-      return false;
+      return { ok: false };
     }
   }
 

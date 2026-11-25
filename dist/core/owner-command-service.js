@@ -27,6 +27,11 @@ export class OwnerCommandService {
                 "/工作空间 <群名|chatId> 测试|检查 <名称> <命令>",
                 "/工作空间 <群名|chatId> 自动 自动发现 worktrees 项目",
                 "/诊断 <群名|chatId> 检查项目路径、fs-root 白名单和配置建议",
+                "/任务 [群名] [状态] [数量] 查看任务，默认不含归档",
+                "/任务分析 [群名|taskId] [状态] [数量] 后台重新分析",
+                "/任务清理 [群名] [状态] [90天] [确认] 批量归档，不删除",
+                "/任务恢复 <taskId> 从归档恢复",
+                "/任务会话 <taskId> 查看任务关联的 session",
                 "/方向 <群名|chatId> <说明> 设置我在该群的研发方向",
                 "/关键词 <群名|chatId> <关键词1,关键词2> 设置我在该群的研发关键词",
                 "/分析 <taskId> 手动触发待分析任务",
@@ -54,6 +59,25 @@ export class OwnerCommandService {
             if (!command.arg)
                 return "用法：/工作空间 <群名|chatId> [root|添加|删除|自动|清空]";
             return this.options.manageWorkspace(command.arg);
+        }
+        if (command.command === "tasks") {
+            return this.options.listTasks(command.arg);
+        }
+        if (command.command === "task_analyze") {
+            return this.options.reanalyzeTasks(command.arg);
+        }
+        if (command.command === "task_archive") {
+            return this.options.archiveTasks(command.arg);
+        }
+        if (command.command === "task_sessions") {
+            if (!command.arg)
+                return "用法：/任务会话 <taskId>";
+            return this.options.taskSessions(command.arg);
+        }
+        if (command.command === "task_restore") {
+            if (!command.arg)
+                return "用法：/任务恢复 <taskId>";
+            return this.options.restoreTask(command.arg);
         }
         if (command.command === "diagnose") {
             if (!command.arg)

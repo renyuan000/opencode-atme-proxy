@@ -25,6 +25,11 @@ export interface OwnerCommandServiceOptions {
     setGroupResponsibility(arg: string): Promise<string>;
     manageWorkspace(arg: string): Promise<string>;
     diagnoseProject(arg: string): Promise<string>;
+    listTasks(arg: string): Promise<string>;
+    reanalyzeTasks(arg: string): Promise<string>;
+    archiveTasks(arg: string): Promise<string>;
+    restoreTask(arg: string): Promise<string>;
+    taskSessions(arg: string): Promise<string>;
     setOwnerFocus(arg: string, kind: "direction" | "keywords"): Promise<string>;
     analyzeTask(arg: string): Promise<string>;
     queryGroupMessages(arg: string): Promise<string>;

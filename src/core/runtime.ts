@@ -40,6 +40,7 @@ import { PendingStore } from "./pending-store.js";
 import { TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
+import { prefilterMessage } from "./prefilter.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
 import { selectBurstExtensions, mergeBurst } from "./burst.js";
 import { ProjectStore } from "./project-store.js";
@@ -53,6 +54,9 @@ import { ContextService } from "./context-service.js";
 import { ApprovalService } from "./approval-service.js";
 import { ExecutionService } from "./execution-service.js";
 import { OwnerCommandService } from "./owner-command-service.js";
+import { TaskAdminService } from "./task-admin.js";
+import { ScopedTaskLinks } from "./task-links.js";
+import { ScopedTaskEvents } from "./task-events.js";
 import { ReplyService } from "./reply-service.js";
 import { TaskService } from "./task-service.js";
 import { IntentService } from "./intent-service.js";
@@ -158,8 +162,14 @@ function configuredProjectPaths(config: AppConfig): string[] {
         if (path) paths.add(path);
       }
     }
+    const workspaceRoot = group.workspace?.root;
     for (const project of group.workspace?.projects ?? []) {
-      if (project.path) paths.add(project.path);
+      if (!project.path) continue;
+      if (isAbsolute(project.path)) {
+        paths.add(project.path);
+      } else if (workspaceRoot) {
+        paths.add(resolve(workspaceRoot, project.path));
+      }
     }
   }
   for (const repo of config.repos) paths.add(repo.path);
@@ -194,6 +204,7 @@ function executionPermissionFor(
     ...readonly.flatMap((path) => [
       { permission: "edit", pattern: path, action: "deny" as const },
       { permission: "edit", pattern: `${path}/**`, action: "deny" as const },
+      { permission: "bash", pattern: `*${path}*`, action: "deny" as const },
     ]),
   ];
 }
@@ -217,6 +228,8 @@ export class ProxyRuntime {
   private readonly groupWorkspace: GroupWorkspaceManager;
   private readonly cursors: ScopedCursors;
   private readonly sessions: ScopedSessions;
+  private readonly taskLinks: ScopedTaskLinks;
+  private readonly taskEvents: ScopedTaskEvents;
   private readonly sessionManager: SessionManager;
   private readonly chatNames = new Map<string, { name: string; at: number }>();
   private readonly recentMessages = new Map<string, IncomingMessage[]>();
@@ -248,6 +261,7 @@ export class ProxyRuntime {
   private readonly approvalService: ApprovalService;
   private readonly executionService: ExecutionService;
   private readonly ownerCommandService: OwnerCommandService;
+  private readonly taskAdmin: TaskAdminService;
   private readonly replyService: ReplyService;
   private readonly taskService: TaskService;
   private readonly intentService: IntentService;
@@ -339,6 +353,12 @@ export class ProxyRuntime {
     );
     this.cursors = new ScopedCursors(this.groupState, this.logger.child("cursor"));
     this.sessions = new ScopedSessions(this.groupState, this.logger.child("sessions"));
+    this.taskLinks = new ScopedTaskLinks(this.groupState, this.logger.child("task-links"));
+    this.taskEvents = new ScopedTaskEvents(
+      this.groupState,
+      this.logger.child("task-events"),
+      (chatId) => this.taskLinks.database(chatId),
+    );
     this.dmContext = new ScopedDmContext(this.groupState, this.logger.child("dm-context"));
     this.sessionManager = new SessionManager({
       bridge: this.options.bridge,
@@ -347,12 +367,18 @@ export class ProxyRuntime {
       logger: this.logger.child("sessions"),
       readOnlyPermission: this.readOnlyPermission,
       permissionFingerprint,
+      linkTaskSession: ({ chatId, taskId, role, sessionId }) =>
+        this.taskLinks.linkSession(chatId, sessionId, taskId, role),
       epochFor: (chatId) =>
         this.dmContext.get(chatId)?.sessionEpoch ??
         this.groupKnowledge.get(chatId)?.sessionEpoch ??
         1,
     });
-    this.tasks = new ScopedTasks(this.groupState, this.logger.child("tasks"));
+    this.tasks = new ScopedTasks(
+      this.groupState,
+      this.logger.child("tasks"),
+      (chatId) => this.taskLinks.database(chatId),
+    );
     this.approvals = new ScopedApprovals(this.groupState, async (taskId) => {
       const task = await this.tasks.get(taskId);
       return task?.chatId;
@@ -524,6 +550,11 @@ export class ProxyRuntime {
       setGroupResponsibility: (arg) => this.setGroupResponsibility(arg),
       manageWorkspace: (arg) => this.manageWorkspace(arg),
       diagnoseProject: (arg) => this.diagnoseProject(arg),
+      listTasks: (arg) => this.listTasks(arg),
+      reanalyzeTasks: (arg) => this.reanalyzeTasks(arg),
+      archiveTasks: (arg) => this.archiveTasks(arg),
+      restoreTask: (arg) => this.restoreTask(arg),
+      taskSessions: (arg) => this.taskSessions(arg),
       setOwnerFocus: (arg, kind) => this.setOwnerFocus(arg, kind),
       analyzeTask: (arg) => this.analyzePendingTask(arg),
       queryGroupMessages: (arg) => this.queryGroupMessages(arg),
@@ -551,6 +582,13 @@ export class ProxyRuntime {
     };
     const llm = options.llm ?? createFilterClient(options, this.logger);
     this.llm = llm;
+    this.taskAdmin = new TaskAdminService({
+      llm,
+      groups: this.config.platforms.feishu.groups
+        .filter((group) => group.enabled)
+        .map((group) => group.name ?? group.chatId),
+      logger: this.logger.child("task-admin"),
+    });
     this.replyService = new ReplyService({
       config: this.config,
       contextService: this.contextService,
@@ -719,6 +757,11 @@ export class ProxyRuntime {
       },
       sendToApprover: (text) => this.sendToApprover(text),
       sendOwnerNotification: (view) => this.notificationService.sendOwnerNotification(view),
+      sendOwnerNotificationResult: (view) => this.notificationService.sendOwnerNotificationResult(view),
+      linkTaskMessage: (chatId, messageId, taskId) =>
+        this.taskLinks.linkMessage(chatId, messageId, taskId),
+      publishTaskEvent: ({ chatId, taskId, type, payload }) =>
+        this.taskEvents.publish(chatId, { type, taskId, chatId, ...(payload ? { payload } : {}) }),
       sendApproval: (task, analysis) => this.sendApproval(task, analysis),
     });
     this.executor = new GitExecutor({
@@ -1267,6 +1310,7 @@ export class ProxyRuntime {
   }
 
   private sweepTimer?: NodeJS.Timeout;
+  private lastTaskArchiveSweep = 0;
   private profileTimer?: NodeJS.Timeout;
   private groupSyncTimer?: NodeJS.Timeout;
 
@@ -1291,6 +1335,7 @@ export class ProxyRuntime {
     await this.sentReplies.load();
     await this.cursors.load();
     await this.sessions.load();
+    await this.taskLinks.load();
     await this.tasks.load();
     await this.pending.load();
     await this.projectStore.load();
@@ -1319,6 +1364,7 @@ export class ProxyRuntime {
     this.poller.start();
     this.sweepTimer = setInterval(() => {
       void this.sweepExpiredApprovals();
+      void this.sweepTaskArchive();
       void this.sweepSessions();
       void this.chatContext.flush();
       void this.memory.flush();
@@ -1333,12 +1379,15 @@ export class ProxyRuntime {
     }, 30 * 60_000);
     this.groupSyncTimer.unref?.();
     void this.sweepExpiredApprovals();
+    void this.sweepTaskArchive();
     this.started = true;
-    setImmediate(() => {
-      void this.recoverOnStartup().catch((error) => {
-        this.logger.error("startup recovery failed", { error: toErrorMessage(error) });
+    if (this.config.recovery.onStartup) {
+      setImmediate(() => {
+        void this.recoverOnStartup().catch((error) => {
+          this.logger.error("startup recovery failed", { error: toErrorMessage(error) });
+        });
       });
-    });
+    }
     this.logger.info("runtime started", {
       platform: this.options.platform.platform,
       groups: [...this.groupIds],
@@ -1369,6 +1418,9 @@ export class ProxyRuntime {
       this.sentReplies.flush(),
       this.cursors.flush(),
       this.sessions.flush(),
+      this.taskLinks.flush(),
+      Promise.resolve(this.taskLinks.close()),
+      Promise.resolve(this.taskEvents.close()),
       this.tasks.close(),
       this.pending.flush(),
       this.projectStore.flush(),
@@ -2032,6 +2084,299 @@ export class ProxyRuntime {
     }
   }
 
+  private taskGroupFromKey(key: string): AppConfig["platforms"]["feishu"]["groups"][number] | undefined {
+    const value = key.trim();
+    if (!value) return undefined;
+    const exact = this.config.platforms.feishu.groups.find(
+      (group) => group.name === value || group.chatId === value,
+    );
+    if (exact) return exact;
+    const matches = this.matchGroups(value);
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  private taskScope(arg: string, defaultStates: string[] = []): {
+    group?: AppConfig["platforms"]["feishu"]["groups"][number];
+    groupKey?: string;
+    states: string[];
+    limit: number;
+    olderThanDays?: number;
+    includeArchived: boolean;
+    confirm: boolean;
+    taskId?: string;
+  } {
+    const tokens = arg.trim().split(/\s+/).filter(Boolean);
+    const dayMatch = arg.match(/(\d{1,4})\s*(?:天|日)/);
+    const states = [...defaultStates];
+    let statesProvided = false;
+    let group: AppConfig["platforms"]["feishu"]["groups"][number] | undefined;
+    let groupKey: string | undefined;
+    let limit = 20;
+    let olderThanDays: number | undefined = dayMatch ? Number(dayMatch[1]) : undefined;
+    let includeArchived = false;
+    let confirm = false;
+    let taskId: string | undefined;
+    for (const token of tokens) {
+      if (dayMatch && (token === dayMatch[1] || token === "天" || token === "日")) continue;
+      if (token === "确认" || token === "确认归档") {
+        confirm = true;
+        continue;
+      }
+      if (token === "全部" || token === "归档") {
+        includeArchived = true;
+        continue;
+      }
+      if (token.startsWith("task_")) {
+        taskId = token;
+        continue;
+      }
+      if (/^\d{1,4}天$/.test(token) || /^\d{1,4}日$/.test(token)) {
+        olderThanDays = Number(token.replace(/[天日]/g, ""));
+        continue;
+      }
+      if (/^\d{1,3}$/.test(token)) {
+        limit = Math.max(1, Math.min(50, Number(token)));
+        continue;
+      }
+      if (["candidate", "analyzing", "needs_info", "awaiting_approval", "approved", "executing", "verifying", "awaiting_merge", "done", "rejected", "failed", "canceled", "expired"].includes(token)) {
+        if (!statesProvided) {
+          states.length = 0;
+          statesProvided = true;
+        }
+        if (!states.includes(token)) states.push(token);
+        continue;
+      }
+      if (!groupKey) groupKey = token;
+    }
+    if (taskId) states.length = 0;
+    if (groupKey) group = this.taskGroupFromKey(groupKey);
+    return {
+      ...(group ? { group } : {}),
+      ...(groupKey ? { groupKey } : {}),
+      states,
+      limit,
+      ...(olderThanDays !== undefined ? { olderThanDays } : {}),
+      includeArchived,
+      confirm,
+      ...(taskId ? { taskId } : {}),
+    };
+  }
+
+  private taskMatchesScope(
+    task: TaskRecord,
+    scope: ReturnType<ProxyRuntime["taskScope"]>,
+  ): boolean {
+    if (task.archivedAt && !scope.includeArchived) return false;
+    if (scope.group && task.chatId !== scope.group.chatId) return false;
+    if (scope.states.length > 0 && !scope.states.includes(task.state)) return false;
+    if (scope.olderThanDays !== undefined) {
+      const cutoff = Date.now() - scope.olderThanDays * 86_400_000;
+      if (task.updatedAt > cutoff) return false;
+    }
+    return true;
+  }
+
+  private async listTasks(arg: string): Promise<string> {
+    const scope = this.taskScope(arg);
+    if (scope.groupKey && !scope.group) return `找不到群：${scope.groupKey}`;
+    const tasks = (await this.tasks.list())
+      .filter((task) => this.taskMatchesScope(task, scope))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, scope.limit);
+    if (tasks.length === 0) return "没有符合条件的任务。";
+    const counts = new Map<string, number>();
+    for (const task of tasks) counts.set(task.state, (counts.get(task.state) ?? 0) + 1);
+    const lines = [
+      `任务：${tasks.length} 条${scope.group ? `（${scope.group.name ?? scope.group.chatId}）` : ""}${scope.includeArchived ? "，含归档" : ""}`,
+      ...[...counts.entries()].map(([state, count]) => `${state}=${count}`),
+      "",
+      ...tasks.map((task) => {
+        const group = task.chatName ?? this.config.platforms.feishu.groups.find((item) => item.chatId === task.chatId)?.name ?? task.chatId;
+        return `- ${task.state}｜${group}｜${truncate(task.title, 80)}｜${task.id}${task.archivedAt ? "｜已归档" : ""}`;
+      }),
+      "",
+      "重新分析：/任务分析 <taskId|群名> [状态] [数量]",
+      "归档：/任务清理 <群名> [状态] [天数] [确认]",
+    ];
+    return lines.join("\n");
+  }
+
+  private async reanalyzeTasks(arg: string): Promise<string> {
+    const scope = this.taskScope(arg, ["needs_info", "awaiting_approval", "failed", "expired"]);
+    if (scope.groupKey && !scope.group) return `找不到群：${scope.groupKey}`;
+    const tasks = (await this.tasks.list())
+      .filter((task) => this.taskMatchesScope(task, scope))
+      .filter((task) => !task.archivedAt)
+      .sort((a, b) => a.updatedAt - b.updatedAt)
+      .slice(0, Math.min(10, scope.limit));
+    if (tasks.length === 0) return "没有可重新分析的任务。";
+    const started: string[] = [];
+    const skipped: string[] = [];
+    for (const task of tasks) {
+      if (["executing", "approved", "verifying", "awaiting_merge"].includes(task.state)) {
+        skipped.push(task.id);
+        continue;
+      }
+      this.pending.deleteForTask(task.id);
+      task.state = "analyzing";
+      task.archivedAt = undefined;
+      task.archivedReason = undefined;
+      task.lastAnalyzedAt = Date.now();
+      task.updatedAt = Date.now();
+      await this.tasks.save(task);
+      void this.taskEvents.publish(task.chatId, {
+        type: "task.reanalyze_requested",
+        taskId: task.id,
+        chatId: task.chatId,
+        payload: { actor: "owner" },
+      });
+      void this.track(this.analyzeTask(task)).catch((error) => {
+        this.logger.error("manual task reanalysis failed", {
+          taskId: task.id,
+          error: toErrorMessage(error),
+        });
+      });
+      started.push(task.id);
+    }
+    await this.pending.flush();
+    return [
+      `已启动重新分析：${started.length} 条`,
+      ...(skipped.length > 0 ? [`跳过执行中：${skipped.length} 条`] : []),
+      ...(started.length > 0 ? [`任务：${started.join("、")}`] : []),
+    ].join("\n");
+  }
+
+  private async archiveTasks(arg: string): Promise<string> {
+    const scope = this.taskScope(arg, ["needs_info"]);
+    if (scope.groupKey && !scope.group) return `找不到群：${scope.groupKey}`;
+    const tasks = (await this.tasks.list())
+      .filter((task) => this.taskMatchesScope(task, scope))
+      .filter((task) => !task.archivedAt)
+      .filter((task) => !["executing", "approved", "verifying", "awaiting_merge"].includes(task.state))
+      .sort((a, b) => a.updatedAt - b.updatedAt)
+      .slice(0, Math.min(50, scope.limit));
+    if (tasks.length === 0) return "没有可归档的任务。";
+    if (!scope.confirm) {
+      return [
+        `准备归档 ${tasks.length} 条（不会删除）：`,
+        ...tasks.slice(0, 20).map((task) => `- ${task.state}｜${truncate(task.title, 70)}｜${task.id}`),
+        "",
+        "确认请追加：确认",
+      ].join("\n");
+    }
+    for (const task of tasks) {
+      this.pending.deleteForTask(task.id);
+      task.archivedAt = Date.now();
+      task.archivedReason = `owner_archive:${scope.olderThanDays ?? "manual"}`;
+      task.updatedAt = Date.now();
+      await this.tasks.save(task);
+      void this.taskEvents.publish(task.chatId, {
+        type: "task.archived",
+        taskId: task.id,
+        chatId: task.chatId,
+        payload: { reason: task.archivedReason },
+      });
+    }
+    await this.pending.flush();
+    return `已归档 ${tasks.length} 条任务；任务文件和审计均保留，可 /任务恢复 恢复。`;
+  }
+
+  private async taskSessions(arg: string): Promise<string> {
+    const taskId = arg.trim();
+    const task = await this.tasks.get(taskId);
+    if (!task) return `找不到任务：${taskId}`;
+    const links = this.taskLinks.findByTask(taskId);
+    return [
+      `任务：${task.id}`,
+      `状态：${task.state}${task.archivedAt ? "（已归档）" : ""}`,
+      `标题：${task.title}`,
+      ...(links.length > 0
+        ? ["关联 session：", ...links.map((item) => `- ${item.role}: ${item.sessionId}`)]
+        : ["关联 session：暂无记录"]),
+    ].join("\n");
+  }
+
+  private async restoreTask(taskId: string): Promise<string> {
+    const task = await this.tasks.get(taskId.trim());
+    if (!task) return `找不到任务：${taskId}`;
+    task.archivedAt = undefined;
+    task.archivedReason = undefined;
+    task.updatedAt = Date.now();
+    await this.tasks.save(task);
+    return `已恢复任务：${task.id}\n${task.title}`;
+  }
+
+  private async sweepTaskArchive(): Promise<void> {
+    const config = this.config.taskArchive;
+    if (config?.enabled === false) return;
+    const sweepMs = (config?.sweepHours ?? 12) * 3_600_000;
+    if (Date.now() - this.lastTaskArchiveSweep < sweepMs) return;
+    this.lastTaskArchiveSweep = Date.now();
+    const cleaned = this.taskLinks.cleanup(
+      config?.linkRetentionDays ?? 90,
+      config?.eventRetentionDays ?? 180,
+    );
+    if (cleaned.links > 0 || cleaned.events > 0) {
+      this.logger.info("task state cache cleaned", cleaned);
+    }
+    const needsInfoDays = config?.needsInfoAfterDays ?? 90;
+    const approvalDays = config?.awaitingApprovalAfterDays ?? 30;
+    const terminalDays = config?.terminalAfterDays ?? 90;
+    const terminal = new Set(["done", "rejected", "canceled", "expired", "failed"]);
+    const skip = new Set(["executing", "approved", "verifying", "awaiting_merge"]);
+    const tasks = await this.tasks.list();
+    let archived = 0;
+    for (const task of tasks) {
+      if (task.archivedAt || skip.has(task.state)) continue;
+      const ageDays = (Date.now() - task.updatedAt) / 86_400_000;
+      const threshold = task.state === "needs_info"
+        ? needsInfoDays
+        : task.state === "awaiting_approval"
+          ? approvalDays
+          : terminal.has(task.state)
+            ? terminalDays
+            : Number.POSITIVE_INFINITY;
+      if (ageDays < threshold) continue;
+      this.pending.deleteForTask(task.id);
+      task.archivedAt = Date.now();
+      task.archivedReason = `ttl:${task.state}`;
+      task.updatedAt = Date.now();
+      await this.tasks.save(task);
+      archived++;
+    }
+    if (archived > 0) {
+      await this.pending.flush();
+      await this.audit.append({
+        actor: { system: true },
+        action: "tasks_archived",
+        details: { count: archived, reason: "ttl" },
+      }).catch((error: unknown) => {
+        this.logger.warn("task archive audit failed", { error: toErrorMessage(error) });
+      });
+      this.logger.info("tasks archived by ttl", { count: archived });
+    }
+  }
+
+  private async handleTaskAdminIntent(text: string): Promise<string | undefined> {
+    if (!this.taskAdmin) return undefined;
+    const intent = await this.taskAdmin.infer(text);
+    if (!intent || intent.confidence < 0.5) return undefined;
+    if ((intent.action === "reanalyze" || intent.action === "archive") && !intent.group) {
+      return "请说明要处理哪个群，例如：把产品-流分装置的 needs_info 任务重新分析一下。";
+    }
+    const parts = [
+      intent.group ?? "",
+      ...intent.states,
+      ...(intent.olderThanDays !== undefined ? [`${intent.olderThanDays}天`] : []),
+      String(intent.limit),
+    ].filter(Boolean);
+    if (intent.action === "list") return this.listTasks(parts.join(" "));
+    if (intent.action === "reanalyze") return this.reanalyzeTasks(parts.join(" "));
+    if (intent.action === "archive") return this.archiveTasks(parts.join(" "));
+    if (intent.action === "restore") return this.restoreTask(intent.group ?? "");
+    return undefined;
+  }
+
   private async diagnoseProject(arg: string): Promise<string> {
     const key = arg.trim();
     const group = this.config.platforms.feishu.groups.find(
@@ -2302,12 +2647,34 @@ export class ProxyRuntime {
     if (!message.replyToMessageId || message.text.trim().startsWith("/")) return false;
     if (message.sender.id !== this.ownerOpenId()) return false;
     const tasks = await this.tasks.list();
-    const task = tasks.find(
+    const linkedTaskId = this.taskLinks.findByMessageAny(message.replyToMessageId);
+    let task = linkedTaskId ? tasks.find((item) => item.id === linkedTaskId && !item.archivedAt) : undefined;
+    task ??= tasks.find(
       (item) =>
-        item.messageIds.includes(message.replyToMessageId!) ||
-        item.approvalMessageId === message.replyToMessageId ||
-        item.supplements?.some((supplement) => supplement.messageId === message.replyToMessageId),
+        !item.archivedAt &&
+        (item.messageIds.includes(message.replyToMessageId!) ||
+          item.candidateMessageId === message.replyToMessageId ||
+          item.approvalMessageId === message.replyToMessageId ||
+          item.supplements?.some((supplement) => supplement.messageId === message.replyToMessageId)),
     );
+    if (!task && this.options.platform.fetchMessage) {
+      try {
+        const fetched = await this.options.platform.fetchMessage(message.replyToMessageId);
+        const ids = fetched?.text.match(/task_[a-f0-9]{6,}/gi) ?? [];
+        for (const id of ids) {
+          const candidate = await this.tasks.get(id);
+          if (candidate && !candidate.archivedAt) {
+            task = candidate;
+            break;
+          }
+        }
+      } catch (error) {
+        this.logger.warn("failed to resolve task from replied card", {
+          messageId: message.replyToMessageId,
+          error: toErrorMessage(error),
+        });
+      }
+    }
     if (!task) return false;
     const state = await this.taskService.appendSupplement(task, message);
     await this.markProcessed(message);
@@ -2393,6 +2760,13 @@ export class ProxyRuntime {
         this.activeMessageIds.delete(dedupKey);
       }
       await this.markProcessed(message);
+      return;
+    }
+    const taskAdminReply = await this.handleTaskAdminIntent(message.text);
+    if (taskAdminReply) {
+      await this.safeReply(message, taskAdminReply);
+      await this.markProcessed(message);
+      this.activeMessageIds.delete(dedupKey);
       return;
     }
     if (this.config.context.enabled && this.config.context.storeOwnerDm) {
@@ -2679,6 +3053,7 @@ export class ProxyRuntime {
     if (result.messageId) {
       task.approvalMessageId = result.messageId;
       await this.tasks.save(task);
+      await this.taskLinks.linkMessage(task.chatId, result.messageId, task.id);
     }
     this.pending.set(`${task.id}:develop`, {
       platform: task.platform,
@@ -3006,7 +3381,40 @@ export class ProxyRuntime {
     const key = `${platform}:${chatId}`;
     const current = this.groupContext.get(key);
     const since = current?.lastMessageAt ?? 0;
-    const messages = this.chatContext.recent(key, 50).filter((item) => item.at > since);
+    const group = this.config.platforms.feishu.groups.find((item) => item.chatId === chatId);
+    const focus = group?.ownerFocus;
+    const profile = this.groupKnowledge.get(chatId);
+    const ownProjects = [
+      ...new Set([
+        ...(group?.project?.primary ?? []),
+        ...(group?.project?.core ?? []),
+        ...(group?.workspace?.projects ?? []).map((item) => item.name),
+      ]),
+    ];
+    const messages = this.chatContext
+      .recent(key, 50)
+      .filter((item) => item.at > since)
+      .filter((item) => {
+        const prefilter = prefilterMessage(
+          {
+            platform,
+            messageId: item.messageId,
+            chat: { id: chatId, kind: "group" },
+            sender: { platform, id: item.senderId },
+            senderType: "user",
+            text: item.text,
+            mentions: [],
+            createdAt: item.at,
+            rawType: "text",
+          },
+          {
+            ...(group ? { coreProjects: [...(group.project?.primary ?? []), ...(group.project?.core ?? [])] } : {}),
+            ...(focus?.keywords ? { ownerKeywords: focus.keywords } : {}),
+            ...(focus?.summary ? { ownerDirection: focus.summary } : {}),
+          },
+        );
+        return !prefilter.strongExternal;
+      });
     if (messages.length < every) return;
     const chars = messages.reduce((sum, item) => sum + item.text.length, 0);
     const uniqueRatio =
@@ -3029,16 +3437,6 @@ export class ProxyRuntime {
       return;
     }
     const directory = (await this.resolveProject(chatId)).worktree;
-    const group = this.config.platforms.feishu.groups.find((item) => item.chatId === chatId);
-    const focus = group?.ownerFocus;
-    const profile = this.groupKnowledge.get(chatId);
-    const ownProjects = [
-      ...new Set([
-        ...(group?.project?.primary ?? []),
-        ...(group?.project?.core ?? []),
-        ...(group?.workspace?.projects ?? []).map((item) => item.name),
-      ]),
-    ];
     const sessionId = await this.createGroupSession(platform, chatId, directory);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error("summary timed out")), timeoutMs);

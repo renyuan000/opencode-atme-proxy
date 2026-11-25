@@ -26,6 +26,7 @@ export interface WorkerInput {
   web?: boolean;
   webFetch?: boolean;
   conversationId?: string;
+  taskId?: string;
 }
 
 export interface ChildInput {
@@ -50,6 +51,12 @@ export interface SessionManagerOptions {
   readOnlyPermission: SessionPermission[];
   epochFor?: (chatId: string) => number;
   permissionFingerprint?: string;
+  linkTaskSession?(input: {
+    chatId: string;
+    taskId: string;
+    role: string;
+    sessionId: string;
+  }): Promise<void>;
 }
 
 export class SessionManager {
@@ -183,7 +190,17 @@ export class SessionManager {
         existing.sessionId,
         existing.directory,
       );
-      if (alive && !alive.timeArchived) return existing.sessionId;
+      if (alive && !alive.timeArchived) {
+        if (input.taskId) {
+          await this.options.linkTaskSession?.({
+            chatId: input.chatId,
+            taskId: input.taskId,
+            role: input.role,
+            sessionId: existing.sessionId,
+          });
+        }
+        return existing.sessionId;
+      }
     }
     if (existing) this.options.sessions.delete(key);
     const coordinator = await this.coordinatorSession(
@@ -211,9 +228,18 @@ export class SessionManager {
       kind: "worker",
       chatId: input.chatId,
       ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+      ...(input.taskId ? { taskId: input.taskId } : {}),
       createdAt: Date.now(),
     });
     await this.options.sessions.flush();
+    if (input.taskId) {
+      await this.options.linkTaskSession?.({
+        chatId: input.chatId,
+        taskId: input.taskId,
+        role: input.role,
+        sessionId,
+      });
+    }
     return sessionId;
   }
 
@@ -347,6 +373,14 @@ export class SessionManager {
         ...(input.taskId ? { taskId: input.taskId } : {}),
       });
       await this.options.sessions.flush();
+      if (input.taskId) {
+        await this.options.linkTaskSession?.({
+          chatId: input.chatId,
+          taskId: input.taskId,
+          role: input.role,
+          sessionId,
+        });
+      }
       return { sessionId, release };
     } catch (error) {
       release();

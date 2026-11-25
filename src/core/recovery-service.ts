@@ -266,6 +266,7 @@ export class RecoveryService {
     let interrupted = 0;
     const pendingNotices: PendingTaskNotice[] = [];
     for (const task of tasks) {
+      if (task.archivedAt) continue;
       if (now - task.updatedAt > maxAgeMs) continue;
       if (task.state === "done" || task.state === "rejected" || task.state === "canceled") {
         continue;

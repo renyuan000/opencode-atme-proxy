@@ -374,10 +374,12 @@ export class ScopedEvidence {
 export class ScopedTasks {
     layout;
     logger;
+    dbFor;
     stores = new Map();
-    constructor(layout, logger) {
+    constructor(layout, logger, dbFor) {
         this.layout = layout;
         this.logger = logger;
+        this.dbFor = dbFor;
     }
     async load() {
         for (const info of this.layout.all())
@@ -387,7 +389,9 @@ export class ScopedTasks {
         const existing = this.stores.get(chatId);
         if (existing)
             return existing;
-        const store = new TaskStore(this.layout.dirFor(chatId), this.logger);
+        const dir = this.layout.dirFor(chatId);
+        const state = this.dbFor?.(chatId);
+        const store = new TaskStore(dir, this.logger, state ? undefined : join(dir, "cache", "state.db"), state);
         this.stores.set(chatId, store);
         return store;
     }

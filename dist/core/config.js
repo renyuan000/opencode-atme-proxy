@@ -218,6 +218,17 @@ const MemorySchema = z
     autoExtractFromAnalysis: z.boolean().default(true),
 })
     .default({});
+const TaskArchiveSchema = z
+    .object({
+    enabled: z.boolean().default(true),
+    sweepHours: z.number().int().min(1).max(24 * 7).default(12),
+    needsInfoAfterDays: z.number().int().min(1).max(3650).default(90),
+    awaitingApprovalAfterDays: z.number().int().min(1).max(3650).default(30),
+    terminalAfterDays: z.number().int().min(1).max(3650).default(90),
+    linkRetentionDays: z.number().int().min(1).max(3650).default(90),
+    eventRetentionDays: z.number().int().min(1).max(3650).default(180),
+})
+    .default({});
 const EvidenceSchema = z
     .object({
     enabled: z.boolean().default(true),
@@ -366,6 +377,7 @@ export const AppConfigSchema = z.object({
     platforms: z.object({ feishu: FeishuSchema }),
     polling: PollingSchema.default({}),
     recovery: RecoverySchema,
+    taskArchive: TaskArchiveSchema.optional(),
     filter: FilterSchema.default({}),
     analysis: AnalysisSchema.default({}),
     opencode: OpenCodeSchema.default({}),

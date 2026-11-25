@@ -19,6 +19,26 @@ test("parses slash commands", () => {
     command: "workspace",
     arg: "产品-资产测绘 添加 asd-engine worktrees/asd-engine.git",
   });
+  assert.deepEqual(parseOwnerCommand("/任务 产品-流分装置 needs_info 10"), {
+    command: "tasks",
+    arg: "产品-流分装置 needs_info 10",
+  });
+  assert.deepEqual(parseOwnerCommand("/任务分析 产品-流分装置 needs_info 5"), {
+    command: "task_analyze",
+    arg: "产品-流分装置 needs_info 5",
+  });
+  assert.deepEqual(parseOwnerCommand("/任务清理 产品-流分装置 needs_info 90 确认"), {
+    command: "task_archive",
+    arg: "产品-流分装置 needs_info 90 确认",
+  });
+  assert.deepEqual(parseOwnerCommand("/任务会话 task_123"), {
+    command: "task_sessions",
+    arg: "task_123",
+  });
+  assert.deepEqual(parseOwnerCommand("/任务恢复 task_123"), {
+    command: "task_restore",
+    arg: "task_123",
+  });
   assert.deepEqual(parseOwnerCommand("/诊断 产品-流分装置"), {
     command: "diagnose",
     arg: "产品-流分装置",

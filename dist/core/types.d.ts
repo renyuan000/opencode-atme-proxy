@@ -109,6 +109,7 @@ export interface TaskRecord {
     messageIds: string[];
     messageLink?: string;
     approvalMessageId?: string;
+    candidateMessageId?: string;
     supplements?: Array<{
         messageId: string;
         text: string;
@@ -138,6 +139,9 @@ export interface TaskRecord {
     }>;
     lastNudgeAt?: number;
     state: TaskState;
+    archivedAt?: number;
+    archivedReason?: string;
+    lastAnalyzedAt?: number;
     createdAt: number;
     updatedAt: number;
 }

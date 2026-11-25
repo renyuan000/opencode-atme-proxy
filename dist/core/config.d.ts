@@ -579,6 +579,31 @@ export declare const AppConfigSchema: z.ZodObject<{
         staleRunningMinutes?: number | undefined;
         nudgeHours?: number | undefined;
     }>>;
+    taskArchive: z.ZodOptional<z.ZodDefault<z.ZodObject<{
+        enabled: z.ZodDefault<z.ZodBoolean>;
+        sweepHours: z.ZodDefault<z.ZodNumber>;
+        needsInfoAfterDays: z.ZodDefault<z.ZodNumber>;
+        awaitingApprovalAfterDays: z.ZodDefault<z.ZodNumber>;
+        terminalAfterDays: z.ZodDefault<z.ZodNumber>;
+        linkRetentionDays: z.ZodDefault<z.ZodNumber>;
+        eventRetentionDays: z.ZodDefault<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        enabled: boolean;
+        sweepHours: number;
+        needsInfoAfterDays: number;
+        awaitingApprovalAfterDays: number;
+        terminalAfterDays: number;
+        linkRetentionDays: number;
+        eventRetentionDays: number;
+    }, {
+        enabled?: boolean | undefined;
+        sweepHours?: number | undefined;
+        needsInfoAfterDays?: number | undefined;
+        awaitingApprovalAfterDays?: number | undefined;
+        terminalAfterDays?: number | undefined;
+        linkRetentionDays?: number | undefined;
+        eventRetentionDays?: number | undefined;
+    }>>>;
     filter: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
         mode: z.ZodDefault<z.ZodEnum<["opencode", "external"]>>;
@@ -1423,6 +1448,15 @@ export declare const AppConfigSchema: z.ZodObject<{
     workspace?: {
         root: string;
     } | undefined;
+    taskArchive?: {
+        enabled: boolean;
+        sweepHours: number;
+        needsInfoAfterDays: number;
+        awaitingApprovalAfterDays: number;
+        terminalAfterDays: number;
+        linkRetentionDays: number;
+        eventRetentionDays: number;
+    } | undefined;
     evidence?: {
         enabled: boolean;
         retentionDays: number;
@@ -1589,6 +1623,15 @@ export declare const AppConfigSchema: z.ZodObject<{
         resumeMaxAgeDays?: number | undefined;
         staleRunningMinutes?: number | undefined;
         nudgeHours?: number | undefined;
+    } | undefined;
+    taskArchive?: {
+        enabled?: boolean | undefined;
+        sweepHours?: number | undefined;
+        needsInfoAfterDays?: number | undefined;
+        awaitingApprovalAfterDays?: number | undefined;
+        terminalAfterDays?: number | undefined;
+        linkRetentionDays?: number | undefined;
+        eventRetentionDays?: number | undefined;
     } | undefined;
     analysis?: {
         mode?: "main_agent" | "cheap_model" | undefined;

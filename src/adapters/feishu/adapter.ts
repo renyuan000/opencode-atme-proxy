@@ -148,6 +148,16 @@ function extractText(raw: FeishuRawMessage, mentions: ActorRef[]): string {
   if (type === "file") return "[文件]";
   if (type === "audio") return "[音频]";
   if (type === "media" || type === "video") return "[视频]";
+  if (type === "interactive") {
+    try {
+      const parsed = JSON.parse(raw.content);
+      const parts: string[] = [];
+      collectCardText(parsed, parts);
+      return parts.join(" ").trim() || "[interactive]";
+    } catch {
+      return "[interactive]";
+    }
+  }
   if (type !== "text" && type !== "post") return `[${type}]`;
   try {
     const parsed = JSON.parse(raw.content) as Record<string, unknown>;
@@ -166,6 +176,25 @@ function extractText(raw: FeishuRawMessage, mentions: ActorRef[]): string {
     return text.trim() || (type ? `[${type}]` : "");
   } catch {
     return type ? `[${type}]` : "";
+  }
+}
+
+function collectCardText(value: unknown, parts: string[]): void {
+  if (typeof value === "string") {
+    if (value.trim()) parts.push(value.trim());
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectCardText(item, parts);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "text" || key === "content" || key === "title") {
+      collectCardText(item, parts);
+    } else if (typeof item === "object") {
+      collectCardText(item, parts);
+    }
   }
 }
 

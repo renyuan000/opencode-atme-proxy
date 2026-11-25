@@ -31,6 +31,10 @@ export declare class NotificationService {
     constructor(options: NotificationServiceOptions);
     sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
     sendOwnerNotification(view: NotificationView): Promise<boolean>;
+    sendOwnerNotificationResult(view: NotificationView): Promise<{
+        ok: boolean;
+        messageId?: string;
+    }>;
     sendToApprover(text: string): Promise<boolean>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
     chatLabel(message: IncomingMessage): Promise<string>;

@@ -105,8 +105,17 @@ export class SessionManager {
             if (!probe)
                 return existing.sessionId;
             const alive = await probe.call(this.options.bridge, existing.sessionId, existing.directory);
-            if (alive && !alive.timeArchived)
+            if (alive && !alive.timeArchived) {
+                if (input.taskId) {
+                    await this.options.linkTaskSession?.({
+                        chatId: input.chatId,
+                        taskId: input.taskId,
+                        role: input.role,
+                        sessionId: existing.sessionId,
+                    });
+                }
                 return existing.sessionId;
+            }
         }
         if (existing)
             this.options.sessions.delete(key);
@@ -128,9 +137,18 @@ export class SessionManager {
             kind: "worker",
             chatId: input.chatId,
             ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+            ...(input.taskId ? { taskId: input.taskId } : {}),
             createdAt: Date.now(),
         });
         await this.options.sessions.flush();
+        if (input.taskId) {
+            await this.options.linkTaskSession?.({
+                chatId: input.chatId,
+                taskId: input.taskId,
+                role: input.role,
+                sessionId,
+            });
+        }
         return sessionId;
     }
     async runWorker(input, promptText, signal, attachments) {
@@ -236,6 +254,14 @@ export class SessionManager {
                 ...(input.taskId ? { taskId: input.taskId } : {}),
             });
             await this.options.sessions.flush();
+            if (input.taskId) {
+                await this.options.linkTaskSession?.({
+                    chatId: input.chatId,
+                    taskId: input.taskId,
+                    role: input.role,
+                    sessionId,
+                });
+            }
             return { sessionId, release };
         }
         catch (error) {
