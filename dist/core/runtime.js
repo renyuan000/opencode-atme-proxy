@@ -20,7 +20,7 @@ import { ApprovalService } from "./approval-service.js";
 import { ExecutionService } from "./execution-service.js";
 import { OwnerCommandService } from "./owner-command-service.js";
 import { TaskAdminService } from "./task-admin.js";
-import { PermissionBridge } from "./permission-bridge.js";
+import { parsePermissionReply, PermissionBridge } from "./permission-bridge.js";
 import { ScopedTaskLinks } from "./task-links.js";
 import { ScopedTaskEvents } from "./task-events.js";
 import { ReplyService } from "./reply-service.js";
@@ -671,6 +671,17 @@ export class ProxyRuntime {
         this.permissionBridge = new PermissionBridge({
             bridge: this.options.bridge,
             sendToOwner: (text) => this.sendToOwner(text),
+            sendPermissionCard: async (view) => {
+                const rendered = this.options.platform.renderPermissionRequest?.(view);
+                if (!rendered)
+                    return false;
+                const ownerId = this.ownerOpenId();
+                if (!ownerId)
+                    return false;
+                await this.sendLimiter.take();
+                await this.options.platform.send({ kind: "user", userId: ownerId }, rendered);
+                return true;
+            },
             logger: this.logger.child("permission-bridge"),
         });
         this.recoveryService = new RecoveryService({
@@ -2205,15 +2216,13 @@ export class ProxyRuntime {
             return undefined;
         if (!this.permissionBridge.pendingCount())
             return undefined;
-        const text = message.text.replace(/[。！？!,.，\s]/g, "").trim();
-        const allow = /^(允许|批准|同意|可以|确认|通过)$/i.test(text);
-        const deny = /^(拒绝|不同意|不允许|不行|取消)$/i.test(text);
-        if (!allow && !deny)
+        const decision = parsePermissionReply(message.text);
+        if (!decision)
             return undefined;
         if (this.permissionBridge.pendingCount() > 1) {
             return "当前有多个权限请求，请回复 /允许 <requestId> 或 /拒绝 <requestId>。";
         }
-        return this.permissionBridge.reply("", deny ? "reject" : "once");
+        return this.permissionBridge.reply("", decision === "deny" ? "reject" : "once");
     }
     async handleTaskAdminIntent(text) {
         if (!this.taskAdmin)
@@ -2976,7 +2985,13 @@ export class ProxyRuntime {
     sweepExpiredApprovals() {
         return this.approvalService.sweepExpiredApprovals();
     }
-    onAction(action) {
+    async onAction(action) {
+        if (action.action === "permission_allow" || action.action === "permission_deny") {
+            if (action.actor.id !== this.ownerOpenId())
+                return { ok: false, toast: "无权操作" };
+            const result = await this.permissionBridge.reply(action.taskId, action.action === "permission_allow" ? "once" : "reject");
+            return { ok: true, toast: result };
+        }
         return this.approvalService.onAction(action);
     }
     async approveReply(action, pending) {

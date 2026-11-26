@@ -422,6 +422,9 @@ export class FeishuAdapter {
     renderApproval(view) {
         return renderApprovalCard(view);
     }
+    renderPermissionRequest(view) {
+        return renderPermissionCard(view);
+    }
     renderReplyManagement(view) {
         return renderReplyManagementCard(view);
     }
@@ -1061,6 +1064,51 @@ export function renderCancelConfirmCard(input) {
                             text: { tag: "plain_text", content: "返回审批" },
                             type: "default",
                             value: { a: "restore_approval", t: input.taskId, h: input.planHash },
+                        },
+                    ],
+                },
+            ],
+        },
+    };
+}
+export function renderPermissionCard(view) {
+    const details = view.metadata ? JSON.stringify(view.metadata).slice(0, 1200) : "无";
+    return {
+        kind: "card",
+        card: {
+            config: { wide_screen_mode: true },
+            header: {
+                template: "orange",
+                title: { tag: "plain_text", content: "OpenCode 权限请求" },
+            },
+            elements: [
+                {
+                    tag: "div",
+                    text: {
+                        tag: "lark_md",
+                        content: [
+                            `**ID**：${view.requestId}`,
+                            `**权限**：${view.permission}`,
+                            `**目标**：${view.patterns.join("、") || "unknown"}`,
+                            `**详情**：${details}`,
+                            "可直接回复：允许 / 拒绝（或点击按钮）",
+                        ].join("\n"),
+                    },
+                },
+                {
+                    tag: "action",
+                    actions: [
+                        {
+                            tag: "button",
+                            text: { tag: "plain_text", content: "允许" },
+                            type: "primary",
+                            value: { a: "permission_allow", t: view.requestId },
+                        },
+                        {
+                            tag: "button",
+                            text: { tag: "plain_text", content: "拒绝" },
+                            type: "danger",
+                            value: { a: "permission_deny", t: view.requestId },
                         },
                     ],
                 },

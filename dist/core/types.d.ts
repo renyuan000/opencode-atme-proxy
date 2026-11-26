@@ -221,6 +221,13 @@ export interface AuditEvent {
     taskId?: string;
     details: Record<string, unknown>;
 }
+export interface PermissionView {
+    requestId: string;
+    sessionId?: string;
+    permission: string;
+    patterns: string[];
+    metadata?: Record<string, unknown>;
+}
 export interface PlatformAction {
     platform: Platform;
     actionId: string;

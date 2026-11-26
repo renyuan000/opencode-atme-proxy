@@ -1,5 +1,6 @@
 import type { Logger } from "./logger.js";
 import type { OpenCodeBridge } from "./opencode.js";
+import type { PermissionView } from "./types.js";
 
 interface PermissionRequest {
   requestID: string;
@@ -12,7 +13,22 @@ interface PermissionRequest {
 export interface PermissionBridgeOptions {
   bridge: OpenCodeBridge;
   sendToOwner(text: string): Promise<boolean>;
+  sendPermissionCard?(view: PermissionView): Promise<boolean>;
   logger: Logger;
+}
+
+export function parsePermissionReply(text: string): "allow" | "deny" | undefined {
+  const value = text
+    .replace(/[。！？!,.，\s]/g, "")
+    .trim()
+    .toLowerCase();
+  if (/^(拒绝|不同意|不允许|不行|不好|反对|取消|不要|别|no|n|stop)$/.test(value)) {
+    return "deny";
+  }
+  if (/^(允许|批准|同意|可以|确认|通过|行|好|好的|ok|okay|yes|y|嗯|中|继续|干吧|没问题)$/.test(value)) {
+    return "allow";
+  }
+  return undefined;
 }
 
 export class PermissionBridge {
@@ -54,6 +70,14 @@ export class PermissionBridge {
         };
         if (!request.requestID) continue;
         this.pending.set(request.requestID, request);
+        const sent = await this.options.sendPermissionCard?.({
+          requestId: request.requestID,
+          ...(request.sessionID ? { sessionId: request.sessionID } : {}),
+          permission: request.permission,
+          patterns: request.patterns,
+          ...(request.metadata ? { metadata: request.metadata } : {}),
+        });
+        if (sent) continue;
         await this.options.sendToOwner(
           [
             "OpenCode 权限请求",
@@ -64,8 +88,8 @@ export class PermissionBridge {
             ...(request.metadata
               ? [`详情：${JSON.stringify(request.metadata).slice(0, 800)}`]
               : []),
-            `允许：/允许 ${request.requestID}`,
-            `拒绝：/拒绝 ${request.requestID}`,
+            "可直接回复：允许 / 拒绝",
+            `或：/允许 ${request.requestID} / 拒绝 ${request.requestID}`,
           ].join("\n"),
         );
       }

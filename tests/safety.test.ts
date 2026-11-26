@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { dangerousBashRules, isDangerousCommand } from "../src/core/safety.js";
+import { parsePermissionReply } from "../src/core/permission-bridge.js";
+
+
+test("parses natural permission replies", () => {
+  assert.equal(parsePermissionReply("行"), "allow");
+  assert.equal(parsePermissionReply("OK"), "allow");
+  assert.equal(parsePermissionReply("好的"), "allow");
+  assert.equal(parsePermissionReply("不好"), "deny");
+  assert.equal(parsePermissionReply("反对"), "deny");
+  assert.equal(parsePermissionReply("NO"), "deny");
+  assert.equal(parsePermissionReply("这个怎么做"), undefined);
+});
 
 test("flags only high-risk shell operations", () => {
   assert.equal(isDangerousCommand("rm -rf /"), true);

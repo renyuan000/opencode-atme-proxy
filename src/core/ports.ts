@@ -74,6 +74,7 @@ export interface PlatformAdapter {
     message: OutboundMessage,
   ): Promise<{ messageId: string }>;
   renderApproval(view: ApprovalView): OutboundMessage;
+  renderPermissionRequest?(view: import("./types.js").PermissionView): OutboundMessage;
   renderNotification?(view: NotificationView): OutboundMessage;
   fetchResource?(messageId: string, key: string, kind?: "image" | "file"): Promise<{ data: Buffer; mime: string; filename?: string }>;
   fetchDocumentText?(url: string): Promise<{ title?: string; text: string; url: string } | undefined>;

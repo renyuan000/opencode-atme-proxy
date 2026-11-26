@@ -96,6 +96,7 @@ export declare class FeishuAdapter implements PlatformAdapter {
     }>;
     renderNotification(view: Parameters<NonNullable<PlatformAdapter["renderNotification"]>>[0]): OutboundMessage;
     renderApproval(view: Parameters<PlatformAdapter["renderApproval"]>[0]): OutboundMessage;
+    renderPermissionRequest(view: Parameters<NonNullable<PlatformAdapter["renderPermissionRequest"]>>[0]): OutboundMessage;
     renderReplyManagement(view: ReplyManagementView): OutboundMessage;
     renderCancelConfirm(input: {
         taskId: string;
@@ -128,5 +129,6 @@ export declare function renderCancelConfirmCard(input: {
     planHash: string;
     draft?: string;
 }): OutboundMessage;
+export declare function renderPermissionCard(view: Parameters<NonNullable<PlatformAdapter["renderPermissionRequest"]>>[0]): OutboundMessage;
 export declare function parseCardAction(raw: any): PlatformAction | undefined;
 export type { PlatformActionResult };
