@@ -10,7 +10,7 @@ import { TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { prefilterMessage } from "./prefilter.js";
-import { dangerousBashRules, protectedSourceRules } from "./safety.js";
+import { dangerousBashRules, protectedProjectRules, protectedSourceRules } from "./safety.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
 import { selectBurstExtensions, mergeBurst } from "./burst.js";
 import { SenderLimiter } from "./sender-limiter.js";
@@ -79,7 +79,7 @@ const OWNER_DM_PERMISSION = [
     { permission: "bash", pattern: "*", action: "allow" },
     { permission: "webfetch", pattern: "*", action: "allow" },
     { permission: "websearch", pattern: "*", action: "allow" },
-    { permission: "external_directory", pattern: "*", action: "allow" },
+    { permission: "external_directory", pattern: "*", action: "ask" },
     ...dangerousBashRules(),
     ...protectedSourceRules(),
 ];
@@ -113,6 +113,18 @@ function configuredProjectPaths(config) {
     for (const repo of config.repos)
         paths.add(repo.path);
     return [...paths];
+}
+function isGenericOwnerKeyword(keyword, group) {
+    const value = keyword.trim().toLowerCase();
+    if (!value)
+        return true;
+    const names = [group.name ?? "", group.workspace?.root ?? ""]
+        .join(" ")
+        .replace(/^产品[-—]/i, "")
+        .toLowerCase();
+    if (names.includes(value))
+        return true;
+    return /^(流分|产品|群|任务|项目|系统|平台|台账|前端|service|adapter)$/.test(value);
 }
 function withProjectReadPaths(base, paths) {
     const unique = [...new Set(paths.filter(Boolean))];
@@ -220,10 +232,13 @@ export class ProxyRuntime {
         this.config = options.loaded.config;
         const projectPaths = configuredProjectPaths(this.config);
         this.readOnlyPermission = withProjectReadPaths(READ_ONLY_PERMISSION, projectPaths);
-        this.ownerDmPermission = OWNER_DM_PERMISSION;
+        this.ownerDmPermission = [...OWNER_DM_PERMISSION, ...protectedProjectRules(projectPaths)];
         this.webSearchPermission = withProjectReadPaths(WEB_SEARCH_PERMISSION, projectPaths);
         this.webFetchPermission = withProjectReadPaths(WEB_FETCH_PERMISSION, projectPaths);
-        this.executionPermission = withProjectReadPaths(EXECUTION_PERMISSION, projectPaths);
+        this.executionPermission = [
+            ...withProjectReadPaths(EXECUTION_PERMISSION, projectPaths),
+            ...protectedProjectRules(projectPaths),
+        ];
         const permissionFingerprint = createHash("sha256")
             .update(JSON.stringify({
             readOnly: this.readOnlyPermission,
@@ -403,6 +418,8 @@ export class ProxyRuntime {
             listTasks: (arg) => this.listTasks(arg),
             reanalyzeTasks: (arg) => this.reanalyzeTasks(arg),
             archiveTasks: (arg) => this.archiveTasks(arg),
+            purgeTasks: (arg) => this.purgeTasks(arg),
+            cancelTasks: (arg) => this.cancelTasks(arg),
             restoreTask: (arg) => this.restoreTask(arg),
             taskSessions: (arg) => this.taskSessions(arg),
             allowPermission: (arg) => this.permissionBridge.reply(arg, "once"),
@@ -763,7 +780,7 @@ export class ProxyRuntime {
                         ? {
                             direction: inferred.summary || inferred.product,
                             ownerDirection: inferred.ownerDirection,
-                            ownerKeywords: inferred.ownerKeywords,
+                            ownerKeywords: inferred.ownerKeywords.filter((keyword) => !isGenericOwnerKeyword(keyword, group ?? { enabled: true })),
                             ownProjects: [
                                 ...new Set([
                                     ...(project?.primary ?? []),
@@ -1923,6 +1940,8 @@ export class ProxyRuntime {
     taskMatchesScope(task, scope) {
         if (task.archivedAt && !scope.includeArchived)
             return false;
+        if (scope.taskId && task.id !== scope.taskId)
+            return false;
         if (scope.group && task.chatId !== scope.group.chatId)
             return false;
         if (scope.states.length > 0 && !scope.states.includes(task.state))
@@ -2208,6 +2227,113 @@ export class ProxyRuntime {
                 ? "东海忠"
                 : "";
         return this.queryGroupMessages(`${group.name ?? group.chatId}${keyword ? ` ${keyword}` : ""} 50`);
+    }
+    taskIdsFrom(text) {
+        return [...new Set(text.match(/task_[a-f0-9]{6,}/gi) ?? [])];
+    }
+    async handleTaskPurgeIntent(message) {
+        if (message.chat.kind !== "direct" || message.sender.id !== this.ownerOpenId())
+            return undefined;
+        if (!/(删除|清理|清掉|删掉)/.test(message.text))
+            return undefined;
+        const ids = this.taskIdsFrom(message.text);
+        if (ids.length === 0)
+            return undefined;
+        return this.purgeTaskIds(ids, "owner_dm");
+    }
+    async cancelTasks(arg) {
+        const ids = this.taskIdsFrom(arg);
+        if (ids.length === 0)
+            return "用法：/任务取消 <taskId,...>";
+        const client = this.options.bridge.getClient();
+        const canceled = [];
+        const skipped = [];
+        for (const id of ids) {
+            const task = await this.tasks.get(id);
+            if (!task) {
+                skipped.push(id);
+                continue;
+            }
+            if (["done", "rejected", "canceled", "expired"].includes(task.state)) {
+                skipped.push(id);
+                continue;
+            }
+            for (const link of this.taskLinks.findByTask(id)) {
+                try {
+                    await client.session?.abort({ sessionID: link.sessionId });
+                }
+                catch (error) {
+                    this.logger.warn("task cancel session abort failed", {
+                        taskId: id,
+                        sessionId: link.sessionId,
+                        error: toErrorMessage(error),
+                    });
+                }
+            }
+            task.state = "canceled";
+            task.updatedAt = Date.now();
+            await this.tasks.save(task);
+            this.pending.deleteForTask(id);
+            await this.sessionManager.archiveTaskChildren(id);
+            await this.audit.append({
+                actor: { system: true },
+                action: "task_canceled",
+                taskId: id,
+                details: { actor: "owner" },
+            });
+            canceled.push(id);
+        }
+        await this.pending.flush();
+        return [
+            `已取消任务：${canceled.length} 条`,
+            ...(canceled.length > 0 ? [canceled.join("、")] : []),
+            ...(skipped.length > 0 ? [`跳过：${skipped.join("、")}`] : []),
+        ].join("\n");
+    }
+    async handleTaskCancelIntent(message) {
+        if (message.chat.kind !== "direct" || message.sender.id !== this.ownerOpenId())
+            return undefined;
+        if (!/(取消|停止|停下|别跑了|终止)/.test(message.text))
+            return undefined;
+        const ids = this.taskIdsFrom(message.text);
+        if (ids.length === 0)
+            return undefined;
+        return this.cancelTasks(ids.join(" "));
+    }
+    async purgeTasks(arg) {
+        const ids = this.taskIdsFrom(arg);
+        if (ids.length === 0) {
+            return "用法：/任务清理 <taskId,...> [确认]";
+        }
+        const confirmed = /(^|\s)确认(\s|$)/.test(arg);
+        if (!confirmed) {
+            return [
+                `准备真正删除 ${ids.length} 条任务（保留 tombstone 和审计）：`,
+                ...ids.map((id) => `- ${id}`),
+                "",
+                "确认请执行：/任务清理 " + ids.join(",") + " 确认",
+            ].join("\n");
+        }
+        return this.purgeTaskIds(ids, "owner_command");
+    }
+    async purgeTaskIds(ids, reason) {
+        const purged = this.taskLinks.purgeTaskIds(ids, reason);
+        for (const item of purged) {
+            this.tasks.forgetTask(item.chatId, item.taskId);
+            this.pending.deleteForTask(item.taskId);
+            void this.sessionManager.archiveTaskChildren(item.taskId).catch((error) => {
+                this.logger.warn("purged task session archive failed", {
+                    taskId: item.taskId,
+                    error: toErrorMessage(error),
+                });
+            });
+        }
+        await this.pending.flush();
+        const skipped = ids.filter((id) => !purged.some((item) => item.taskId === id));
+        return [
+            `已清理任务：${purged.length} 条`,
+            ...(skipped.length > 0 ? [`跳过：${skipped.join("、")}（执行中或不存在）`] : []),
+        ].join("\n");
     }
     async handlePermissionReply(message) {
         if (message.chat.kind !== "direct" || message.sender.id !== this.ownerOpenId())
@@ -2523,6 +2649,9 @@ export class ProxyRuntime {
             return false;
         if (message.sender.id !== this.ownerOpenId())
             return false;
+        if (/(清理|归档|删除|标记完成|完事|已完成|任务完成)/.test(message.text)) {
+            return false;
+        }
         const replyTo = message.replyToMessageId;
         const activeTask = !replyTo && this.isDmTaskFollowup(message)
             ? await this.findActiveDmTask()
@@ -2651,6 +2780,20 @@ export class ProxyRuntime {
         const permissionReply = await this.handlePermissionReply(message);
         if (permissionReply) {
             await this.safeReply(message, permissionReply);
+            await this.markProcessed(message);
+            this.activeMessageIds.delete(dedupKey);
+            return;
+        }
+        const cancelReply = await this.handleTaskCancelIntent(message);
+        if (cancelReply) {
+            await this.safeReply(message, cancelReply);
+            await this.markProcessed(message);
+            this.activeMessageIds.delete(dedupKey);
+            return;
+        }
+        const purgeReply = await this.handleTaskPurgeIntent(message);
+        if (purgeReply) {
+            await this.safeReply(message, purgeReply);
             await this.markProcessed(message);
             this.activeMessageIds.delete(dedupKey);
             return;
@@ -2989,8 +3132,16 @@ export class ProxyRuntime {
         if (action.action === "permission_allow" || action.action === "permission_deny") {
             if (action.actor.id !== this.ownerOpenId())
                 return { ok: false, toast: "无权操作" };
-            const result = await this.permissionBridge.reply(action.taskId, action.action === "permission_allow" ? "once" : "reject");
-            return { ok: true, toast: result };
+            const allow = action.action === "permission_allow";
+            const view = this.permissionBridge.requestView(action.taskId);
+            const result = await this.permissionBridge.reply(action.taskId, allow ? "once" : "reject");
+            const card = view
+                ? this.options.platform.renderPermissionRequest?.({
+                    ...view,
+                    resolution: allow ? "allow" : "deny",
+                })
+                : undefined;
+            return { ok: true, toast: result, ...(card?.kind === "card" ? { card: card.card } : {}) };
         }
         return this.approvalService.onAction(action);
     }

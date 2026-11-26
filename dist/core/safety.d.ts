@@ -6,3 +6,4 @@ export interface PermissionRule {
 export declare function isDangerousCommand(command: string): boolean;
 export declare function dangerousBashRules(): PermissionRule[];
 export declare function protectedSourceRules(): PermissionRule[];
+export declare function protectedProjectRules(paths: string[]): PermissionRule[];

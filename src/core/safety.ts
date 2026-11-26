@@ -64,3 +64,10 @@ export function dangerousBashRules(): PermissionRule[] {
 export function protectedSourceRules(): PermissionRule[] {
   return [...PROTECTED_SOURCE_RULES];
 }
+
+export function protectedProjectRules(paths: string[]): PermissionRule[] {
+  return [...new Set(paths.filter(Boolean))].flatMap((path) => [
+    { permission: "bash", pattern: `*rm -rf ${path}*`, action: "deny" as const },
+    { permission: "bash", pattern: `*rm -rf ${path}/*`, action: "deny" as const },
+  ]);
+}

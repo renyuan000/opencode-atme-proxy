@@ -6,9 +6,11 @@ export class SessionManager {
     workerLocks = new Map();
     taskChildCounts = new Map();
     childSlots;
+    visionSlots;
     constructor(options) {
         this.options = options;
         this.childSlots = new Semaphore(options.config.subagents.maxChildrenGlobal);
+        this.visionSlots = new Semaphore(Math.min(2, options.config.subagents.maxChildrenGlobal));
     }
     epochFor(chatId) {
         const value = this.options.epochFor?.(chatId) ?? 1;
@@ -194,6 +196,45 @@ export class SessionManager {
         finally {
             if (this.workerLocks.get(key) === tail)
                 this.workerLocks.delete(key);
+        }
+    }
+    async runEphemeral(input, promptText, signal, attachments) {
+        const releaseSlot = await this.visionSlots.acquire(signal);
+        let sessionId;
+        try {
+            sessionId = await this.options.bridge.createSession({
+                directory: input.directory,
+                title: input.title,
+                ...(input.agent ? { agent: input.agent } : {}),
+                ...(input.permission ? { permission: input.permission } : {}),
+                ...(input.model ? { model: input.model } : {}),
+            });
+            return await this.options.bridge.prompt(sessionId, {
+                directory: input.directory,
+                title: input.title,
+                text: promptText,
+                ...(attachments ? { attachments } : {}),
+                ...(signal ? { signal } : {}),
+            });
+        }
+        finally {
+            releaseSlot();
+            if (sessionId) {
+                try {
+                    if (this.options.config.opencode.keepSessions && this.options.bridge.archiveSession) {
+                        await this.options.bridge.archiveSession(sessionId, input.directory);
+                    }
+                    else {
+                        await this.options.bridge.deleteSession(sessionId);
+                    }
+                }
+                catch (error) {
+                    this.options.logger.warn("ephemeral session cleanup failed", {
+                        sessionId,
+                        error: toErrorMessage(error),
+                    });
+                }
+            }
         }
     }
     async createChildSession(input) {

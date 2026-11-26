@@ -147,6 +147,9 @@ export class ScopedTaskLinks {
         return [...this.stores.entries()].flatMap(([chatId, store]) => store.findByTask(taskId).map((item) => ({ chatId, ...item })));
     }
     async flush() { }
+    purgeTaskIds(taskIds, reason = "owner_delete") {
+        return [...this.stores.entries()].flatMap(([chatId, store]) => store.purgeTaskIds(taskIds, reason).map((taskId) => ({ chatId, taskId })));
+    }
     purgeTasks(input) {
         return [...this.stores.entries()].flatMap(([chatId, store]) => store.purgeTasks(input).map((taskId) => ({ chatId, taskId })));
     }

@@ -138,7 +138,7 @@ export class ScopedTaskLinks {
     return this.store(chatId).findBySession(sessionId);
   }
 
-  startRun(input: { taskId: string; chatId: string; role: string; stage: string; sessionId?: string }): TaskRun {
+  startRun(input: { taskId: string; chatId: string; role: string; stage: string; sessionId?: string; status?: string }): TaskRun {
     return this.store(input.chatId).startRun(input);
   }
 
@@ -190,6 +190,12 @@ export class ScopedTaskLinks {
   }
 
   async flush(): Promise<void> {}
+
+  purgeTaskIds(taskIds: string[], reason = "owner_delete"): Array<{ chatId: string; taskId: string }> {
+    return [...this.stores.entries()].flatMap(([chatId, store]) =>
+      store.purgeTaskIds(taskIds, reason).map((taskId) => ({ chatId, taskId })),
+    );
+  }
 
   purgeTasks(input: {
     needsInfoDays: number;

@@ -71,7 +71,7 @@ export interface TaskServiceOptions {
     payload?: Record<string, unknown>;
   }): Promise<unknown>;
   recordTaskNotification?(input: Omit<TaskNotification, "id" | "createdAt">): Promise<unknown>;
-  startTaskRun?(input: { taskId: string; chatId: string; role: string; stage: string }): Promise<TaskRun>;
+  startTaskRun?(input: { taskId: string; chatId: string; role: string; stage: string; status?: string }): Promise<TaskRun>;
   attachTaskRunSession?(runId: string, sessionId: string, chatId: string): Promise<unknown>;
   finishTaskRun?(runId: string, chatId: string, status: string): Promise<unknown>;
   touchTaskRun?(runId: string, chatId: string): Promise<unknown>;
@@ -87,6 +87,7 @@ export class TaskService {
       chatId: task.chatId,
       role: "analysis",
       stage: "analyzing",
+      status: "queued",
     });
     const heartbeat = run
       ? setInterval(() => {
@@ -215,6 +216,9 @@ export class TaskService {
   ): Promise<TaskRecord["state"]> {
     const text = message.text.trim();
     if (!text) return task.state;
+    if (/(清理|归档|删除|标记完成|完事|已完成|任务完成)/.test(text)) {
+      return task.state;
+    }
     if (task.supplements?.some((item) => item.messageId === message.messageId)) {
       return task.state;
     }

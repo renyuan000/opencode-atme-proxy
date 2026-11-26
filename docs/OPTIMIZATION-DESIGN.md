@@ -429,7 +429,7 @@ xlsx > 20 sheet 或 > 500 行：分块
 7. 非 @ 群媒体相关时只建候选任务，深度分析需 owner 批准
 8. 审批等待不触发生成超时
 9. 群知识/证据可回溯到消息或文件
-10. 181 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
+10. 189 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
 
 ## 16. 开源与给同事使用前的检查
 
@@ -1455,7 +1455,7 @@ LLM 输出增加：
 ```text
 /任务 [群名] [状态] [数量]
 /任务分析 [群名|taskId] [状态] [数量]
-/任务清理 [群名] [状态] [90天] [确认]
+/任务取消 <taskId,...> 停止运行；/任务清理 <taskId,...> [确认] 真正删除；/任务归档 <taskId|群名> 归档
 /任务恢复 <taskId>
 ```
 
@@ -1515,7 +1515,7 @@ task_notifications(task_id, card_message_id, kind, source_chat_id, source_messag
 - 运行中的 run 有 lease，分析/执行/评审每 15 秒心跳，5 分钟无心跳标记 `stalled` 并私聊提醒
 - 分析 prompt 使用 `analysisTimeoutMs`，执行 prompt 使用 `executionTimeoutMinutes`，超时 abort
 - session 创建/复用后回填真实 sessionId
-- owner DM 普通回复 session 使用 `OWNER_DM_PERMISSION`：允许 bash/webfetch/websearch/external_directory，禁止 edit；追加内置 `dangerousBashRules` 高危命令 ask（根目录 rm -rf、mkfs、dd、关机、force push、reset --hard、drop database 等）
+- owner DM 普通回复 session 使用 `OWNER_DM_PERMISSION`：允许 bash/webfetch/websearch，external_directory 为 ask，禁止 edit；追加内置 `dangerousBashRules` 高危命令 ask（根目录 rm -rf、mkfs、dd、关机、force push、reset --hard、drop database 等）
 - OpenCode `permission.asked` 通过 `PermissionBridge` 发到 owner 私聊，卡片/文本提示可直接回复允许/拒绝；也支持 `/允许 <id>` / `/拒绝 <id>`，自然语言包括 行/OK/好/好的/不好/NO/反对 等
 - 主要源码目录 `rm -rf /mnt/d/Work/source*`、`/home/renyuan/*.git*` 使用固定 deny，不进入审批
 - 权限指纹包含 owner DM 权限，权限变化后旧 DM session 不会复用

@@ -355,7 +355,7 @@ test("direct messages are ignored when owner is not bound", async () => {
   }
 });
 
-test("owner image is passed to the model as a file attachment", async () => {
+test("owner image is analyzed ephemerally and not reattached to the persistent reply", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
   try {
     const adapter = new Adapter();
@@ -368,10 +368,8 @@ test("owner image is passed to the model as a file attachment", async () => {
       attachments: [{ kind: "image", key: "img_1" }],
     });
     await new Promise((r) => setTimeout(r, 100));
-    assert.equal(bridge.attachments.length, 1);
-    const attachment = bridge.attachments[0] as { mime: string; url: string };
-    assert.equal(attachment.mime, "image/png");
-    assert.match(attachment.url, /^data:image\/png;base64,/);
+    assert.equal(bridge.attachments.length, 0);
+    assert.match(bridge.lastText, /图片视觉摘要|图片 OCR/);
     await runtime.stop();
   } finally {
     await rm(dir, { recursive: true, force: true });

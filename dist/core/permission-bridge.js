@@ -22,70 +22,122 @@ export class PermissionBridge {
     async start() {
         if (this.started)
             return;
-        this.started = true;
         const client = this.options.bridge.getClient();
         if (!client.event?.subscribe) {
             this.options.logger.warn("opencode event subscribe unavailable; permission bridge disabled");
             return;
         }
+        this.started = true;
         this.abort = new AbortController();
-        void this.consume(client.event.subscribe());
+        void this.syncPending();
+        void this.reconnect();
     }
-    async consume(eventsPromise) {
+    async syncPending() {
         try {
-            const events = await eventsPromise;
-            for await (const event of events.stream) {
-                if (this.abort?.signal.aborted)
-                    break;
-                if (event?.type !== "permission.asked" && event?.type !== "permission.v2.asked")
-                    continue;
-                const data = event.data ?? {};
-                const request = {
-                    requestID: String(data.id ?? data.requestID ?? ""),
-                    permission: String(data.permission ?? "unknown"),
-                    patterns: Array.isArray(data.patterns) ? data.patterns.map(String) : [],
-                    sessionID: String(data.sessionID ?? ""),
-                    ...(data.metadata && typeof data.metadata === "object"
-                        ? { metadata: data.metadata }
-                        : {}),
-                };
-                if (!request.requestID)
-                    continue;
-                this.pending.set(request.requestID, request);
-                const sent = await this.options.sendPermissionCard?.({
-                    requestId: request.requestID,
-                    ...(request.sessionID ? { sessionId: request.sessionID } : {}),
-                    permission: request.permission,
-                    patterns: request.patterns,
-                    ...(request.metadata ? { metadata: request.metadata } : {}),
+            const client = this.options.bridge.getClient();
+            const result = await client.permission?.list();
+            const items = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+            for (const item of items) {
+                await this.handleRequest({
+                    type: "permission.asked",
+                    data: {
+                        id: item.id ?? item.requestID,
+                        permission: item.permission,
+                        patterns: item.patterns,
+                        sessionID: item.sessionID,
+                        metadata: item.metadata,
+                    },
                 });
-                if (sent)
-                    continue;
-                await this.options.sendToOwner([
-                    "OpenCode 权限请求",
-                    `ID：${request.requestID}`,
-                    `session：${request.sessionID || "unknown"}`,
-                    `权限：${request.permission}`,
-                    `目标：${request.patterns.join("、") || "unknown"}`,
-                    ...(request.metadata
-                        ? [`详情：${JSON.stringify(request.metadata).slice(0, 800)}`]
-                        : []),
-                    "可直接回复：允许 / 拒绝",
-                    `或：/允许 ${request.requestID} / 拒绝 ${request.requestID}`,
-                ].join("\n"));
             }
         }
         catch (error) {
-            this.options.logger.warn("permission event stream failed", {
+            this.options.logger.debug("permission pending sync failed", {
                 error: error instanceof Error ? error.message : String(error),
             });
+        }
+    }
+    async reconnect() {
+        while (!this.abort?.signal.aborted) {
+            try {
+                await this.consume();
+            }
+            catch (error) {
+                this.options.logger.warn("permission event stream failed; retrying", {
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+            if (this.abort?.signal.aborted)
+                break;
+            await new Promise((resolve) => {
+                const timer = setTimeout(resolve, 3000);
+                timer.unref?.();
+            });
+        }
+    }
+    async consume() {
+        const client = this.options.bridge.getClient();
+        if (!client.event?.subscribe) {
+            this.options.logger.warn("opencode event subscribe unavailable; permission bridge disabled");
+            return;
+        }
+        const events = await client.event.subscribe();
+        for await (const event of events.stream) {
+            if (this.abort?.signal.aborted)
+                break;
+            await this.handleRequest(event);
         }
     }
     pendingCount() {
         return this.pending.size;
     }
-    onlyPendingId() {
-        return this.pending.size === 1 ? [...this.pending.keys()][0] : undefined;
+    async handleRequest(event) {
+        if (event?.type !== "permission.asked" && event?.type !== "permission.v2.asked")
+            return;
+        const data = event.data ?? {};
+        const request = {
+            requestID: String(data.id ?? data.requestID ?? ""),
+            permission: String(data.permission ?? "unknown"),
+            patterns: Array.isArray(data.patterns) ? data.patterns.map(String) : [],
+            sessionID: String(data.sessionID ?? ""),
+            ...(data.metadata && typeof data.metadata === "object"
+                ? { metadata: data.metadata }
+                : {}),
+        };
+        if (!request.requestID || this.pending.has(request.requestID))
+            return;
+        this.pending.set(request.requestID, request);
+        const view = {
+            requestId: request.requestID,
+            ...(request.sessionID ? { sessionId: request.sessionID } : {}),
+            permission: request.permission,
+            patterns: request.patterns,
+            ...(request.metadata ? { metadata: request.metadata } : {}),
+        };
+        const sent = await this.options.sendPermissionCard?.(view);
+        if (sent)
+            return;
+        await this.options.sendToOwner([
+            "OpenCode 权限请求",
+            `ID：${request.requestID}`,
+            `session：${request.sessionID || "unknown"}`,
+            `权限：${request.permission}`,
+            `目标：${request.patterns.join("、") || "unknown"}`,
+            ...(request.metadata ? [`详情：${JSON.stringify(request.metadata).slice(0, 800)}`] : []),
+            "可直接回复：允许 / 拒绝",
+            `或：/允许 ${request.requestID} / 拒绝 ${request.requestID}`,
+        ].join("\n"));
+    }
+    requestView(requestId) {
+        const request = this.pending.get(requestId);
+        if (!request)
+            return undefined;
+        return {
+            requestId: request.requestID,
+            ...(request.sessionID ? { sessionId: request.sessionID } : {}),
+            permission: request.permission,
+            patterns: request.patterns,
+            ...(request.metadata ? { metadata: request.metadata } : {}),
+        };
     }
     async reply(arg, reply) {
         const id = arg.trim() || [...this.pending.keys()][0] || "";

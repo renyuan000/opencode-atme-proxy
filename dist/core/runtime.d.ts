@@ -150,6 +150,12 @@ export declare class ProxyRuntime {
     private sweepTaskArchive;
     private findGroupMentionedIn;
     private handleGroupLookupIntent;
+    private taskIdsFrom;
+    private handleTaskPurgeIntent;
+    private cancelTasks;
+    private handleTaskCancelIntent;
+    private purgeTasks;
+    private purgeTaskIds;
     private handlePermissionReply;
     private handleTaskAdminIntent;
     private diagnoseProject;

@@ -52,6 +52,7 @@ export declare class ScopedTaskLinks {
         role: string;
         stage: string;
         sessionId?: string;
+        status?: string;
     }): TaskRun;
     attachRunSession(chatId: string, runId: string, sessionId: string): void;
     finishRun(chatId: string, runId: string, status: string): void;
@@ -70,6 +71,10 @@ export declare class ScopedTaskLinks {
         role: string;
     }>;
     flush(): Promise<void>;
+    purgeTaskIds(taskIds: string[], reason?: string): Array<{
+        chatId: string;
+        taskId: string;
+    }>;
     purgeTasks(input: {
         needsInfoDays: number;
         awaitingApprovalDays: number;

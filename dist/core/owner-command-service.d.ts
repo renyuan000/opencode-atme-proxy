@@ -29,6 +29,8 @@ export interface OwnerCommandServiceOptions {
     reanalyzeTasks(arg: string): Promise<string>;
     archiveTasks(arg: string): Promise<string>;
     restoreTask(arg: string): Promise<string>;
+    purgeTasks(arg: string): Promise<string>;
+    cancelTasks(arg: string): Promise<string>;
     taskSessions(arg: string): Promise<string>;
     allowPermission(arg: string): Promise<string>;
     denyPermission(arg: string): Promise<string>;

@@ -36,6 +36,31 @@ test("@ 别人的平台页面消息判为强外部候选", () => {
   assert.ok(result.layerHints.includes("web_ui"));
 });
 
+test("Kafka flow/adapter 消息不会因为 flow 泛词变核心", () => {
+  const result = prefilterMessage(
+    message("m-flow", "流量、告警通过 npb-network-flow 到达 Adapter 后上报平台", ["owner"]),
+    context,
+  );
+  assert.equal(result.strongExternal, true);
+});
+
+test("@ 别人的 adapter/平台消息是强外部", () => {
+  const result = prefilterMessage(
+    message("m-adapter", "这个 IP 已经发送到平台了，adapter 服务发送成功，流分侧 Kafka 正常，平台未入库", ["owner"]),
+    context,
+  );
+  assert.equal(result.strongExternal, true);
+  assert.ok(result.externalHits.includes("adapter"));
+});
+
+test("核心项目 + 平台消息仍然不判强外部", () => {
+  const result = prefilterMessage(
+    message("m-core", "平台资产台账没有显示 npb-transform 上报的资产"),
+    context,
+  );
+  assert.equal(result.strongExternal, false);
+});
+
 test("核心引擎压测消息仍然加权", () => {
   const result = prefilterMessage(
     message("m2", "npb-engine 压测 CPU 和吞吐，看下性能", ["other"]),

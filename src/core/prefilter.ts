@@ -43,6 +43,10 @@ const EXTERNAL_TERMS = [
   "筛选项",
   "表格列",
   "联调",
+  "adapter",
+  "service",
+  "asset-discovery",
+  "platform_match_state",
   "web",
 ];
 
@@ -135,6 +139,7 @@ export function prefilterMessage(
   const ownerTerms = (context.ownerKeywords ?? []).filter(
     (term) => !EXTERNAL_TERMS.some((external) => term.toLowerCase().includes(external)),
   );
+  const coreProjectHits = matches(text, [...projectTerms, "npb-engine", "npb-transform"]);
   const coreHits = matches(text, [...CORE_TERMS, ...projectTerms, ...ownerTerms]);
   const externalHits = matches(text, EXTERNAL_TERMS);
   const protocolHits = matches(text, PROTOCOL_TERMS);
@@ -172,7 +177,7 @@ export function prefilterMessage(
   if (performanceHit && externalHits.length > 0 && coreHits.length === 0) score -= 1;
 
   const strongExternal =
-    coreHits.length === 0 &&
+    coreProjectHits.length === 0 &&
     externalHits.length > 0 &&
     hasStrongExternal(text) &&
     !protocolHits.some((hit) => /协议|app-layer|parser|event_type/.test(hit));
@@ -181,6 +186,7 @@ export function prefilterMessage(
   if (addressedToOther) reasons.push("只 @ 了别人");
   if (mentionedOwner || mentionedBot) reasons.push("@ 了我/机器人");
   if (coreHits.length > 0) reasons.push(`命中核心信号：${coreHits.slice(0, 4).join("、")}`);
+  if (coreProjectHits.length > 0) reasons.push(`命中核心项目：${coreProjectHits.slice(0, 4).join("、")}`);
   if (externalHits.length > 0) reasons.push(`命中外部信号：${externalHits.slice(0, 4).join("、")}`);
   if (protocolHits.length > 0) reasons.push(`协议信号：${protocolHits.slice(0, 4).join("、")}`);
   if (performanceHit) reasons.push(coreHits.length > 0 ? "性能压测：核心目标" : "性能压测：目标待确认");

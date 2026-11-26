@@ -64,6 +64,7 @@ export declare class SessionManager {
     private readonly workerLocks;
     private readonly taskChildCounts;
     private readonly childSlots;
+    private readonly visionSlots;
     constructor(options: SessionManagerOptions);
     private epochFor;
     private sessionKey;
@@ -71,6 +72,7 @@ export declare class SessionManager {
     createGroupSession(platform: string, chatId: string, directory: string, conversationId?: string, title?: string): Promise<string>;
     createWorkerSession(input: WorkerInput): Promise<string>;
     runWorker(input: WorkerInput, promptText: string, signal?: AbortSignal, attachments?: PromptAttachment[]): Promise<string>;
+    runEphemeral(input: WorkerInput, promptText: string, signal?: AbortSignal, attachments?: PromptAttachment[]): Promise<string>;
     createChildSession(input: ChildInput): Promise<{
         sessionId: string;
         release: () => void;

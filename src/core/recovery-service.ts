@@ -191,9 +191,10 @@ export class RecoveryService {
           };
         }),
       );
+      const displayTitle = `${title} · ${group.chatLabel}`;
       const text = [
-        title,
-        `${group.chatLabel} · ${status}`,
+        displayTitle,
+        status,
         ...group.notices.flatMap((notice) => [
           "━━━━━━━━━━",
           `${notice.task.title} · ${notice.task.state}`,
@@ -204,8 +205,8 @@ export class RecoveryService {
       ].join("\n");
       if (this.options.sendOwnerNotification) {
         await this.options.sendOwnerNotification({
-          title,
-          headerMeta: { right: `${group.chatLabel} · ${status}` },
+          title: displayTitle,
+          headerMeta: { right: status },
           sections,
           link,
           footer,

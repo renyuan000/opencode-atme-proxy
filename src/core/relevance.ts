@@ -523,6 +523,7 @@ function buildPrompt(
     "平台资产台账、管理平台、前端界面、联调发布，如果没有明确指向 group_projects.core 或 owner_direction 的组件、接口、数据问题，判 ownership=external 且 relevant=false，即使 @ 主人。",
     "性能压测/CPU/内存/IO：目标是 group_projects.core、own_projects 或我们写入的 Kafka 链路时加权；目标只是平台/前端/资产台账时才判 external。",
     "@ 主人本身不是相关性证据；只有内容命中 owner_direction/own_projects，或明确要求主人对核心链路做决策，才判相关。",
+    "群名/产品名/泛化词（例如“流分”）不是相关性证据；必须具体到组件、职责、接口或数据影响。",
     "prefilter 是本地初筛提示，不是最终结论；你可以推翻它，但必须说明原因。",
     "layer 可选：web_ui, web_api, service, pg, kafka, engine, protocol, performance, deploy, unknown。",
     "同时输出 perf_target（性能压测目标）、kafka_role（producer/consumer/unknown）、protocol_family（如 http/dns/tls/iec104）。",

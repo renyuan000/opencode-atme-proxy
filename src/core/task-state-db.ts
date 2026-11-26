@@ -338,7 +338,7 @@ export class TaskStateDb {
     return Number(row?.count ?? 0);
   }
 
-  startRun(input: { taskId: string; chatId: string; role: string; stage: string; sessionId?: string }): TaskRun {
+  startRun(input: { taskId: string; chatId: string; role: string; stage: string; sessionId?: string; status?: string }): TaskRun {
     const now = Date.now();
     const run: TaskRun = {
       id: `run_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
@@ -347,7 +347,7 @@ export class TaskStateDb {
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       role: input.role,
       stage: input.stage,
-      status: "running",
+      status: input.status ?? "running",
       startedAt: now,
       heartbeatAt: now,
       leaseUntil: now + 5 * 60_000,
@@ -360,7 +360,7 @@ export class TaskStateDb {
 
   attachRunSession(runId: string, sessionId: string): void {
     const now = Date.now();
-    this.db.prepare("UPDATE task_runs SET session_id = ?, heartbeat_at = ?, lease_until = ? WHERE id = ?")
+    this.db.prepare("UPDATE task_runs SET session_id = ?, status = 'running', heartbeat_at = ?, lease_until = ? WHERE id = ?")
       .run(sessionId, now, now + 5 * 60_000, runId);
   }
 
@@ -530,6 +530,73 @@ export class TaskStateDb {
       );
   }
 
+  purgeTaskIds(taskIds: string[], reason = "owner_delete"): string[] {
+    const unique = [...new Set(taskIds.filter(Boolean))];
+    if (unique.length === 0) return [];
+    const placeholders = unique.map(() => "?").join(",");
+    const rows = this.db.prepare(
+      `SELECT task_id, data, state, archived_at, updated_at FROM tasks WHERE task_id IN (${placeholders})`,
+    ).all(...unique) as Array<{
+      task_id: string;
+      data: string;
+      state?: string;
+      archived_at?: number;
+      updated_at?: number;
+    }>;
+    const active = new Set(["analyzing", "executing", "verifying", "approved", "awaiting_merge"]);
+    const purged: string[] = [];
+    const now = Date.now();
+    const transaction = this.db.transaction(() => {
+      for (const row of rows) {
+        const state = row.state ?? "unknown";
+        if (active.has(state)) continue;
+        const running = this.db.prepare(
+          "SELECT 1 AS ok FROM task_runs WHERE task_id = ? AND status = 'running' LIMIT 1",
+        ).get(row.task_id);
+        if (running) continue;
+        let data: Record<string, unknown> = {};
+        try {
+          data = JSON.parse(row.data) as Record<string, unknown>;
+        } catch {}
+        const sourceMessageIds = Array.isArray(data.messageIds)
+          ? data.messageIds.filter((value): value is string => typeof value === "string")
+          : [];
+        this.db.prepare(
+          "INSERT OR REPLACE INTO task_tombstones(task_id, chat_id, title, state, created_at, archived_at, purged_at, reason, source_message_ids, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ).run(
+          row.task_id,
+          this.chatId,
+          typeof data.title === "string" ? data.title : "",
+          state,
+          typeof data.createdAt === "number" ? data.createdAt : 0,
+          row.archived_at ?? null,
+          now,
+          reason,
+          JSON.stringify(sourceMessageIds),
+          typeof data.messageLink === "string" ? data.messageLink : null,
+        );
+        this.db.prepare(
+          "INSERT OR IGNORE INTO task_events(event_id, chat_id, task_id, type, at, payload) VALUES (?, ?, ?, ?, ?, ?)",
+        ).run(
+          `purge_${row.task_id}_${now}`,
+          this.chatId,
+          row.task_id,
+          "task.purged",
+          now,
+          JSON.stringify({ state, reason, title: typeof data.title === "string" ? data.title : "" }),
+        );
+        this.db.prepare("DELETE FROM task_links WHERE chat_id = ? AND task_id = ?").run(this.chatId, row.task_id);
+        this.db.prepare("DELETE FROM task_notifications WHERE task_id = ?").run(row.task_id);
+        this.db.prepare("DELETE FROM task_runs WHERE task_id = ? AND status != 'running'").run(row.task_id);
+        this.db.prepare("DELETE FROM task_index WHERE task_id = ?").run(row.task_id);
+        this.db.prepare("DELETE FROM tasks WHERE task_id = ?").run(row.task_id);
+        purged.push(row.task_id);
+      }
+    });
+    transaction();
+    return purged;
+  }
+
   purgeTasks(input: {
     needsInfoDays: number;
     awaitingApprovalDays: number;
@@ -553,6 +620,10 @@ export class TaskStateDb {
       for (const row of rows) {
         const state = row.state ?? "unknown";
         if (active.has(state)) continue;
+        const activeRun = this.db.prepare(
+          "SELECT 1 AS ok FROM task_runs WHERE task_id = ? AND status = 'running' LIMIT 1",
+        ).get(row.task_id);
+        if (activeRun) continue;
         const ageDays = (now - (row.updated_at ?? now)) / 86_400_000;
         const archivedAge = row.archived_at ? (now - row.archived_at) / 86_400_000 : 0;
         const shouldPurge =

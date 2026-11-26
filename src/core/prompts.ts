@@ -1,5 +1,6 @@
 import type { TaskRecord } from "./types.js";
 import type { SecurityReview } from "./security.js";
+import { stripEmbeddedOcr } from "./image-policy.js";
 import { inspectUntrusted, securityPromptBlock } from "./security.js";
 
 export interface AnalysisContextPayload {
@@ -28,7 +29,9 @@ export interface AnalysisPromptInput {
 
 export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
   const { task, context } = input;
-  const security = context.security ?? inspectUntrusted(`${task.excerpt}\n${context.sourceMessages.join("\n")}`);
+  const attachmentHasOcr = input.attachmentTexts?.some((text) => text.startsWith("[图片 OCR]")) ?? false;
+  const excerpt = attachmentHasOcr ? stripEmbeddedOcr(task.excerpt) : task.excerpt;
+  const security = context.security ?? inspectUntrusted(`${excerpt}\n${context.sourceMessages.join("\n")}`);
   return [
     "你是任务分析器，只做规划，不执行代码、不修改文件。",
     "输出严格 JSON，字段：needs_info, goal, scope, out_of_scope, repos, files, plan, commands, risks, open_questions, acceptance_criteria, estimate, assumptions, checked。",
@@ -67,7 +70,7 @@ export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
     JSON.stringify({
       title: task.title,
       topic: task.topic,
-      excerpt: task.excerpt,
+      excerpt,
       requester: task.requester.displayName ?? task.requester.id,
       project: task.project,
       messageIds: task.messageIds,

@@ -227,6 +227,7 @@ export interface PermissionView {
     permission: string;
     patterns: string[];
     metadata?: Record<string, unknown>;
+    resolution?: "allow" | "deny";
 }
 export interface PlatformAction {
     platform: Platform;

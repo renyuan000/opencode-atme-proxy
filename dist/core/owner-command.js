@@ -14,9 +14,15 @@ const COMMANDS = {
     tasks: "tasks",
     任务分析: "task_analyze",
     task_analyze: "task_analyze",
-    任务清理: "task_archive",
-    task_archive: "task_archive",
+    任务清理: "task_purge",
+    任务删除: "task_purge",
+    任务取消: "task_cancel",
+    task_cancel: "task_cancel",
+    清理: "task_purge",
+    删除: "task_purge",
+    task_purge: "task_purge",
     任务归档: "task_archive",
+    task_archive: "task_archive",
     任务恢复: "task_restore",
     task_restore: "task_restore",
     任务会话: "task_sessions",
@@ -50,7 +56,7 @@ export function parseOwnerCommand(text) {
     if (["/", "／", "?", "？", "/?", "／?", "/？", "／？"].includes(bare)) {
         return { command: "help", arg: "" };
     }
-    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|职责|工作空间|workspace|任务分析|task_analyze|任务清理|任务归档|task_archive|任务恢复|task_restore|任务会话|task_sessions|允许|allow|拒绝|deny|任务|tasks|诊断|配置诊断|diagnose|方向|关键词|群消息分析|analyze_group|分析|analyze|群消息|查群|group_messages|提及|at我|mentions|目标|画像|帮助|help)\s*([\s\S]*)$/i);
+    const match = bare.match(/^[/／](改写|重写|发送|取消|列表|待办|回复管理|回复列表|职责|工作空间|workspace|任务分析|task_analyze|任务清理|任务删除|任务取消|task_cancel|清理|删除|task_purge|任务归档|task_archive|任务恢复|task_restore|任务会话|task_sessions|允许|allow|拒绝|deny|任务|tasks|诊断|配置诊断|diagnose|方向|关键词|群消息分析|analyze_group|分析|analyze|群消息|查群|group_messages|提及|at我|mentions|目标|画像|帮助|help)\s*([\s\S]*)$/i);
     if (!match)
         return undefined;
     const token = match[1] ?? "";

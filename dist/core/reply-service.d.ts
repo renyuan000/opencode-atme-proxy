@@ -114,6 +114,7 @@ export interface UnifiedReply {
 }
 export declare class ReplyService {
     private readonly options;
+    private readonly visionCache;
     constructor(options: ReplyServiceOptions);
     shouldReplyToMention(message: IncomingMessage, classification: Classification | undefined): Promise<{
         reply: boolean;
@@ -128,6 +129,7 @@ export declare class ReplyService {
     }>;
     draft(message: IncomingMessage, style: ReplyStyle, signal: AbortSignal, depth?: ReplyDepth, unified?: boolean): Promise<string>;
     private webMode;
+    private analyzeImages;
     private runReplyWorker;
     loadTaskMedia(task: TaskRecord): Promise<{
         attachments: PromptAttachment[];
@@ -137,9 +139,9 @@ export declare class ReplyService {
     private collectMediaCandidates;
     private loadFilesFrom;
     private loadImageText;
+    private loadImageResources;
     private loadRecentHistory;
     private loadQuotedChain;
     private loadRecentDocuments;
     private loadLinkedDocuments;
-    private loadImages;
 }

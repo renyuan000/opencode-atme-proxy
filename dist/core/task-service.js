@@ -15,6 +15,7 @@ export class TaskService {
             chatId: task.chatId,
             role: "analysis",
             stage: "analyzing",
+            status: "queued",
         });
         const heartbeat = run
             ? setInterval(() => {
@@ -126,6 +127,9 @@ export class TaskService {
         const text = message.text.trim();
         if (!text)
             return task.state;
+        if (/(清理|归档|删除|标记完成|完事|已完成|任务完成)/.test(text)) {
+            return task.state;
+        }
         if (task.supplements?.some((item) => item.messageId === message.messageId)) {
             return task.state;
         }

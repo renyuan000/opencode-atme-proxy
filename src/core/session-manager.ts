@@ -65,9 +65,11 @@ export class SessionManager {
   private readonly workerLocks = new Map<string, Promise<void>>();
   private readonly taskChildCounts = new Map<string, number>();
   private readonly childSlots: Semaphore;
+  private readonly visionSlots: Semaphore;
 
   constructor(private readonly options: SessionManagerOptions) {
     this.childSlots = new Semaphore(options.config.subagents.maxChildrenGlobal);
+    this.visionSlots = new Semaphore(Math.min(2, options.config.subagents.maxChildrenGlobal));
   }
 
   private epochFor(chatId: string): number {
@@ -302,6 +304,48 @@ export class SessionManager {
       return await current;
     } finally {
       if (this.workerLocks.get(key) === tail) this.workerLocks.delete(key);
+    }
+  }
+
+  async runEphemeral(
+    input: WorkerInput,
+    promptText: string,
+    signal?: AbortSignal,
+    attachments?: PromptAttachment[],
+  ): Promise<string> {
+    const releaseSlot = await this.visionSlots.acquire(signal);
+    let sessionId: string | undefined;
+    try {
+      sessionId = await this.options.bridge.createSession({
+        directory: input.directory,
+        title: input.title,
+        ...(input.agent ? { agent: input.agent } : {}),
+        ...(input.permission ? { permission: input.permission } : {}),
+        ...(input.model ? { model: input.model } : {}),
+      });
+      return await this.options.bridge.prompt(sessionId, {
+        directory: input.directory,
+        title: input.title,
+        text: promptText,
+        ...(attachments ? { attachments } : {}),
+        ...(signal ? { signal } : {}),
+      });
+    } finally {
+      releaseSlot();
+      if (sessionId) {
+        try {
+          if (this.options.config.opencode.keepSessions && this.options.bridge.archiveSession) {
+            await this.options.bridge.archiveSession(sessionId, input.directory);
+          } else {
+            await this.options.bridge.deleteSession(sessionId);
+          }
+        } catch (error) {
+          this.options.logger.warn("ephemeral session cleanup failed", {
+            sessionId,
+            error: toErrorMessage(error),
+          });
+        }
+      }
     }
   }
 

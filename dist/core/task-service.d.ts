@@ -65,6 +65,7 @@ export interface TaskServiceOptions {
         chatId: string;
         role: string;
         stage: string;
+        status?: string;
     }): Promise<TaskRun>;
     attachTaskRunSession?(runId: string, sessionId: string, chatId: string): Promise<unknown>;
     finishTaskRun?(runId: string, chatId: string, status: string): Promise<unknown>;

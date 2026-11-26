@@ -1073,13 +1073,21 @@ export function renderCancelConfirmCard(input) {
 }
 export function renderPermissionCard(view) {
     const details = view.metadata ? JSON.stringify(view.metadata).slice(0, 1200) : "无";
+    const resolved = Boolean(view.resolution);
     return {
         kind: "card",
         card: {
             config: { wide_screen_mode: true },
             header: {
-                template: "orange",
-                title: { tag: "plain_text", content: "OpenCode 权限请求" },
+                template: view.resolution === "allow" ? "green" : view.resolution === "deny" ? "red" : "orange",
+                title: {
+                    tag: "plain_text",
+                    content: resolved
+                        ? view.resolution === "allow"
+                            ? "已允许：OpenCode 权限请求"
+                            : "已拒绝：OpenCode 权限请求"
+                        : "OpenCode 权限请求",
+                },
             },
             elements: [
                 {
@@ -1091,27 +1099,29 @@ export function renderPermissionCard(view) {
                             `**权限**：${view.permission}`,
                             `**目标**：${view.patterns.join("、") || "unknown"}`,
                             `**详情**：${details}`,
-                            "可直接回复：允许 / 拒绝（或点击按钮）",
+                            resolved ? "已处理" : "可直接回复：允许 / 拒绝（或点击按钮）",
                         ].join("\n"),
                     },
                 },
-                {
-                    tag: "action",
-                    actions: [
-                        {
-                            tag: "button",
-                            text: { tag: "plain_text", content: "允许" },
-                            type: "primary",
-                            value: { a: "permission_allow", t: view.requestId },
-                        },
-                        {
-                            tag: "button",
-                            text: { tag: "plain_text", content: "拒绝" },
-                            type: "danger",
-                            value: { a: "permission_deny", t: view.requestId },
-                        },
-                    ],
-                },
+                ...(resolved
+                    ? []
+                    : [{
+                            tag: "action",
+                            actions: [
+                                {
+                                    tag: "button",
+                                    text: { tag: "plain_text", content: "允许" },
+                                    type: "primary",
+                                    value: { a: "permission_allow", t: view.requestId },
+                                },
+                                {
+                                    tag: "button",
+                                    text: { tag: "plain_text", content: "拒绝" },
+                                    type: "danger",
+                                    value: { a: "permission_deny", t: view.requestId },
+                                },
+                            ],
+                        }]),
             ],
         },
     };

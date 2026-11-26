@@ -32,7 +32,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **任务映射**：每群 `cache/state.db` 保存任务快照、消息/卡片到 taskId 的映射、session 到 taskId 的多对一映射、任务通知和生命周期事件；SQLite 为运行时事实源，旧 JSON 只做一次性导入。
 - **私聊承接**：候选/审批通知会记录 `task_notifications`；私聊 prompt 注入最近通知摘要，普通 DM 的“刚才/继续/补充/这个文档”等指代可在私聊 active task 上继续处理。
 - **运行监测**：`task_runs` 记录分析/执行/评审心跳和 lease；5 分钟无心跳会标记 stalled 并私聊提醒，分析/执行 prompt 有阶段超时。
-- **owner 私聊权限**：owner DM 允许 bash/联网/外部目录，但禁止 edit；内置高风险命令 ask 规则（rm -rf 根目录、mkfs、dd、shutdown、force push、reset --hard、drop database 等），并固定 deny `rm -rf` 主要源码目录 `/mnt/d/Work/source*`、`/home/renyuan/*.git`；通过私聊 `/允许 <id>` / `/拒绝 <id>`，或直接回复“允许/拒绝/行/OK/好/不好/反对”等自然语言回复 OpenCode 权限请求。
+- **owner 私聊权限**：owner DM 允许 bash/联网，但禁止 edit；外部路径改为 ask；内置高风险命令 ask 规则（rm -rf 根目录、mkfs、dd、shutdown、force push、reset --hard、drop database 等），并固定 deny `rm -rf` 主要源码目录 `/mnt/d/Work/source*`、`/home/renyuan/*.git`；通过私聊 `/允许 <id>` / `/拒绝 <id>`，或直接回复“允许/拒绝/行/OK/好/不好/反对”等自然语言回复 OpenCode 权限请求。
 - **多项目开发**：任务分析会列出工作空间内项目；执行时为涉及项目分别创建独立 git worktree，避免直接修改源仓库。
 - **会话代际**：群职责/画像/术语变化、私聊偏好/决策变化时自动升 `sessionEpoch`，新会话不复用旧上下文。
 - **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`、`/诊断`、`/任务`、`/任务分析`、`/任务清理`、`/分析`、`/群消息`、`/群消息分析`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
@@ -66,7 +66,7 @@ python3 -m venv ~/.local/share/atme-ocr-venv
 - **防刷屏**：按发送者限流、限并发、加冷却；同一人连续刷只警告一次，不同同事仍可并发处理。
 - **需要你决策时私聊请示**：涉及上线、排期、承诺、资源、风险或信息不足时，机器人私聊你，附来源、原因和建议；不在群里 @ 你，不代替你承诺。
 - **实时 @ 接管**：@机器人 按必要性直接回答或升级；@我 默认先私聊请示，批准后引用回复。
-- **周期筛选**：定时拉取群历史，先用本地规则做初筛（@别人、核心项目/协议/性能/Kafka 信号、外部平台/页面信号），再交给筛选模型；强外部消息不通知、不深分析。
+- **周期筛选**：定时拉取群历史，先用本地规则做初筛（@别人、核心项目/协议/性能/Kafka 信号、外部平台/页面/adapter/service 信号），再交给筛选模型；强外部消息不通知、不深分析。
 - **归属与分层**：筛选结果分开输出 `ownership` 和 `layer`（web_ui/service/pg/kafka/engine/protocol/performance/deploy），避免把“页面问题”直接判成外部。
 - **友好摘要**：群消息分析私聊优先使用卡片，每条消息独立分块并用分隔线，优先附原消息 AppLink，失败回退群聊 AppLink；不把原图片/文件复制到私聊；摘要正文不暴露 `ou_` 和 `message_id`。
 - **任务闭环**：任务识别 → 分析 → 审批 → 开发 → 测试 → 回写 → 审计。
@@ -609,7 +609,7 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 群工作空间、代码项目平级、workspace 私聊管理
 - 去重、游标、任务、分析、审批、执行、审计骨架
 - 简洁/详细回复策略、审批门禁、失败降级
-- 181 个单元/集成测试
+- 189 个单元/集成测试
 
 未完成 / 下一步：
 

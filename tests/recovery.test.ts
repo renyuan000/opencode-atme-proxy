@@ -176,7 +176,7 @@ test("resume re-analyzes candidate tasks and nudges stale approvals", async () =
     assert.ok(
       adapter.sent.some(
         (text) =>
-          text.includes("未完成任务提醒") && text.includes("群 · awaiting_approval · 1 条"),
+          text.includes("未完成任务提醒 · 群") && text.includes("awaiting_approval · 1 条"),
       ),
     );
     await runtime.stop();
@@ -212,7 +212,8 @@ test("groups pending task reminders by chat into one card", async () => {
     await new Promise((r) => setTimeout(r, 150));
     const reminders = adapter.sent.filter((text) => text.includes("未完成任务提醒"));
     assert.equal(reminders.length, 1);
-    assert.match(reminders[0]!, /群 · needs_info · 2 条/);
+    assert.match(reminders[0]!, /未完成任务提醒 · 群/);
+    assert.match(reminders[0]!, /needs_info · 2 条/);
     assert.match(reminders[0]!, /任务 A/);
     assert.match(reminders[0]!, /任务 B/);
     assert.match(reminders[0]!, /打开原消息/);

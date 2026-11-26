@@ -53,4 +53,10 @@ export function dangerousBashRules() {
 export function protectedSourceRules() {
     return [...PROTECTED_SOURCE_RULES];
 }
+export function protectedProjectRules(paths) {
+    return [...new Set(paths.filter(Boolean))].flatMap((path) => [
+        { permission: "bash", pattern: `*rm -rf ${path}*`, action: "deny" },
+        { permission: "bash", pattern: `*rm -rf ${path}/*`, action: "deny" },
+    ]);
+}
 //# sourceMappingURL=safety.js.map

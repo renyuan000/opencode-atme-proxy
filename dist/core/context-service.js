@@ -99,7 +99,7 @@ export class ContextService {
         const names = new Map(groups.map((group) => [group.chatId, group.name ?? group.chatId]));
         const summaries = (groupContext.list?.() ?? [])
             .filter((item) => item.summary.trim())
-            .slice(0, 6)
+            .slice(0, 2)
             .map((item) => {
             const chatId = item.chatId.split(":").pop() ?? item.chatId;
             return `【${names.get(chatId) ?? chatId}】${item.summary}`;
@@ -107,7 +107,7 @@ export class ContextService {
         const allTasks = tasks.list ? await tasks.list() : [];
         const openTasks = allTasks
             .filter((task) => !task.archivedAt && ["candidate", "analyzing", "needs_info", "awaiting_approval"].includes(task.state))
-            .slice(0, 10)
+            .slice(0, 5)
             .map((task) => `- ${names.get(task.chatId) ?? task.chatName ?? task.chatId}: ${task.title} [${task.state}]`);
         const records = config.memory.enabled
             ? memory.query({ platform: message.platform, text: message.text, limit: config.memory.injectLimit })
@@ -118,7 +118,7 @@ export class ContextService {
             ...(openTasks.length > 0 ? ["未关闭任务（跨群）：", ...openTasks] : []),
             ...(memoryItems.length > 0 ? ["相关群记忆：", ...memoryItems] : []),
         ];
-        return truncate(blocks.join("\n"), 6000);
+        return truncate(blocks.join("\n"), 2200);
     }
     async analysisContext(task) {
         const { config, chatContext, memory, tasks } = this.options;

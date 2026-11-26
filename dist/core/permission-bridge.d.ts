@@ -15,9 +15,12 @@ export declare class PermissionBridge {
     private started;
     constructor(options: PermissionBridgeOptions);
     start(): Promise<void>;
+    private syncPending;
+    private reconnect;
     private consume;
     pendingCount(): number;
-    onlyPendingId(): string | undefined;
+    private handleRequest;
+    requestView(requestId: string): PermissionView | undefined;
     reply(arg: string, reply: "once" | "always" | "reject"): Promise<string>;
     stop(): void;
 }

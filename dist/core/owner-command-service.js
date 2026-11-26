@@ -29,7 +29,9 @@ export class OwnerCommandService {
                 "/诊断 <群名|chatId> 检查项目路径、fs-root 白名单和配置建议",
                 "/任务 [群名] [状态] [数量] 查看任务，默认不含归档",
                 "/任务分析 [群名|taskId] [状态] [数量] 后台重新分析",
-                "/任务清理 [群名] [状态] [90天] [确认] 批量归档，不删除",
+                "/任务取消 <taskId,...> 停止运行中的分析/执行",
+                "/任务清理 <taskId,...> [确认] 真正删除任务，保留 tombstone/审计",
+                "/任务归档 <taskId|群名> [确认] 归档，不删除",
                 "/任务恢复 <taskId> 从归档恢复",
                 "/任务会话 <taskId> 查看任务关联的 session",
                 "/允许 [requestId] 批准 OpenCode 权限请求",
@@ -67,6 +69,12 @@ export class OwnerCommandService {
         }
         if (command.command === "task_analyze") {
             return this.options.reanalyzeTasks(command.arg);
+        }
+        if (command.command === "task_cancel") {
+            return this.options.cancelTasks(command.arg);
+        }
+        if (command.command === "task_purge") {
+            return this.options.purgeTasks(command.arg);
         }
         if (command.command === "task_archive") {
             return this.options.archiveTasks(command.arg);

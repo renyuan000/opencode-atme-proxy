@@ -58,6 +58,7 @@ export declare class TaskStateDb {
         role: string;
         stage: string;
         sessionId?: string;
+        status?: string;
     }): TaskRun;
     attachRunSession(runId: string, sessionId: string): void;
     staleRuns(stallMs: number): TaskRun[];
@@ -79,6 +80,7 @@ export declare class TaskStateDb {
     saveTaskWithLinks(taskId: string, data: string, updatedAt: number, dedupKey: string, messageIds: string[]): void;
     linkMessageAndTask(messageId: string, taskId: string, data: string, updatedAt: number, dedupKey: string): void;
     publish(event: TaskEvent): void;
+    purgeTaskIds(taskIds: string[], reason?: string): string[];
     purgeTasks(input: {
         needsInfoDays: number;
         awaitingApprovalDays: number;
