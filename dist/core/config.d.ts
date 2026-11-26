@@ -587,6 +587,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         terminalAfterDays: z.ZodDefault<z.ZodNumber>;
         linkRetentionDays: z.ZodDefault<z.ZodNumber>;
         eventRetentionDays: z.ZodDefault<z.ZodNumber>;
+        purgeNeedsInfoAfterDays: z.ZodDefault<z.ZodNumber>;
+        purgeAwaitingApprovalAfterDays: z.ZodDefault<z.ZodNumber>;
+        purgeTerminalAfterDays: z.ZodDefault<z.ZodNumber>;
+        purgeArchivedAfterDays: z.ZodDefault<z.ZodNumber>;
+        tombstoneRetentionDays: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         enabled: boolean;
         sweepHours: number;
@@ -595,6 +600,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         terminalAfterDays: number;
         linkRetentionDays: number;
         eventRetentionDays: number;
+        purgeNeedsInfoAfterDays: number;
+        purgeAwaitingApprovalAfterDays: number;
+        purgeTerminalAfterDays: number;
+        purgeArchivedAfterDays: number;
+        tombstoneRetentionDays: number;
     }, {
         enabled?: boolean | undefined;
         sweepHours?: number | undefined;
@@ -603,6 +613,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         terminalAfterDays?: number | undefined;
         linkRetentionDays?: number | undefined;
         eventRetentionDays?: number | undefined;
+        purgeNeedsInfoAfterDays?: number | undefined;
+        purgeAwaitingApprovalAfterDays?: number | undefined;
+        purgeTerminalAfterDays?: number | undefined;
+        purgeArchivedAfterDays?: number | undefined;
+        tombstoneRetentionDays?: number | undefined;
     }>>>;
     filter: z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
@@ -1456,6 +1471,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         terminalAfterDays: number;
         linkRetentionDays: number;
         eventRetentionDays: number;
+        purgeNeedsInfoAfterDays: number;
+        purgeAwaitingApprovalAfterDays: number;
+        purgeTerminalAfterDays: number;
+        purgeArchivedAfterDays: number;
+        tombstoneRetentionDays: number;
     } | undefined;
     evidence?: {
         enabled: boolean;
@@ -1632,6 +1652,11 @@ export declare const AppConfigSchema: z.ZodObject<{
         terminalAfterDays?: number | undefined;
         linkRetentionDays?: number | undefined;
         eventRetentionDays?: number | undefined;
+        purgeNeedsInfoAfterDays?: number | undefined;
+        purgeAwaitingApprovalAfterDays?: number | undefined;
+        purgeTerminalAfterDays?: number | undefined;
+        purgeArchivedAfterDays?: number | undefined;
+        tombstoneRetentionDays?: number | undefined;
     } | undefined;
     analysis?: {
         mode?: "main_agent" | "cheap_model" | undefined;

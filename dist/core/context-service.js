@@ -1,4 +1,5 @@
 import { truncate, truncateMiddle } from "./util.js";
+import { inspectUntrusted } from "./security.js";
 export class ContextService {
     options;
     constructor(options) {
@@ -151,6 +152,7 @@ export class ContextService {
             .slice(0, 5)
             .map((item) => `${item.id} ${item.title} [${item.state}]`);
         const summary = this.summaryText(task.platform, task.chatId);
+        const security = inspectUntrusted([task.excerpt, ...sourceMessages, ...recentContext].join("\n"));
         return {
             sourceMessages,
             supplements,
@@ -159,6 +161,7 @@ export class ContextService {
             memory: memoryItems,
             openTasks,
             summary,
+            security,
             corpus: [
                 task.title,
                 task.excerpt,

@@ -10,12 +10,27 @@ export class TaskService {
         this.options = options;
     }
     async analyzeTask(task) {
+        const run = await this.options.startTaskRun?.({
+            taskId: task.id,
+            chatId: task.chatId,
+            role: "analysis",
+            stage: "analyzing",
+        });
+        const heartbeat = run
+            ? setInterval(() => {
+                void this.options.touchTaskRun?.(run.id, task.chatId).catch(() => undefined);
+            }, 15_000)
+            : undefined;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(new Error("analysis timed out")), this.options.config.concurrency.analysisTimeoutMs);
         let analysis;
         let verification;
         try {
-            analysis = await this.buildAnalysis(task, controller.signal);
+            analysis = await this.buildAnalysis(task, controller.signal, run
+                ? async (sessionId) => {
+                    await this.options.attachTaskRunSession?.(run.id, sessionId, task.chatId);
+                }
+                : undefined);
             verification = await this.verifyAnalysis(task, analysis, controller.signal);
             analysis.verification = verification;
             if (verification.drift === "major") {
@@ -59,10 +74,14 @@ export class TaskService {
                 payload: { error: toErrorMessage(error) },
             });
             await this.options.sendToApprover(`任务分析失败：${task.title}\n原因：${toErrorMessage(error)}\n可回复 /分析 ${task.id} 重试。`);
+            if (run)
+                await this.options.finishTaskRun?.(run.id, task.chatId, "failed");
             return;
         }
         finally {
             clearTimeout(timer);
+            if (heartbeat)
+                clearInterval(heartbeat);
         }
         await this.options.tasks.save(task);
         const stateDir = this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir;
@@ -78,6 +97,8 @@ export class TaskService {
         task.lastAnalyzedAt = Date.now();
         task.updatedAt = Date.now();
         await this.options.tasks.save(task);
+        if (run)
+            await this.options.finishTaskRun?.(run.id, task.chatId, task.state);
         await this.options.audit.append({
             actor: { system: true },
             action: "analysis_verified",
@@ -378,7 +399,7 @@ export class TaskService {
         }
         void this.options.memory.flush();
     }
-    async buildAnalysis(task, signal) {
+    async buildAnalysis(task, signal, onSession) {
         const media = (await this.options.loadMedia?.(task)) ?? {
             attachments: [],
             documents: [],
@@ -391,7 +412,7 @@ export class TaskService {
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs, attachments, mediaDocuments, project.writableProjects, project.referenceProjects);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, project.workspaceProjects, project.workspaceDocs, attachments, mediaDocuments, project.writableProjects, project.referenceProjects, onSession);
         }
         const repo = this.options.config.repos[0];
         if (!repo) {
@@ -399,7 +420,7 @@ export class TaskService {
             if (!project.resolved) {
                 return this.missingProjectAnalysis(task);
             }
-            return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments, mediaDocuments, project.writableProjects, project.referenceProjects);
+            return this.buildAnalysisInWorktree(task, project.worktree, signal, undefined, undefined, attachments, mediaDocuments, project.writableProjects, project.referenceProjects, onSession);
         }
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
@@ -417,6 +438,7 @@ export class TaskService {
             title: `${this.options.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
             role: "analysis",
             taskId: task.id,
+            ...(onSession ? { onSession } : {}),
             ...(this.options.conversationIdFor?.(task.platform, task.chatId)
                 ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
                 : {}),
@@ -428,7 +450,7 @@ export class TaskService {
         }, prompt, signal, attachments);
         return parseAnalysis(raw, task, repo.id);
     }
-    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs, attachments = [], mediaDocuments = [], writableProjects = [], referenceProjects = []) {
+    async buildAnalysisInWorktree(task, worktree, signal, workspaceProjects, workspaceDocs, attachments = [], mediaDocuments = [], writableProjects = [], referenceProjects = [], onSession) {
         const ctx = await this.options.contextService.analysisContext(task);
         const prompt = buildAnalysisPrompt({
             task,
@@ -454,6 +476,7 @@ export class TaskService {
             title: `${this.options.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
             role: "analysis",
             taskId: task.id,
+            ...(onSession ? { onSession } : {}),
             ...(this.options.conversationIdFor?.(task.platform, task.chatId)
                 ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
                 : {}),

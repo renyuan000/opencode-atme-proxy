@@ -122,6 +122,7 @@ export declare class ScopedTasks {
     list(): Promise<import("./types.js").TaskRecord[]>;
     save(task: Parameters<TaskStore["save"]>[0]): Promise<void>;
     redactMessage(chatId: string, messageId: string): Promise<void>;
+    forgetTask(chatId: string, taskId: string): void;
     flush(): Promise<void>;
     close(): Promise<void>;
 }

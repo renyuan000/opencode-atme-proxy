@@ -1,4 +1,5 @@
 import type { TaskRecord } from "./types.js";
+import type { SecurityReview } from "./security.js";
 export interface AnalysisContextPayload {
     sourceMessages: string[];
     supplements?: string[];
@@ -7,6 +8,7 @@ export interface AnalysisContextPayload {
     memory: string[];
     openTasks: string[];
     summary: string;
+    security?: SecurityReview;
 }
 export interface AnalysisPromptInput {
     task: TaskRecord;

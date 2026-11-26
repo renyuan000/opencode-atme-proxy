@@ -30,6 +30,8 @@ export interface OwnerCommandServiceOptions {
     archiveTasks(arg: string): Promise<string>;
     restoreTask(arg: string): Promise<string>;
     taskSessions(arg: string): Promise<string>;
+    allowPermission(arg: string): Promise<string>;
+    denyPermission(arg: string): Promise<string>;
     setOwnerFocus(arg: string, kind: "direction" | "keywords"): Promise<string>;
     analyzeTask(arg: string): Promise<string>;
     queryGroupMessages(arg: string): Promise<string>;

@@ -7,6 +7,7 @@ import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
 import type { TaskAnalysis, TaskRecord } from "./types.js";
 import type { GitExecutor } from "./executor.js";
+import type { TaskRun } from "./task-state-db.js";
 export interface ExecutionServiceOptions {
     config: AppConfig;
     stateDir: string;
@@ -46,11 +47,25 @@ export interface ExecutionServiceOptions {
     }>;
     sendToApprover(text: string): Promise<boolean>;
     sendToOwner(text: string): Promise<boolean>;
+    startTaskRun?(input: {
+        taskId: string;
+        chatId: string;
+        role: string;
+        stage: string;
+    }): Promise<TaskRun>;
+    attachTaskRunSession?(runId: string, sessionId: string, chatId: string): Promise<unknown>;
+    finishTaskRun?(runId: string, chatId: string, status: string): Promise<unknown>;
+    touchTaskRun?(runId: string, chatId: string): Promise<unknown>;
 }
 export declare class ExecutionService {
     private readonly options;
     private readonly slots;
+    private readonly runHeartbeats;
     constructor(options: ExecutionServiceOptions);
+    private startRun;
+    private attachRun;
+    private finishRun;
+    private promptWithTimeout;
     executeTask(task: TaskRecord, planHash: string): Promise<void>;
     private executeInWorkspace;
     private executeInWorktree;

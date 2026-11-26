@@ -6,6 +6,7 @@ import type { MemoryStore } from "./memory-store.js";
 import type { TaskStore } from "./task-store.js";
 import type { IncomingMessage, TaskRecord } from "./types.js";
 import { truncate, truncateMiddle } from "./util.js";
+import { inspectUntrusted, type SecurityReview } from "./security.js";
 
 export interface ContextServiceOptions {
   config: AppConfig;
@@ -24,6 +25,7 @@ export interface AnalysisContext {
   memory: string[];
   openTasks: string[];
   summary: string;
+  security: SecurityReview;
   corpus: string;
 }
 
@@ -211,6 +213,9 @@ export class ContextService {
       .slice(0, 5)
       .map((item) => `${item.id} ${item.title} [${item.state}]`);
     const summary = this.summaryText(task.platform, task.chatId);
+    const security = inspectUntrusted(
+      [task.excerpt, ...sourceMessages, ...recentContext].join("\n"),
+    );
     return {
       sourceMessages,
       supplements,
@@ -219,6 +224,7 @@ export class ContextService {
       memory: memoryItems,
       openTasks,
       summary,
+      security,
       corpus: [
         task.title,
         task.excerpt,

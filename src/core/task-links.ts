@@ -4,7 +4,7 @@ import type { GroupStateLayout } from "./group-state.js";
 import type { Logger } from "./logger.js";
 import { createLogger } from "./logger.js";
 import { readJsonFile, toErrorMessage, writeJsonAtomic } from "./util.js";
-import { TaskStateDb, type TaskNotification } from "./task-state-db.js";
+import { TaskStateDb, type TaskNotification, type TaskRun } from "./task-state-db.js";
 
 interface TaskLinkFile {
   version: 1;
@@ -138,6 +138,36 @@ export class ScopedTaskLinks {
     return this.store(chatId).findBySession(sessionId);
   }
 
+  startRun(input: { taskId: string; chatId: string; role: string; stage: string; sessionId?: string }): TaskRun {
+    return this.store(input.chatId).startRun(input);
+  }
+
+  attachRunSession(chatId: string, runId: string, sessionId: string): void {
+    this.store(chatId).attachRunSession(runId, sessionId);
+  }
+
+  finishRun(chatId: string, runId: string, status: string): void {
+    this.store(chatId).finishRun(runId, status);
+  }
+
+  touchRun(chatId: string, runId: string): void {
+    this.store(chatId).touchRun(runId);
+  }
+
+  staleRuns(stallMs: number): Array<TaskRun & { chatId: string }> {
+    return [...this.stores.entries()].flatMap(([chatId, store]) =>
+      store.staleRuns(stallMs).map((run) => ({ ...run, chatId })),
+    );
+  }
+
+  markRunStalled(chatId: string, runId: string): void {
+    this.store(chatId).markRunStalled(runId);
+  }
+
+  currentRun(taskId: string): TaskRun | undefined {
+    return [...this.stores.values()].map((store) => store.currentRun(taskId)).filter((run): run is TaskRun => Boolean(run))[0];
+  }
+
   recordNotification(input: Omit<TaskNotification, "id" | "createdAt">): TaskNotification {
     return this.store(input.chatId).recordNotification(input);
   }
@@ -160,6 +190,21 @@ export class ScopedTaskLinks {
   }
 
   async flush(): Promise<void> {}
+
+  purgeTasks(input: {
+    needsInfoDays: number;
+    awaitingApprovalDays: number;
+    terminalDays: number;
+    archivedDays: number;
+  }): Array<{ chatId: string; taskId: string }> {
+    return [...this.stores.entries()].flatMap(([chatId, store]) =>
+      store.purgeTasks(input).map((taskId) => ({ chatId, taskId })),
+    );
+  }
+
+  cleanupTombstones(days: number): number {
+    return [...this.stores.values()].reduce((sum, store) => sum + store.cleanupTombstones(days), 0);
+  }
 
   cleanup(linkDays: number, eventDays: number): { links: number; events: number } {
     let links = 0;

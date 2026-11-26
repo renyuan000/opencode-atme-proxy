@@ -245,6 +245,11 @@ const TaskArchiveSchema = z
     terminalAfterDays: z.number().int().min(1).max(3650).default(90),
     linkRetentionDays: z.number().int().min(1).max(3650).default(90),
     eventRetentionDays: z.number().int().min(1).max(3650).default(180),
+    purgeNeedsInfoAfterDays: z.number().int().min(1).max(3650).default(180),
+    purgeAwaitingApprovalAfterDays: z.number().int().min(1).max(3650).default(90),
+    purgeTerminalAfterDays: z.number().int().min(1).max(3650).default(180),
+    purgeArchivedAfterDays: z.number().int().min(1).max(3650).default(30),
+    tombstoneRetentionDays: z.number().int().min(1).max(3650).default(720),
   })
   .default({});
 

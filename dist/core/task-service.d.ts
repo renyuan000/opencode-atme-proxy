@@ -6,7 +6,7 @@ import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
 import type { TaskEventType } from "./task-events.js";
-import type { TaskNotification } from "./task-state-db.js";
+import type { TaskNotification, TaskRun } from "./task-state-db.js";
 import type { PromptAttachment } from "./opencode.js";
 import type { Classification, IncomingMessage, NotificationView, TaskAnalysis, TaskRecord } from "./types.js";
 export interface TaskServiceOptions {
@@ -60,6 +60,15 @@ export interface TaskServiceOptions {
         payload?: Record<string, unknown>;
     }): Promise<unknown>;
     recordTaskNotification?(input: Omit<TaskNotification, "id" | "createdAt">): Promise<unknown>;
+    startTaskRun?(input: {
+        taskId: string;
+        chatId: string;
+        role: string;
+        stage: string;
+    }): Promise<TaskRun>;
+    attachTaskRunSession?(runId: string, sessionId: string, chatId: string): Promise<unknown>;
+    finishTaskRun?(runId: string, chatId: string, status: string): Promise<unknown>;
+    touchTaskRun?(runId: string, chatId: string): Promise<unknown>;
     sendApproval(task: TaskRecord, analysis: TaskAnalysis): Promise<void>;
 }
 export declare class TaskService {

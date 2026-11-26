@@ -41,6 +41,7 @@ import { TokenBucket } from "./rate-limit.js";
 import { GitExecutor } from "./executor.js";
 import { ProjectResolver, candidateLogFields } from "./project-resolver.js";
 import { prefilterMessage } from "./prefilter.js";
+import { dangerousBashRules, protectedSourceRules } from "./safety.js";
 import { OpenCodeLlmClient } from "./opencode-llm.js";
 import { selectBurstExtensions, mergeBurst } from "./burst.js";
 import { ProjectStore } from "./project-store.js";
@@ -55,6 +56,7 @@ import { ApprovalService } from "./approval-service.js";
 import { ExecutionService } from "./execution-service.js";
 import { OwnerCommandService } from "./owner-command-service.js";
 import { TaskAdminService } from "./task-admin.js";
+import { PermissionBridge } from "./permission-bridge.js";
 import { ScopedTaskLinks } from "./task-links.js";
 import { ScopedTaskEvents } from "./task-events.js";
 import { ReplyService } from "./reply-service.js";
@@ -145,6 +147,18 @@ const EXECUTION_PERMISSION: typeof READ_ONLY_PERMISSION = [
   { permission: "webfetch", pattern: "*", action: "deny" },
   { permission: "websearch", pattern: "*", action: "deny" },
   { permission: "external_directory", pattern: "*", action: "deny" },
+  ...dangerousBashRules(),
+  ...protectedSourceRules(),
+];
+
+const OWNER_DM_PERMISSION: typeof READ_ONLY_PERMISSION = [
+  { permission: "edit", pattern: "*", action: "deny" },
+  { permission: "bash", pattern: "*", action: "allow" },
+  { permission: "webfetch", pattern: "*", action: "allow" },
+  { permission: "websearch", pattern: "*", action: "allow" },
+  { permission: "external_directory", pattern: "*", action: "allow" },
+  ...dangerousBashRules(),
+  ...protectedSourceRules(),
 ];
 
 
@@ -243,6 +257,7 @@ export class ProxyRuntime {
   private readonly replyOptions: ReplyStyleOptions;
   private readonly activeMessageIds = new Set<string>();
   private readonly readOnlyPermission: typeof READ_ONLY_PERMISSION;
+  private readonly ownerDmPermission: typeof READ_ONLY_PERMISSION;
   private readonly webSearchPermission: typeof READ_ONLY_PERMISSION;
   private readonly webFetchPermission: typeof READ_ONLY_PERMISSION;
   private readonly executionPermission: typeof READ_ONLY_PERMISSION;
@@ -261,6 +276,7 @@ export class ProxyRuntime {
   private readonly approvalService: ApprovalService;
   private readonly executionService: ExecutionService;
   private readonly ownerCommandService: OwnerCommandService;
+  private readonly permissionBridge: PermissionBridge;
   private readonly taskAdmin: TaskAdminService;
   private readonly replyService: ReplyService;
   private readonly taskService: TaskService;
@@ -313,11 +329,16 @@ export class ProxyRuntime {
     this.config = options.loaded.config;
     const projectPaths = configuredProjectPaths(this.config);
     this.readOnlyPermission = withProjectReadPaths(READ_ONLY_PERMISSION, projectPaths);
+    this.ownerDmPermission = OWNER_DM_PERMISSION;
     this.webSearchPermission = withProjectReadPaths(WEB_SEARCH_PERMISSION, projectPaths);
     this.webFetchPermission = withProjectReadPaths(WEB_FETCH_PERMISSION, projectPaths);
     this.executionPermission = withProjectReadPaths(EXECUTION_PERMISSION, projectPaths);
     const permissionFingerprint = createHash("sha256")
-      .update(JSON.stringify({ readOnly: this.readOnlyPermission, execution: this.executionPermission }))
+      .update(JSON.stringify({
+        readOnly: this.readOnlyPermission,
+        ownerDm: this.ownerDmPermission,
+        execution: this.executionPermission,
+      }))
       .digest("hex")
       .slice(0, 10);
     this.stateDir = requireStateDir(this.config);
@@ -555,6 +576,8 @@ export class ProxyRuntime {
       archiveTasks: (arg) => this.archiveTasks(arg),
       restoreTask: (arg) => this.restoreTask(arg),
       taskSessions: (arg) => this.taskSessions(arg),
+      allowPermission: (arg) => this.permissionBridge.reply(arg, "once"),
+      denyPermission: (arg) => this.permissionBridge.reply(arg, "reject"),
       setOwnerFocus: (arg, kind) => this.setOwnerFocus(arg, kind),
       analyzeTask: (arg) => this.analyzePendingTask(arg),
       queryGroupMessages: (arg) => this.queryGroupMessages(arg),
@@ -604,9 +627,17 @@ export class ProxyRuntime {
       replyOptions: this.replyOptions,
       ...(this.config.opencode.replyModel ? { model: this.config.opencode.replyModel } : {}),
       readOnlyPermission: this.readOnlyPermission,
+      ownerDmPermission: this.ownerDmPermission,
       webSearchPermission: this.webSearchPermission,
       webFetchPermission: this.webFetchPermission,
       ownerOpenId: () => this.ownerOpenId(),
+      chatLabelFor: async (chatId) => {
+        const configured = this.config.platforms.feishu.groups.find(
+          (group) => group.chatId === chatId,
+        );
+        return configured?.name ?? (await this.notificationService.fetchChatName(chatId));
+      },
+      senderLabelFor: (userId, messageId) => this.resolveSenderLabel(userId, messageId),
       conversationIdFor: (message) =>
         this.conversationIdFor(
           message.platform,
@@ -763,6 +794,12 @@ export class ProxyRuntime {
       publishTaskEvent: ({ chatId, taskId, type, payload }) =>
         this.taskEvents.publish(chatId, { type, taskId, chatId, ...(payload ? { payload } : {}) }),
       recordTaskNotification: async (input) => this.taskLinks.recordNotification(input),
+      startTaskRun: async (input) => this.taskLinks.startRun(input),
+      attachTaskRunSession: async (runId, sessionId, chatId) =>
+        this.taskLinks.attachRunSession(chatId, runId, sessionId),
+      finishTaskRun: async (runId, chatId, status) =>
+        this.taskLinks.finishRun(chatId, runId, status),
+      touchTaskRun: async (runId, chatId) => this.taskLinks.touchRun(chatId, runId),
       sendApproval: (task, analysis) => this.sendApproval(task, analysis),
     });
     this.executor = new GitExecutor({
@@ -804,6 +841,12 @@ export class ProxyRuntime {
       },
       sendToApprover: (text) => this.sendToApprover(text),
       sendToOwner: (text) => this.sendToOwner(text),
+      startTaskRun: async (input) => this.taskLinks.startRun(input),
+      attachTaskRunSession: async (runId, sessionId, chatId) =>
+        this.taskLinks.attachRunSession(chatId, runId, sessionId),
+      finishTaskRun: async (runId, chatId, status) =>
+        this.taskLinks.finishRun(chatId, runId, status),
+      touchTaskRun: async (runId, chatId) => this.taskLinks.touchRun(chatId, runId),
     });
     this.notificationService = new NotificationService({
       config: this.config,
@@ -816,6 +859,11 @@ export class ProxyRuntime {
       sentReplies: this.sentReplies as unknown as SentReplyStore,
       chatNames: this.chatNames,
       ownerOpenId: () => this.ownerOpenId(),
+    });
+    this.permissionBridge = new PermissionBridge({
+      bridge: this.options.bridge,
+      sendToOwner: (text) => this.sendToOwner(text),
+      logger: this.logger.child("permission-bridge"),
     });
     this.recoveryService = new RecoveryService({
       config: this.config,
@@ -1371,6 +1419,7 @@ export class ProxyRuntime {
     this.sweepTimer = setInterval(() => {
       void this.sweepExpiredApprovals();
       void this.sweepTaskArchive();
+      void this.sweepTaskRuns();
       void this.sweepSessions();
       void this.chatContext.flush();
       void this.memory.flush();
@@ -1386,7 +1435,9 @@ export class ProxyRuntime {
     this.groupSyncTimer.unref?.();
     void this.sweepExpiredApprovals();
     void this.sweepTaskArchive();
+    void this.sweepTaskRuns();
     this.started = true;
+    void this.permissionBridge.start();
     if (this.config.recovery.onStartup) {
       setImmediate(() => {
         void this.recoverOnStartup().catch((error) => {
@@ -1407,6 +1458,7 @@ export class ProxyRuntime {
   async stop(): Promise<void> {
     if (!this.started) return;
     this.started = false;
+    this.permissionBridge.stop();
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     this.sweepTimer = undefined;
     if (this.profileTimer) clearInterval(this.profileTimer);
@@ -2001,7 +2053,12 @@ export class ProxyRuntime {
         !mentionsOnly ||
         message.mentions.some((mention) => mention.id === ownerId || mention.id === botId),
       )
-      .filter((message) => !keyword || message.text.includes(keyword))
+      .filter(
+        (message) =>
+          !keyword ||
+          message.text.includes(keyword) ||
+          (message.sender.displayName ?? "").includes(keyword),
+      )
       .slice(-limit);
     if (messages.length === 0) {
       return `没有找到符合条件的群消息。\n群：${group.name ?? "未命名群"}\n时间范围：最近 7 天${keyword ? `\n关键词：${keyword}` : ""}`;
@@ -2292,10 +2349,14 @@ export class ProxyRuntime {
     const task = await this.tasks.get(taskId);
     if (!task) return `找不到任务：${taskId}`;
     const links = this.taskLinks.findByTask(taskId);
+    const run = this.taskLinks.currentRun(taskId);
     return [
       `任务：${task.id}`,
       `状态：${task.state}${task.archivedAt ? "（已归档）" : ""}`,
       `标题：${task.title}`,
+      ...(run
+        ? [`当前 run：${run.role}/${run.stage} ${run.status}${run.sessionId ? ` session=${run.sessionId}` : ""}`]
+        : []),
       ...(links.length > 0
         ? ["关联 session：", ...links.map((item) => `- ${item.role}: ${item.sessionId}`)]
         : ["关联 session：暂无记录"]),
@@ -2310,6 +2371,33 @@ export class ProxyRuntime {
     task.updatedAt = Date.now();
     await this.tasks.save(task);
     return `已恢复任务：${task.id}\n${task.title}`;
+  }
+
+  private async sweepTaskRuns(): Promise<void> {
+    const stallMs = 5 * 60_000;
+    const stale = this.taskLinks.staleRuns(stallMs);
+    for (const run of stale) {
+      this.taskLinks.markRunStalled(run.chatId, run.id);
+      const task = await this.tasks.get(run.taskId);
+      await this.sendToOwner(
+        [
+          "任务运行停滞",
+          `任务：${task?.title ?? run.taskId}`,
+          `阶段：${run.role}/${run.stage}`,
+          `session：${run.sessionId ?? "未绑定"}`,
+          `已超过 ${Math.round(stallMs / 60_000)} 分钟无心跳`,
+          "请检查 OpenCode session，确认继续或取消。",
+        ].join("\n"),
+      );
+      await this.audit.append({
+        actor: { system: true },
+        action: "task_run_stalled",
+        taskId: run.taskId,
+        details: { runId: run.id, role: run.role, stage: run.stage },
+      }).catch((error: unknown) => {
+        this.logger.warn("task run stall audit failed", { error: toErrorMessage(error) });
+      });
+    }
   }
 
   private async sweepTaskArchive(): Promise<void> {
@@ -2361,6 +2449,83 @@ export class ProxyRuntime {
       });
       this.logger.info("tasks archived by ttl", { count: archived });
     }
+    const purged = this.taskLinks.purgeTasks({
+      needsInfoDays: config?.purgeNeedsInfoAfterDays ?? 180,
+      awaitingApprovalDays: config?.purgeAwaitingApprovalAfterDays ?? 90,
+      terminalDays: config?.purgeTerminalAfterDays ?? 180,
+      archivedDays: config?.purgeArchivedAfterDays ?? 30,
+    });
+    if (purged.length > 0) {
+      for (const item of purged) {
+        this.tasks.forgetTask(item.chatId, item.taskId);
+        this.pending.deleteForTask(item.taskId);
+        void this.sessionManager.archiveTaskChildren(item.taskId).catch((error) => {
+          this.logger.warn("purged task session archive failed", {
+            taskId: item.taskId,
+            error: toErrorMessage(error),
+          });
+        });
+      }
+      await this.pending.flush();
+      await this.audit.append({
+        actor: { system: true },
+        action: "tasks_purged",
+        details: { count: purged.length },
+      }).catch((error: unknown) => {
+        this.logger.warn("task purge audit failed", { error: toErrorMessage(error) });
+      });
+      this.logger.info("tasks purged by ttl", { count: purged.length });
+    }
+    const tombstones = this.taskLinks.cleanupTombstones(
+      config?.tombstoneRetentionDays ?? 720,
+    );
+    if (tombstones > 0) {
+      this.logger.info("task tombstones cleaned", { count: tombstones });
+    }
+  }
+
+  private findGroupMentionedIn(text: string): AppConfig["platforms"]["feishu"]["groups"][number] | undefined {
+    const compact = this.normalizeGroupQuery(text);
+    for (const group of this.config.platforms.feishu.groups) {
+      if (!group.enabled) continue;
+      const names = [group.name ?? "", this.groupKnowledge.get(group.chatId)?.product ?? ""]
+        .filter(Boolean)
+        .map((value) => this.normalizeGroupQuery(value));
+      if (names.some((name) => name && compact.includes(name))) return group;
+    }
+    return undefined;
+  }
+
+  private async handleGroupLookupIntent(message: IncomingMessage): Promise<string | undefined> {
+    if (message.chat.kind !== "direct") return undefined;
+    if (!/(群|群里|群消息|东海忠|找一下|查一下|搜一下)/.test(message.text)) return undefined;
+    if (!/(找|查|搜|看|谁|哪|上).*?(群|消息|东海忠)|群.*?(找|查|搜)/.test(message.text)) {
+      return undefined;
+    }
+    const group = this.findGroupMentionedIn(message.text);
+    if (!group) return "请说明群名，例如：去产品-流分装置群里找东海忠关于 Kafka 的消息。";
+    const keyword = /kafka/i.test(message.text)
+      ? "kafka"
+      : message.text.includes("东海忠")
+        ? "东海忠"
+        : "";
+    return this.queryGroupMessages(
+      `${group.name ?? group.chatId}${keyword ? ` ${keyword}` : ""} 50`,
+    );
+  }
+
+  private async handlePermissionReply(message: IncomingMessage): Promise<string | undefined> {
+    if (message.chat.kind !== "direct" || message.sender.id !== this.ownerOpenId()) return undefined;
+    if (message.text.trim().startsWith("/")) return undefined;
+    if (!this.permissionBridge.pendingCount()) return undefined;
+    const text = message.text.replace(/[。！？!,.，\s]/g, "").trim();
+    const allow = /^(允许|批准|同意|可以|确认|通过)$/i.test(text);
+    const deny = /^(拒绝|不同意|不允许|不行|取消)$/i.test(text);
+    if (!allow && !deny) return undefined;
+    if (this.permissionBridge.pendingCount() > 1) {
+      return "当前有多个权限请求，请回复 /允许 <requestId> 或 /拒绝 <requestId>。";
+    }
+    return this.permissionBridge.reply("", deny ? "reject" : "once");
   }
 
   private async handleTaskAdminIntent(text: string): Promise<string | undefined> {
@@ -2651,7 +2816,7 @@ export class ProxyRuntime {
 
   private isDmTaskFollowup(message: IncomingMessage): boolean {
     if (message.chat.kind !== "direct") return false;
-    return /(刚才|刚刚|继续|接着|补充|上面|前面|之前|那个|这个文档|这个任务|这个需求|这条|文档|任务)/.test(message.text);
+    return /(刚才|刚刚|继续|接着|补充|上面|前面|之前|那个|这个文档|这个任务|这个需求|这条|文档|任务|pcap|抓包|附件)/i.test(message.text);
   }
 
   private async findActiveDmTask(): Promise<TaskRecord | undefined> {
@@ -2790,6 +2955,20 @@ export class ProxyRuntime {
         this.activeMessageIds.delete(dedupKey);
       }
       await this.markProcessed(message);
+      return;
+    }
+    const groupLookupReply = await this.handleGroupLookupIntent(message);
+    if (groupLookupReply) {
+      await this.safeReply(message, groupLookupReply);
+      await this.markProcessed(message);
+      this.activeMessageIds.delete(dedupKey);
+      return;
+    }
+    const permissionReply = await this.handlePermissionReply(message);
+    if (permissionReply) {
+      await this.safeReply(message, permissionReply);
+      await this.markProcessed(message);
+      this.activeMessageIds.delete(dedupKey);
       return;
     }
     const taskAdminReply = await this.handleTaskAdminIntent(message.text);

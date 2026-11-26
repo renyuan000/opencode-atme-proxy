@@ -31,6 +31,8 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **任务归档**：默认 90 天未更新的 `needs_info`、30 天的待审批、90 天的终态任务自动归档；只写 `archivedAt`，不删除任务、审计和分析文件。
 - **任务映射**：每群 `cache/state.db` 保存任务快照、消息/卡片到 taskId 的映射、session 到 taskId 的多对一映射、任务通知和生命周期事件；SQLite 为运行时事实源，旧 JSON 只做一次性导入。
 - **私聊承接**：候选/审批通知会记录 `task_notifications`；私聊 prompt 注入最近通知摘要，普通 DM 的“刚才/继续/补充/这个文档”等指代可在私聊 active task 上继续处理。
+- **运行监测**：`task_runs` 记录分析/执行/评审心跳和 lease；5 分钟无心跳会标记 stalled 并私聊提醒，分析/执行 prompt 有阶段超时。
+- **owner 私聊权限**：owner DM 允许 bash/联网/外部目录，但禁止 edit；内置高风险命令 ask 规则（rm -rf 根目录、mkfs、dd、shutdown、force push、reset --hard、drop database 等），并固定 deny `rm -rf` 主要源码目录 `/mnt/d/Work/source*`、`/home/renyuan/*.git`；通过私聊 `/允许 <id>` / `/拒绝 <id>` 回复 OpenCode 权限请求。
 - **多项目开发**：任务分析会列出工作空间内项目；执行时为涉及项目分别创建独立 git worktree，避免直接修改源仓库。
 - **会话代际**：群职责/画像/术语变化、私聊偏好/决策变化时自动升 `sessionEpoch`，新会话不复用旧上下文。
 - **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`、`/诊断`、`/任务`、`/任务分析`、`/任务清理`、`/分析`、`/群消息`、`/群消息分析`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
@@ -607,7 +609,7 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 群工作空间、代码项目平级、workspace 私聊管理
 - 去重、游标、任务、分析、审批、执行、审计骨架
 - 简洁/详细回复策略、审批门禁、失败降级
-- 176 个单元/集成测试
+- 180 个单元/集成测试
 
 未完成 / 下一步：
 

@@ -157,6 +157,12 @@ export class TaskStore {
             return [];
         }
     }
+    forgetTask(taskId) {
+        for (const [key, value] of this.index) {
+            if (value === taskId)
+                this.index.delete(key);
+        }
+    }
     async redactMessage(messageId) {
         const tasks = await this.list();
         for (const task of tasks) {

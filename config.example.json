@@ -43,7 +43,12 @@
     "awaitingApprovalAfterDays": 30,
     "terminalAfterDays": 90,
     "linkRetentionDays": 90,
-    "eventRetentionDays": 180
+    "eventRetentionDays": 180,
+    "purgeNeedsInfoAfterDays": 180,
+    "purgeAwaitingApprovalAfterDays": 90,
+    "purgeTerminalAfterDays": 180,
+    "purgeArchivedAfterDays": 30,
+    "tombstoneRetentionDays": 720
   },
   "polling": {
     "enabled": true,

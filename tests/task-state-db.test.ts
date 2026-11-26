@@ -32,6 +32,12 @@ test("stores task links and events in sqlite", async () => {
     });
     assert.equal(db.recentNotifications(1)[0]?.taskId, "task_1");
     assert.equal(db.notificationsForTask("task_1")[0]?.cardMessageId, "om_card");
+    const run = db.startRun({ taskId: "task_1", chatId: "chat", role: "analysis", stage: "analyzing" });
+    assert.equal(db.currentRun("task_1")?.id, run.id);
+    db.attachRunSession(run.id, "ses_1");
+    assert.equal(db.currentRun("task_1")?.sessionId, "ses_1");
+    db.finishRun(run.id, "awaiting_approval");
+    assert.equal(db.currentRun("task_1")?.status, "awaiting_approval");
     db.saveTaskWithLinks(
       "task_2",
       JSON.stringify({ id: "task_2", state: "needs_info", updatedAt: Date.now() }),

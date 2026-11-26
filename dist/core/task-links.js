@@ -110,6 +110,27 @@ export class ScopedTaskLinks {
     findBySession(chatId, sessionId) {
         return this.store(chatId).findBySession(sessionId);
     }
+    startRun(input) {
+        return this.store(input.chatId).startRun(input);
+    }
+    attachRunSession(chatId, runId, sessionId) {
+        this.store(chatId).attachRunSession(runId, sessionId);
+    }
+    finishRun(chatId, runId, status) {
+        this.store(chatId).finishRun(runId, status);
+    }
+    touchRun(chatId, runId) {
+        this.store(chatId).touchRun(runId);
+    }
+    staleRuns(stallMs) {
+        return [...this.stores.entries()].flatMap(([chatId, store]) => store.staleRuns(stallMs).map((run) => ({ ...run, chatId })));
+    }
+    markRunStalled(chatId, runId) {
+        this.store(chatId).markRunStalled(runId);
+    }
+    currentRun(taskId) {
+        return [...this.stores.values()].map((store) => store.currentRun(taskId)).filter((run) => Boolean(run))[0];
+    }
     recordNotification(input) {
         return this.store(input.chatId).recordNotification(input);
     }
@@ -126,6 +147,12 @@ export class ScopedTaskLinks {
         return [...this.stores.entries()].flatMap(([chatId, store]) => store.findByTask(taskId).map((item) => ({ chatId, ...item })));
     }
     async flush() { }
+    purgeTasks(input) {
+        return [...this.stores.entries()].flatMap(([chatId, store]) => store.purgeTasks(input).map((taskId) => ({ chatId, taskId })));
+    }
+    cleanupTombstones(days) {
+        return [...this.stores.values()].reduce((sum, store) => sum + store.cleanupTombstones(days), 0);
+    }
     cleanup(linkDays, eventDays) {
         let links = 0;
         let events = 0;

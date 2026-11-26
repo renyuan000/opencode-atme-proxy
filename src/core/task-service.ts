@@ -7,7 +7,7 @@ import type { MemoryStore } from "./memory-store.js";
 import type { SessionManager, SessionPermission } from "./session-manager.js";
 import type { TaskStore } from "./task-store.js";
 import type { TaskEventType } from "./task-events.js";
-import type { TaskNotification } from "./task-state-db.js";
+import type { TaskNotification, TaskRun } from "./task-state-db.js";
 import type { PromptAttachment } from "./opencode.js";
 import type {
   AnalysisVerification,
@@ -71,6 +71,10 @@ export interface TaskServiceOptions {
     payload?: Record<string, unknown>;
   }): Promise<unknown>;
   recordTaskNotification?(input: Omit<TaskNotification, "id" | "createdAt">): Promise<unknown>;
+  startTaskRun?(input: { taskId: string; chatId: string; role: string; stage: string }): Promise<TaskRun>;
+  attachTaskRunSession?(runId: string, sessionId: string, chatId: string): Promise<unknown>;
+  finishTaskRun?(runId: string, chatId: string, status: string): Promise<unknown>;
+  touchTaskRun?(runId: string, chatId: string): Promise<unknown>;
   sendApproval(task: TaskRecord, analysis: TaskAnalysis): Promise<void>;
 }
 
@@ -78,6 +82,17 @@ export class TaskService {
   constructor(private readonly options: TaskServiceOptions) {}
 
   async analyzeTask(task: TaskRecord): Promise<void> {
+    const run = await this.options.startTaskRun?.({
+      taskId: task.id,
+      chatId: task.chatId,
+      role: "analysis",
+      stage: "analyzing",
+    });
+    const heartbeat = run
+      ? setInterval(() => {
+          void this.options.touchTaskRun?.(run.id, task.chatId).catch(() => undefined);
+        }, 15_000)
+      : undefined;
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(new Error("analysis timed out")),
@@ -86,7 +101,15 @@ export class TaskService {
     let analysis: TaskAnalysis;
     let verification: AnalysisVerification | undefined;
     try {
-      analysis = await this.buildAnalysis(task, controller.signal);
+      analysis = await this.buildAnalysis(
+        task,
+        controller.signal,
+        run
+          ? async (sessionId) => {
+              await this.options.attachTaskRunSession?.(run.id, sessionId, task.chatId);
+            }
+          : undefined,
+      );
       verification = await this.verifyAnalysis(task, analysis, controller.signal);
       analysis.verification = verification;
       if (verification.drift === "major") {
@@ -127,9 +150,11 @@ export class TaskService {
       await this.options.sendToApprover(
         `任务分析失败：${task.title}\n原因：${toErrorMessage(error)}\n可回复 /分析 ${task.id} 重试。`,
       );
+      if (run) await this.options.finishTaskRun?.(run.id, task.chatId, "failed");
       return;
     } finally {
       clearTimeout(timer);
+      if (heartbeat) clearInterval(heartbeat);
     }
     await this.options.tasks.save(task);
     const stateDir = this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir;
@@ -157,6 +182,7 @@ export class TaskService {
     task.lastAnalyzedAt = Date.now();
     task.updatedAt = Date.now();
     await this.options.tasks.save(task);
+    if (run) await this.options.finishTaskRun?.(run.id, task.chatId, task.state);
     await this.options.audit.append({
       actor: { system: true },
       action: "analysis_verified",
@@ -478,6 +504,7 @@ export class TaskService {
   private async buildAnalysis(
     task: TaskRecord,
     signal?: AbortSignal,
+    onSession?: (sessionId: string) => void | Promise<void>,
   ): Promise<TaskAnalysis> {
     const media = (await this.options.loadMedia?.(task)) ?? {
       attachments: [],
@@ -503,6 +530,7 @@ export class TaskService {
         mediaDocuments,
         project.writableProjects,
         project.referenceProjects,
+        onSession,
       );
     }
     const repo = this.options.config.repos[0];
@@ -521,6 +549,7 @@ export class TaskService {
         mediaDocuments,
         project.writableProjects,
         project.referenceProjects,
+        onSession,
       );
     }
     const ctx = await this.options.contextService.analysisContext(task);
@@ -541,6 +570,7 @@ export class TaskService {
         title: `${this.options.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
         role: "analysis",
         taskId: task.id,
+        ...(onSession ? { onSession } : {}),
         ...(this.options.conversationIdFor?.(task.platform, task.chatId)
           ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
           : {}),
@@ -567,6 +597,7 @@ export class TaskService {
     mediaDocuments: string[] = [],
     writableProjects: string[] = [],
     referenceProjects: string[] = [],
+    onSession?: (sessionId: string) => void | Promise<void>,
   ): Promise<TaskAnalysis> {
     const ctx = await this.options.contextService.analysisContext(task);
     const prompt = buildAnalysisPrompt({
@@ -595,6 +626,7 @@ export class TaskService {
         title: `${this.options.config.opencode.sessionTitlePrefix}:worker:analysis:${task.chatId}`,
         role: "analysis",
         taskId: task.id,
+        ...(onSession ? { onSession } : {}),
         ...(this.options.conversationIdFor?.(task.platform, task.chatId)
           ? { conversationId: this.options.conversationIdFor(task.platform, task.chatId) }
           : {}),

@@ -31,9 +31,12 @@ export interface ReplyServiceOptions {
         modelID: string;
     };
     readOnlyPermission: SessionPermission[];
+    ownerDmPermission?: SessionPermission[];
     webSearchPermission?: SessionPermission[];
     webFetchPermission?: SessionPermission[];
     ownerOpenId(): string | undefined;
+    chatLabelFor?(chatId: string): Promise<string | undefined>;
+    senderLabelFor?(userId: string, messageId?: string): Promise<string | undefined>;
     resolveProject(chatId: string): Promise<{
         worktree: string;
         resolved: boolean;

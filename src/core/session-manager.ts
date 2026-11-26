@@ -27,6 +27,7 @@ export interface WorkerInput {
   webFetch?: boolean;
   conversationId?: string;
   taskId?: string;
+  onSession?: (sessionId: string) => void | Promise<void>;
 }
 
 export interface ChildInput {
@@ -199,6 +200,7 @@ export class SessionManager {
             sessionId: existing.sessionId,
           });
         }
+        await input.onSession?.(existing.sessionId);
         return existing.sessionId;
       }
     }
@@ -240,6 +242,7 @@ export class SessionManager {
         sessionId,
       });
     }
+    await input.onSession?.(sessionId);
     return sessionId;
   }
 

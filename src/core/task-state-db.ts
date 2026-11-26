@@ -11,6 +11,19 @@ interface LegacyLinks {
   bySession?: Record<string, { taskId: string; role: string }>;
 }
 
+export interface TaskRun {
+  id: string;
+  taskId: string;
+  chatId: string;
+  sessionId?: string;
+  role: string;
+  stage: string;
+  status: string;
+  startedAt: number;
+  heartbeatAt: number;
+  leaseUntil: number;
+}
+
 export interface TaskNotification {
   id: string;
   taskId: string;
@@ -55,6 +68,20 @@ export class TaskStateDb {
         name TEXT PRIMARY KEY,
         applied_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS task_tombstones (
+        task_id TEXT PRIMARY KEY,
+        chat_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        state TEXT,
+        created_at INTEGER,
+        archived_at INTEGER,
+        purged_at INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        source_message_ids TEXT,
+        source_url TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_tombstones_chat
+        ON task_tombstones(chat_id, purged_at);
       CREATE TABLE IF NOT EXISTS tasks (
         task_id TEXT PRIMARY KEY,
         data TEXT NOT NULL,
@@ -76,6 +103,22 @@ export class TaskStateDb {
       );
       CREATE INDEX IF NOT EXISTS idx_task_events_task
         ON task_events(chat_id, task_id, at);
+      CREATE TABLE IF NOT EXISTS task_runs (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        session_id TEXT,
+        role TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        heartbeat_at INTEGER NOT NULL,
+        lease_until INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_runs_task
+        ON task_runs(task_id, started_at);
+      CREATE INDEX IF NOT EXISTS idx_task_runs_session
+        ON task_runs(session_id, status);
       CREATE TABLE IF NOT EXISTS task_notifications (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL,
@@ -105,6 +148,7 @@ export class TaskStateDb {
         ON outbox(status, next_at);
     `);
     this.ensureTaskColumns();
+    this.ensureTombstoneColumns();
     this.ensureLinkIndexes();
     this.backupBeforeMigration();
     this.migrateLegacy();
@@ -112,6 +156,14 @@ export class TaskStateDb {
 
   markLegacyTasksImported(): void {
     this.markMigration("legacy-tasks");
+  }
+
+  private ensureTombstoneColumns(): void {
+    const columns = new Set(
+      (this.db.prepare("PRAGMA table_info(task_tombstones)").all() as Array<{ name: string }>).map((row) => row.name),
+    );
+    if (!columns.has("source_message_ids")) this.db.exec("ALTER TABLE task_tombstones ADD COLUMN source_message_ids TEXT");
+    if (!columns.has("source_url")) this.db.exec("ALTER TABLE task_tombstones ADD COLUMN source_url TEXT");
   }
 
   private ensureTaskColumns(): void {
@@ -286,6 +338,84 @@ export class TaskStateDb {
     return Number(row?.count ?? 0);
   }
 
+  startRun(input: { taskId: string; chatId: string; role: string; stage: string; sessionId?: string }): TaskRun {
+    const now = Date.now();
+    const run: TaskRun = {
+      id: `run_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      taskId: input.taskId,
+      chatId: input.chatId,
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      role: input.role,
+      stage: input.stage,
+      status: "running",
+      startedAt: now,
+      heartbeatAt: now,
+      leaseUntil: now + 5 * 60_000,
+    };
+    this.db.prepare(
+      "INSERT INTO task_runs(id, task_id, chat_id, session_id, role, stage, status, started_at, heartbeat_at, lease_until) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(run.id, run.taskId, run.chatId, run.sessionId ?? null, run.role, run.stage, run.status, run.startedAt, run.heartbeatAt, run.leaseUntil);
+    return run;
+  }
+
+  attachRunSession(runId: string, sessionId: string): void {
+    const now = Date.now();
+    this.db.prepare("UPDATE task_runs SET session_id = ?, heartbeat_at = ?, lease_until = ? WHERE id = ?")
+      .run(sessionId, now, now + 5 * 60_000, runId);
+  }
+
+  staleRuns(stallMs: number): TaskRun[] {
+    const cutoff = Date.now() - stallMs;
+    const rows = this.db.prepare(
+      "SELECT * FROM task_runs WHERE status = 'running' AND heartbeat_at < ? ORDER BY started_at",
+    ).all(cutoff) as Array<Record<string, unknown>>;
+    return rows.map((row) => this.mapRun(row));
+  }
+
+  markRunStalled(runId: string): void {
+    this.db.prepare("UPDATE task_runs SET status = 'stalled', lease_until = 0 WHERE id = ?").run(runId);
+  }
+
+  touchRun(runId: string): void {
+    const now = Date.now();
+    this.db.prepare("UPDATE task_runs SET heartbeat_at = ?, lease_until = ? WHERE id = ?")
+      .run(now, now + 5 * 60_000, runId);
+  }
+
+  finishRun(runId: string, status: string): void {
+    this.db.prepare("UPDATE task_runs SET status = ?, heartbeat_at = ?, lease_until = ? WHERE id = ?")
+      .run(status, Date.now(), 0, runId);
+  }
+
+  currentRun(taskId: string): TaskRun | undefined {
+    const row = this.db.prepare(
+      "SELECT * FROM task_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 1",
+    ).get(taskId) as Record<string, unknown> | undefined;
+    return row ? this.mapRun(row) : undefined;
+  }
+
+  activeRuns(): TaskRun[] {
+    const rows = this.db.prepare(
+      "SELECT * FROM task_runs WHERE status = 'running' AND lease_until > ? ORDER BY started_at",
+    ).all(Date.now()) as Array<Record<string, unknown>>;
+    return rows.map((row) => this.mapRun(row));
+  }
+
+  private mapRun(row: Record<string, unknown>): TaskRun {
+    return {
+      id: String(row.id ?? ""),
+      taskId: String(row.task_id ?? ""),
+      chatId: String(row.chat_id ?? this.chatId),
+      ...(row.session_id ? { sessionId: String(row.session_id) } : {}),
+      role: String(row.role ?? ""),
+      stage: String(row.stage ?? ""),
+      status: String(row.status ?? "unknown"),
+      startedAt: Number(row.started_at ?? 0),
+      heartbeatAt: Number(row.heartbeat_at ?? 0),
+      leaseUntil: Number(row.lease_until ?? 0),
+    };
+  }
+
   recordNotification(input: Omit<TaskNotification, "id" | "createdAt"> & Partial<Pick<TaskNotification, "id" | "createdAt">>): TaskNotification {
     const value: TaskNotification = {
       ...input,
@@ -400,6 +530,91 @@ export class TaskStateDb {
       );
   }
 
+  purgeTasks(input: {
+    needsInfoDays: number;
+    awaitingApprovalDays: number;
+    terminalDays: number;
+    archivedDays: number;
+  }): string[] {
+    const now = Date.now();
+    const rows = this.db.prepare(
+      "SELECT task_id, data, state, archived_at, updated_at FROM tasks",
+    ).all() as Array<{
+      task_id: string;
+      data: string;
+      state?: string;
+      archived_at?: number;
+      updated_at?: number;
+    }>;
+    const active = new Set(["candidate", "analyzing", "executing", "verifying", "approved", "awaiting_merge"]);
+    const terminal = new Set(["done", "rejected", "canceled", "failed", "expired"]);
+    const purged: string[] = [];
+    const transaction = this.db.transaction(() => {
+      for (const row of rows) {
+        const state = row.state ?? "unknown";
+        if (active.has(state)) continue;
+        const ageDays = (now - (row.updated_at ?? now)) / 86_400_000;
+        const archivedAge = row.archived_at ? (now - row.archived_at) / 86_400_000 : 0;
+        const shouldPurge =
+          (row.archived_at && archivedAge >= input.archivedDays) ||
+          (state === "needs_info" && ageDays >= input.needsInfoDays) ||
+          (state === "awaiting_approval" && ageDays >= input.awaitingApprovalDays) ||
+          (terminal.has(state) && ageDays >= input.terminalDays);
+        if (!shouldPurge) continue;
+        const data = (() => {
+          try {
+            return JSON.parse(row.data) as Record<string, unknown>;
+          } catch {
+            return {};
+          }
+        })();
+        const title = typeof data.title === "string" ? data.title : "";
+        const createdAt = typeof data.createdAt === "number" ? data.createdAt : 0;
+        const sourceMessageIds = Array.isArray(data.messageIds)
+          ? data.messageIds.filter((value): value is string => typeof value === "string")
+          : [];
+        const sourceUrl = typeof data.messageLink === "string" ? data.messageLink : null;
+        this.db.prepare(
+          "INSERT OR REPLACE INTO task_tombstones(task_id, chat_id, title, state, created_at, archived_at, purged_at, reason, source_message_ids, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ).run(
+          row.task_id,
+          this.chatId,
+          title,
+          state,
+          createdAt,
+          row.archived_at ?? null,
+          now,
+          row.archived_at ? "archived_ttl" : "state_ttl",
+          JSON.stringify(sourceMessageIds),
+          sourceUrl,
+        );
+        this.db.prepare(
+          "INSERT OR IGNORE INTO task_events(event_id, chat_id, task_id, type, at, payload) VALUES (?, ?, ?, ?, ?, ?)",
+        ).run(
+          `purge_${row.task_id}_${now}`,
+          this.chatId,
+          row.task_id,
+          "task.purged",
+          now,
+          JSON.stringify({ state, title }),
+        );
+        this.db.prepare("DELETE FROM task_links WHERE chat_id = ? AND task_id = ?").run(this.chatId, row.task_id);
+        this.db.prepare("DELETE FROM task_notifications WHERE task_id = ?").run(row.task_id);
+        this.db.prepare("DELETE FROM task_runs WHERE task_id = ? AND status != 'running'").run(row.task_id);
+        this.db.prepare("DELETE FROM task_index WHERE task_id = ?").run(row.task_id);
+        this.db.prepare("DELETE FROM tasks WHERE task_id = ?").run(row.task_id);
+        purged.push(row.task_id);
+      }
+    });
+    transaction();
+    return purged;
+  }
+
+  cleanupTombstones(days: number): number {
+    const cutoff = Date.now() - days * 86_400_000;
+    return Number(this.db.prepare("DELETE FROM task_tombstones WHERE purged_at < ?").run(cutoff).changes);
+  }
+
   cleanup(input: { linkDays: number; eventDays: number }): { links: number; events: number } {
     const now = Date.now();
     const linkCutoff = now - input.linkDays * 86_400_000;
@@ -410,6 +625,7 @@ export class TaskStateDb {
       ).run(linkCutoff).changes;
       const events = this.db.prepare("DELETE FROM task_events WHERE at < ?").run(eventCutoff).changes;
       this.db.prepare("DELETE FROM task_notifications WHERE created_at < ?").run(eventCutoff);
+      this.db.prepare("DELETE FROM task_runs WHERE status != 'running' AND started_at < ?").run(eventCutoff);
       this.db.prepare("DELETE FROM outbox WHERE status = 'delivered' AND created_at < ?").run(eventCutoff);
       return { links: Number(links), events: Number(events) };
     });

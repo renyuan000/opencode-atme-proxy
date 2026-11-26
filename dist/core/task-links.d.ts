@@ -1,6 +1,6 @@
 import type { GroupStateLayout } from "./group-state.js";
 import type { Logger } from "./logger.js";
-import { TaskStateDb, type TaskNotification } from "./task-state-db.js";
+import { TaskStateDb, type TaskNotification, type TaskRun } from "./task-state-db.js";
 interface TaskLinkFile {
     version: 1;
     byMessage: Record<string, string>;
@@ -46,6 +46,21 @@ export declare class ScopedTaskLinks {
         taskId: string;
         role: string;
     } | undefined;
+    startRun(input: {
+        taskId: string;
+        chatId: string;
+        role: string;
+        stage: string;
+        sessionId?: string;
+    }): TaskRun;
+    attachRunSession(chatId: string, runId: string, sessionId: string): void;
+    finishRun(chatId: string, runId: string, status: string): void;
+    touchRun(chatId: string, runId: string): void;
+    staleRuns(stallMs: number): Array<TaskRun & {
+        chatId: string;
+    }>;
+    markRunStalled(chatId: string, runId: string): void;
+    currentRun(taskId: string): TaskRun | undefined;
     recordNotification(input: Omit<TaskNotification, "id" | "createdAt">): TaskNotification;
     notificationsForTask(taskId: string, limit?: number): TaskNotification[];
     recentNotifications(limit?: number): TaskNotification[];
@@ -55,6 +70,16 @@ export declare class ScopedTaskLinks {
         role: string;
     }>;
     flush(): Promise<void>;
+    purgeTasks(input: {
+        needsInfoDays: number;
+        awaitingApprovalDays: number;
+        terminalDays: number;
+        archivedDays: number;
+    }): Array<{
+        chatId: string;
+        taskId: string;
+    }>;
+    cleanupTombstones(days: number): number;
     cleanup(linkDays: number, eventDays: number): {
         links: number;
         events: number;

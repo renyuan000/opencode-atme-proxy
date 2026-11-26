@@ -25,6 +25,7 @@ export interface WorkerInput {
     webFetch?: boolean;
     conversationId?: string;
     taskId?: string;
+    onSession?: (sessionId: string) => void | Promise<void>;
 }
 export interface ChildInput {
     platform: string;

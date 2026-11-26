@@ -5,6 +5,7 @@ import type { GroupContextStore } from "./group-context.js";
 import type { MemoryStore } from "./memory-store.js";
 import type { TaskStore } from "./task-store.js";
 import type { IncomingMessage, TaskRecord } from "./types.js";
+import { type SecurityReview } from "./security.js";
 export interface ContextServiceOptions {
     config: AppConfig;
     chatContext: ChatContextStore;
@@ -21,6 +22,7 @@ export interface AnalysisContext {
     memory: string[];
     openTasks: string[];
     summary: string;
+    security: SecurityReview;
     corpus: string;
 }
 export declare class ContextService {

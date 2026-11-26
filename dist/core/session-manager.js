@@ -114,6 +114,7 @@ export class SessionManager {
                         sessionId: existing.sessionId,
                     });
                 }
+                await input.onSession?.(existing.sessionId);
                 return existing.sessionId;
             }
         }
@@ -149,6 +150,7 @@ export class SessionManager {
                 sessionId,
             });
         }
+        await input.onSession?.(sessionId);
         return sessionId;
     }
     async runWorker(input, promptText, signal, attachments) {

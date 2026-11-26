@@ -435,6 +435,9 @@ export class ScopedTasks {
     async redactMessage(chatId, messageId) {
         await this.store(chatId).redactMessage(messageId);
     }
+    forgetTask(chatId, taskId) {
+        this.store(chatId).forgetTask(taskId);
+    }
     async flush() {
         await Promise.all([...this.stores.values()].map((store) => store.flush()));
     }

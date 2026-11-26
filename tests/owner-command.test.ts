@@ -31,6 +31,14 @@ test("parses slash commands", () => {
     command: "task_archive",
     arg: "产品-流分装置 needs_info 90 确认",
   });
+  assert.deepEqual(parseOwnerCommand("/允许 perm_123"), {
+    command: "permission_allow",
+    arg: "perm_123",
+  });
+  assert.deepEqual(parseOwnerCommand("/拒绝"), {
+    command: "permission_deny",
+    arg: "",
+  });
   assert.deepEqual(parseOwnerCommand("/任务会话 task_123"), {
     command: "task_sessions",
     arg: "task_123",

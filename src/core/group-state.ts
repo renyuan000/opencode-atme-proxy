@@ -501,6 +501,10 @@ export class ScopedTasks {
     await this.store(chatId).redactMessage(messageId);
   }
 
+  forgetTask(chatId: string, taskId: string): void {
+    this.store(chatId).forgetTask(taskId);
+  }
+
   async flush(): Promise<void> {
     await Promise.all([...this.stores.values()].map((store) => store.flush()));
   }

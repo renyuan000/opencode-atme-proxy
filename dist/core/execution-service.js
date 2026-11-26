@@ -5,9 +5,50 @@ import { toErrorMessage, truncate, writeJsonAtomic } from "./util.js";
 export class ExecutionService {
     options;
     slots;
+    runHeartbeats = new Map();
     constructor(options) {
         this.options = options;
         this.slots = new Semaphore(options.config.policy.maxConcurrentExecutions);
+    }
+    async startRun(task, role, stage) {
+        const run = await this.options.startTaskRun?.({
+            taskId: task.id,
+            chatId: task.chatId,
+            role,
+            stage,
+        });
+        if (run) {
+            const timer = setInterval(() => {
+                void this.options.touchTaskRun?.(run.id, task.chatId).catch(() => undefined);
+            }, 15_000);
+            timer.unref?.();
+            this.runHeartbeats.set(run.id, timer);
+        }
+        return run;
+    }
+    async attachRun(run, task, sessionId) {
+        if (!run)
+            return;
+        await this.options.attachTaskRunSession?.(run.id, sessionId, task.chatId);
+    }
+    async finishRun(run, task, status) {
+        if (!run)
+            return;
+        const timer = this.runHeartbeats.get(run.id);
+        if (timer)
+            clearInterval(timer);
+        this.runHeartbeats.delete(run.id);
+        await this.options.finishTaskRun?.(run.id, task.chatId, status);
+    }
+    async promptWithTimeout(sessionId, input) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(new Error("execution timed out")), this.options.config.policy.executionTimeoutMinutes * 60_000);
+        try {
+            return await this.options.bridge.prompt(sessionId, { ...input, signal: controller.signal });
+        }
+        finally {
+            clearTimeout(timer);
+        }
     }
     async executeTask(task, planHash) {
         const analysis = await this.options.latestAnalysis(task.id);
@@ -92,6 +133,7 @@ export class ExecutionService {
         }
         const release = await this.slots.acquire();
         const startedAt = Date.now();
+        const run = await this.startRun(task, "execution", "executing");
         try {
             task.state = "executing";
             task.updatedAt = Date.now();
@@ -138,9 +180,10 @@ export class ExecutionService {
                 ...(executionAgent ? { agent: executionAgent } : {}),
                 taskId: task.id,
             });
+            await this.attachRun(run, task, sessionId);
             let output = "";
             try {
-                output = await this.options.bridge.prompt(sessionId, {
+                output = await this.promptWithTimeout(sessionId, {
                     directory: taskWorkspace,
                     title: `${this.options.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
                     text: prompt,
@@ -188,6 +231,7 @@ export class ExecutionService {
             if (workspaceDir) {
                 await writeJsonAtomic(join(workspaceDir, "execution", `${task.id}.json`), execution);
             }
+            await this.finishRun(run, task, passed ? "done" : "failed");
             if (passed) {
                 const review = await this.reviewExecution({
                     task,
@@ -227,6 +271,7 @@ export class ExecutionService {
             await this.options.sessionManager.archiveTaskChildren(task.id);
         }
         catch (error) {
+            await this.finishRun(run, task, "failed");
             task.state = "failed";
             task.updatedAt = Date.now();
             await this.options.tasks.save(task);
@@ -243,6 +288,7 @@ export class ExecutionService {
             throw new Error("approval missing or stale");
         }
         const release = await this.slots.acquire();
+        const run = await this.startRun(task, "execution", "executing");
         try {
             task.state = "executing";
             task.updatedAt = Date.now();
@@ -262,9 +308,10 @@ export class ExecutionService {
                 ...(executionAgent ? { agent: executionAgent } : {}),
                 taskId: task.id,
             });
+            await this.attachRun(run, task, sessionId);
             let output = "";
             try {
-                output = await this.options.bridge.prompt(sessionId, {
+                output = await this.promptWithTimeout(sessionId, {
                     directory: worktree,
                     title: `${this.options.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
                     text: prompt,
@@ -289,6 +336,7 @@ export class ExecutionService {
                 finishedAt: Date.now(),
             };
             await writeJsonAtomic(join(this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir, "executions", `${task.id}.json`), execution);
+            await this.finishRun(run, task, "done");
             const review = await this.reviewExecution({
                 task,
                 analysis,
@@ -317,6 +365,7 @@ export class ExecutionService {
             await this.options.sessionManager.archiveTaskChildren(task.id);
         }
         catch (error) {
+            await this.finishRun(run, task, "failed");
             task.state = "failed";
             task.updatedAt = Date.now();
             await this.options.tasks.save(task);
@@ -331,6 +380,7 @@ export class ExecutionService {
         if (!this.options.config.subagents.enabled || !this.options.config.subagents.reviewer)
             return undefined;
         const title = `${this.options.config.opencode.sessionTitlePrefix}:execution-review:${input.task.id}`;
+        const run = await this.startRun(input.task, "review", "reviewing");
         try {
             const { sessionId, release } = await this.options.sessionManager.createChildSession({
                 platform: input.task.platform,
@@ -344,8 +394,9 @@ export class ExecutionService {
                 permission: this.options.readOnlyPermission,
                 taskId: input.task.id,
             });
+            await this.attachRun(run, input.task, sessionId);
             try {
-                const review = await this.options.bridge.prompt(sessionId, {
+                const review = await this.promptWithTimeout(sessionId, {
                     directory: input.directory,
                     title,
                     text: [
@@ -364,12 +415,11 @@ export class ExecutionService {
                 const text = truncate(review.trim(), 800);
                 await this.options.sendToOwner(`评审结果：${input.task.title}\n${text}`);
                 const conclusion = /结论\s*[:：]\s*(通过|需修改)/.exec(text)?.[1];
-                return {
-                    verdict: conclusion === "需修改" || /不通过|未通过/.test(text)
-                        ? "changes"
-                        : "passed",
-                    text,
-                };
+                const verdict = conclusion === "需修改" || /不通过|未通过/.test(text)
+                    ? "changes"
+                    : "passed";
+                await this.finishRun(run, input.task, verdict === "changes" ? "needs_info" : "done");
+                return { verdict, text };
             }
             finally {
                 release();
@@ -377,6 +427,7 @@ export class ExecutionService {
             }
         }
         catch (error) {
+            await this.finishRun(run, input.task, "failed");
             this.options.logger.warn("execution review failed", {
                 taskId: input.task.id,
                 error: toErrorMessage(error),
@@ -387,6 +438,7 @@ export class ExecutionService {
     async runOpenCodeExecution(task, repo, analysis) {
         const startedAt = Date.now();
         let worktree;
+        const run = await this.startRun(task, "execution", "executing");
         try {
             worktree = await this.options.executor.prepare(repo, task.id);
             const prompt = this.executionPrompt(task, analysis, worktree.path);
@@ -403,7 +455,7 @@ export class ExecutionService {
             });
             let output = "";
             try {
-                output = await this.options.bridge.prompt(sessionId, {
+                output = await this.promptWithTimeout(sessionId, {
                     directory: worktree.path,
                     title: `${this.options.config.opencode.sessionTitlePrefix}:exec:${task.id}`,
                     text: prompt,
@@ -418,6 +470,7 @@ export class ExecutionService {
             const head = await this.options.executor.commitState(worktree);
             void head;
             void output;
+            await this.finishRun(run, task, testResult.passed ? "done" : "failed");
             return {
                 taskId: task.id,
                 approvalPlanHash: analysis.planHash,
@@ -435,6 +488,7 @@ export class ExecutionService {
             };
         }
         catch (error) {
+            await this.finishRun(run, task, "failed");
             return {
                 taskId: task.id,
                 approvalPlanHash: analysis.planHash,

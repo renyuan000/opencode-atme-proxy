@@ -39,6 +39,7 @@ export declare class ProxyRuntime {
     private readonly replyOptions;
     private readonly activeMessageIds;
     private readonly readOnlyPermission;
+    private readonly ownerDmPermission;
     private readonly webSearchPermission;
     private readonly webFetchPermission;
     private readonly executionPermission;
@@ -57,6 +58,7 @@ export declare class ProxyRuntime {
     private readonly approvalService;
     private readonly executionService;
     private readonly ownerCommandService;
+    private readonly permissionBridge;
     private readonly taskAdmin;
     private readonly replyService;
     private readonly taskService;
@@ -144,7 +146,11 @@ export declare class ProxyRuntime {
     private archiveTasks;
     private taskSessions;
     private restoreTask;
+    private sweepTaskRuns;
     private sweepTaskArchive;
+    private findGroupMentionedIn;
+    private handleGroupLookupIntent;
+    private handlePermissionReply;
     private handleTaskAdminIntent;
     private diagnoseProject;
     private manageWorkspace;
