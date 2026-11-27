@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { mkdir, readdir, stat } from "node:fs/promises";
+import { resolveLogFile } from "./config.js";
 import { createLogger } from "./logger.js";
 import { OpenAiCompatibleClient, RelevanceService, parseJsonLoose, } from "./relevance.js";
 import { detectReplyStyle, enforceReplyLength, } from "./reply-style.js";
@@ -868,6 +869,7 @@ export class ProxyRuntime {
         this.scanService = new ScanService({
             config: this.config,
             logger: this.logger.child("scan"),
+            logPath: resolveLogFile(this.config),
             relevance: () => this.relevance,
             platform: this.options.platform,
             ownerOpenId: () => this.ownerOpenId(),
@@ -3751,6 +3753,7 @@ function createFilterClient(options, logger) {
             titlePrefix: config.opencode.sessionTitlePrefix,
             ...(config.opencode.analysisAgent ? { agent: config.opencode.analysisAgent } : {}),
             ...(config.analysis.model ? { model: config.analysis.model } : {}),
+            timeoutMs: config.filter.timeoutMs,
             logger: logger.child("filter"),
         });
     }

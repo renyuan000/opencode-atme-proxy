@@ -10,6 +10,7 @@ export interface OpenCodeLlmOptions {
         providerID: string;
         modelID: string;
     };
+    timeoutMs?: number;
     logger?: Logger;
 }
 export declare class OpenCodeLlmClient implements LlmClient {

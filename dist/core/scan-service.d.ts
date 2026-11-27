@@ -31,6 +31,7 @@ export interface ScanServiceOptions {
     sendToApprover(text: string): Promise<boolean>;
     sendToOwner(text: string): Promise<boolean>;
     sendOwnerNotification?(view: NotificationView): Promise<boolean>;
+    logPath?: string;
 }
 export declare class ScanService {
     private readonly options;

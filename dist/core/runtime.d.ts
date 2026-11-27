@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "./types.js";
 import type { PlatformAdapter } from "./ports.js";
-import type { LoadedConfig } from "./config.js";
+import { type LoadedConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { OpenCodeBridge } from "./opencode.js";
 import type { LlmClient } from "./relevance.js";

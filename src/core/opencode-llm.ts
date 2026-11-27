@@ -10,6 +10,7 @@ export interface OpenCodeLlmOptions {
   titlePrefix: string;
   agent?: string;
   model?: { providerID: string; modelID: string };
+  timeoutMs?: number;
   logger?: Logger;
 }
 
@@ -37,12 +38,20 @@ export class OpenCodeLlmClient implements LlmClient {
         { permission: "external_directory", pattern: "*", action: "deny" },
       ],
     });
+    const timeoutMs = this.options.timeoutMs ?? 60_000;
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new Error(`filter timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    const onAbort = (): void => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", onAbort, { once: true });
     try {
       const text = await this.options.bridge.prompt(sessionId, {
         directory: this.options.directory,
         title,
         text: system ? `${system}\n\n${user}` : user,
-        ...(signal ? { signal } : {}),
+        signal: controller.signal,
       });
       return {
         text,
@@ -50,6 +59,8 @@ export class OpenCodeLlmClient implements LlmClient {
         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
       };
     } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       await this.options.bridge.deleteSession(sessionId).catch((error) => {
         this.logger.warn("failed to delete filter session", {
           sessionId,

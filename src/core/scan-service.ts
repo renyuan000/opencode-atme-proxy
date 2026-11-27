@@ -33,6 +33,7 @@ export interface ScanServiceOptions {
   sendToApprover(text: string): Promise<boolean>;
   sendToOwner(text: string): Promise<boolean>;
   sendOwnerNotification?(view: NotificationView): Promise<boolean>;
+  logPath?: string;
 }
 
 export class ScanService {
@@ -298,8 +299,16 @@ export class ScanService {
     }
     if (stats.failures > 0) {
       const failed = stats.failedMessageIds;
+      const log = this.options.logPath
+        ? `日志：${this.options.logPath}`
+        : "日志：journalctl -u atme-proxy";
       await this.options.sendToApprover(
-        `筛选失败：${failed.length} 条消息未处理，已保留待重试。\n原因见日志；不会静默丢弃。`,
+        [
+          `筛选失败：${failed.length} 条消息未处理，已保留待重试。`,
+          `原因：${truncate(stats.lastError ?? "筛选模型失败", 500)}`,
+          log,
+          "不会静默丢弃。",
+        ].join("\n"),
       );
     }
     const byId = new Map(items.map((item) => [item.messageId, item]));

@@ -304,6 +304,7 @@ export class RelevanceService {
       model: "",
       failures: 0,
       failedMessageIds: [],
+      lastError: undefined,
     };
 
     const keywordSignals = new Map<string, string[]>();
@@ -366,6 +367,7 @@ export class RelevanceService {
         stats.model = result.model;
       } catch (error) {
         stats.failures++;
+        stats.lastError = toErrorMessage(error);
         stats.failedMessageIds.push(...batch.map((message) => message.messageId));
         this.logger.error("filter batch failed", {
           size: batch.length,
@@ -470,6 +472,7 @@ export class RelevanceService {
         };
       } catch (error) {
         lastError = error;
+        if (/timed out|timeout/i.test(toErrorMessage(error))) break;
         if (attempt < 2) await sleep(500 * attempt);
       }
     }

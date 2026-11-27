@@ -99,6 +99,7 @@ export interface FilterStats {
     model: string;
     failures: number;
     failedMessageIds: string[];
+    lastError?: string;
 }
 export interface TaskRecord {
     id: string;

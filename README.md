@@ -75,7 +75,7 @@ python3 -m venv ~/.local/share/atme-ocr-venv
 - **审批门禁**：未批准不改代码；批准绑定计划哈希；自动合并/推送未实现，配置保留。
 - **回复补充**：主人直接回复审批卡或任务来源消息，会自动追加到对应任务；待审批/需补充状态会重新分析，执行中只记录补充、不会中途改变当前执行。
 - **审批卡信息**：开发审批卡显示群名、原消息链接、范围、计划文件和执行计划；批准后结果卡保留原始上下文。
-- **失败不静默**：筛选失败、审批超时、分析失败、执行失败都会私聊告警并保留状态；分析失败会提示 `/分析 <taskId>` 重试。
+- **失败不静默**：筛选失败、审批超时、分析失败、执行失败都会私聊告警并保留状态；分析失败会提示 `/分析 <taskId>` 重试。筛选告警会附带原因和 `proxy.log` 路径。
 
 ### 项目定位与上下文
 
@@ -237,6 +237,7 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 | `platforms.feishu.approvers[0].openId` | 审批人 open_id，通常是我                  |
 | `platforms.feishu.groups[].chatId`     | 群 chat_id（`oc_` 开头），可多个            |
 | `filter.baseUrl/model`                 | OpenAI 兼容的低成本模型                  |
+| `filter.timeoutMs`                     | 筛选模型超时，默认 60000ms               |
 | `opencode.baseUrl`                     | `http://127.0.0.1:19876`                 |
 | `groups[].workspace`                   | 群工作空间：root/projects/docs；优先于 project |
 | `project.worktree`                     | 旧模式主项目代码目录；不填则自动解析      |
@@ -284,6 +285,7 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 - **批量筛选**默认用 OpenCode 的主模型（`filter.mode="opencode"`），不需要额外配置 baseUrl/API Key。
 - 想省钱可改成独立低成本模型：`filter.mode="external"`，再配 `baseUrl/model/apiKey`。
 - 如果你想先用起来、不想单独配筛选模型：把 `filter.enabled` 设为 `false`，@ 消息仍会走 OpenCode 主模型，但周期筛选会关闭。
+- OpenCode 模式下筛选超时由 `filter.timeoutMs` 控制；超时会快速失败并保留消息待重试，不再等满整个扫描任务。
 - 你的 OpenCode 已配好，**不需要再配一遍模型**；`setup` 里的“低成本模型”是可选项。
 
 ### 3. 启动
