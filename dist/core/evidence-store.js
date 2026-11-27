@@ -36,6 +36,7 @@ export class EvidenceStore {
     now;
     dirs = new Map();
     activeMonths = new Map();
+    indexes = new Map();
     constructor(options) {
         this.options = options;
         this.enabled = options.enabled !== false;
@@ -56,6 +57,9 @@ export class EvidenceStore {
             appendFileSync(join(dir, `${month}.jsonl`), `${JSON.stringify(entry)}\n`, {
                 mode: 0o600,
             });
+            const index = this.indexes.get(record.chatId);
+            if (index)
+                index.set(record.messageId, entry);
             if (this.activeMonths.get(record.chatId) !== month) {
                 this.activeMonths.set(record.chatId, month);
                 writeFileSync(join(dir, "pointer.json"), `${JSON.stringify({ version: 1, active: month, updatedAt: this.now() })}\n`, { encoding: "utf8", mode: 0o600 });
@@ -122,6 +126,9 @@ export class EvidenceStore {
         if (!this.enabled)
             return undefined;
         const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
+        const record = this.ensureIndex(input.chatId).get(input.messageId);
+        if (record && record.ts >= cutoff)
+            return record;
         for (const dir of this.findChatDirs(input.chatId)) {
             let files;
             try {
@@ -159,6 +166,62 @@ export class EvidenceStore {
         }
         return undefined;
     }
+    findReplyChain(input) {
+        if (!this.enabled)
+            return [];
+        const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
+        const index = this.ensureIndex(input.chatId);
+        const chain = [];
+        const seen = new Set();
+        let id = input.messageId;
+        while (id && chain.length < (input.maxDepth ?? 5) && !seen.has(id)) {
+            seen.add(id);
+            const record = index.get(id);
+            if (!record || record.ts < cutoff)
+                break;
+            chain.push(record);
+            id = record.replyToMessageId;
+        }
+        return chain;
+    }
+    ensureIndex(chatId) {
+        const existing = this.indexes.get(chatId);
+        if (existing)
+            return existing;
+        const index = new Map();
+        for (const dir of this.findChatDirs(chatId)) {
+            let files;
+            try {
+                files = readdirSync(dir).filter((file) => file.endsWith(".jsonl"));
+            }
+            catch {
+                continue;
+            }
+            for (const file of files) {
+                let raw;
+                try {
+                    raw = readFileSync(join(dir, file), "utf8");
+                }
+                catch {
+                    continue;
+                }
+                for (const line of raw.split("\n")) {
+                    if (!line.trim())
+                        continue;
+                    try {
+                        const record = JSON.parse(line);
+                        if (record.messageId)
+                            index.set(record.messageId, record);
+                    }
+                    catch {
+                        continue;
+                    }
+                }
+            }
+        }
+        this.indexes.set(chatId, index);
+        return index;
+    }
     redact(chatId, messageId) {
         if (!this.enabled)
             return;
@@ -189,8 +252,10 @@ export class EvidenceStore {
                             return line;
                         }
                     });
-                    if (changed)
+                    if (changed) {
                         writeFileSync(path, next.join("\n"), "utf8");
+                        this.indexes.delete(chatId);
+                    }
                 }
                 catch (error) {
                     this.logger.warn("evidence redact failed", { chatId, messageId, error: toErrorMessage(error) });
@@ -228,6 +293,7 @@ export class EvidenceStore {
                     continue;
                 try {
                     rmSync(join(dir, file));
+                    this.indexes.delete(chat);
                 }
                 catch (error) {
                     this.logger.warn("evidence prune failed", {

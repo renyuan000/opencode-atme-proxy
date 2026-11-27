@@ -105,6 +105,12 @@ export declare class ScopedEvidence {
         messageId: string;
         days?: number;
     }): EvidenceRecord | undefined;
+    findReplyChain(input: {
+        chatId: string;
+        messageId: string;
+        maxDepth?: number;
+        days?: number;
+    }): EvidenceRecord[];
     redact(chatId: string, messageId: string): void;
     prune(): void;
 }

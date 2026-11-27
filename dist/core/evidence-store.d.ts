@@ -33,6 +33,7 @@ export declare class EvidenceStore {
     private readonly now;
     private readonly dirs;
     private readonly activeMonths;
+    private readonly indexes;
     constructor(options: EvidenceStoreOptions);
     append(record: EvidenceRecord): void;
     search(input: {
@@ -46,6 +47,13 @@ export declare class EvidenceStore {
         messageId: string;
         days?: number;
     }): EvidenceRecord | undefined;
+    findReplyChain(input: {
+        chatId: string;
+        messageId: string;
+        maxDepth?: number;
+        days?: number;
+    }): EvidenceRecord[];
+    private ensureIndex;
     redact(chatId: string, messageId: string): void;
     prune(): void;
     private findChatDirs;

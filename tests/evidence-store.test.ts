@@ -100,6 +100,17 @@ test("finds a quoted message by id", async () => {
       text: "父消息：操作日志按类型分组",
     });
     assert.equal(store.findByMessageId({ chatId: "oc_1", messageId: "m-parent" })?.text, "父消息：操作日志按类型分组");
+    store.append({
+      ts: now,
+      platform: "feishu",
+      chatId: "oc_1",
+      messageId: "m-child",
+      replyToMessageId: "m-parent",
+      direction: "inbound",
+      text: "子消息",
+    });
+    const chain = store.findReplyChain({ chatId: "oc_1", messageId: "m-child" });
+    assert.deepEqual(chain.map((item) => item.messageId), ["m-child", "m-parent"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

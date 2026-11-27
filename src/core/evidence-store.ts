@@ -65,6 +65,7 @@ export class EvidenceStore {
   private readonly now: () => number;
   private readonly dirs = new Map<string, string>();
   private readonly activeMonths = new Map<string, string>();
+  private readonly indexes = new Map<string, Map<string, EvidenceRecord>>();
 
   constructor(private readonly options: EvidenceStoreOptions) {
     this.enabled = options.enabled !== false;
@@ -85,6 +86,8 @@ export class EvidenceStore {
       appendFileSync(join(dir, `${month}.jsonl`), `${JSON.stringify(entry)}\n`, {
         mode: 0o600,
       });
+      const index = this.indexes.get(record.chatId);
+      if (index) index.set(record.messageId, entry);
       if (this.activeMonths.get(record.chatId) !== month) {
         this.activeMonths.set(record.chatId, month);
         writeFileSync(
@@ -155,6 +158,8 @@ export class EvidenceStore {
   }): EvidenceRecord | undefined {
     if (!this.enabled) return undefined;
     const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
+    const record = this.ensureIndex(input.chatId).get(input.messageId);
+    if (record && record.ts >= cutoff) return record;
     for (const dir of this.findChatDirs(input.chatId)) {
       let files: string[];
       try {
@@ -186,6 +191,61 @@ export class EvidenceStore {
     return undefined;
   }
 
+  findReplyChain(input: {
+    chatId: string;
+    messageId: string;
+    maxDepth?: number;
+    days?: number;
+  }): EvidenceRecord[] {
+    if (!this.enabled) return [];
+    const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
+    const index = this.ensureIndex(input.chatId);
+    const chain: EvidenceRecord[] = [];
+    const seen = new Set<string>();
+    let id: string | undefined = input.messageId;
+    while (id && chain.length < (input.maxDepth ?? 5) && !seen.has(id)) {
+      seen.add(id);
+      const record = index.get(id);
+      if (!record || record.ts < cutoff) break;
+      chain.push(record);
+      id = record.replyToMessageId;
+    }
+    return chain;
+  }
+
+  private ensureIndex(chatId: string): Map<string, EvidenceRecord> {
+    const existing = this.indexes.get(chatId);
+    if (existing) return existing;
+    const index = new Map<string, EvidenceRecord>();
+    for (const dir of this.findChatDirs(chatId)) {
+      let files: string[];
+      try {
+        files = readdirSync(dir).filter((file) => file.endsWith(".jsonl"));
+      } catch {
+        continue;
+      }
+      for (const file of files) {
+        let raw: string;
+        try {
+          raw = readFileSync(join(dir, file), "utf8");
+        } catch {
+          continue;
+        }
+        for (const line of raw.split("\n")) {
+          if (!line.trim()) continue;
+          try {
+            const record = JSON.parse(line) as EvidenceRecord;
+            if (record.messageId) index.set(record.messageId, record);
+          } catch {
+            continue;
+          }
+        }
+      }
+    }
+    this.indexes.set(chatId, index);
+    return index;
+  }
+
   redact(chatId: string, messageId: string): void {
     if (!this.enabled) return;
     for (const dir of this.findChatDirs(chatId)) {
@@ -211,7 +271,10 @@ export class EvidenceStore {
               return line;
             }
           });
-          if (changed) writeFileSync(path, next.join("\n"), "utf8");
+          if (changed) {
+            writeFileSync(path, next.join("\n"), "utf8");
+            this.indexes.delete(chatId);
+          }
         } catch (error) {
           this.logger.warn("evidence redact failed", { chatId, messageId, error: toErrorMessage(error) });
         }
@@ -243,6 +306,7 @@ export class EvidenceStore {
         if (Number.isNaN(periodEnd) || periodEnd >= cutoff) continue;
         try {
           rmSync(join(dir, file));
+          this.indexes.delete(chat);
         } catch (error) {
           this.logger.warn("evidence prune failed", {
             file,
