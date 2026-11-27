@@ -12,6 +12,7 @@ import { prefilterMessage } from "./prefilter.js";
 import type { Logger } from "./logger.js";
 import { createLogger } from "./logger.js";
 import { clamp, sha256, sleep, toErrorMessage, truncate } from "./util.js";
+import { classifyFilterFailure } from "./filter-error.js";
 
 export interface HistoryMessage {
   sender: string;
@@ -114,6 +115,7 @@ export class OpenAiCompatibleClient implements LlmClient {
 function timeoutError(timeoutMs: number): Error {
   const error = new Error(`LLM request timed out after ${timeoutMs}ms`);
   error.name = "TimeoutError";
+  Object.assign(error, { kind: "model_timeout", timeoutMs });
   return error;
 }
 
@@ -305,6 +307,8 @@ export class RelevanceService {
       failures: 0,
       failedMessageIds: [],
       lastError: undefined,
+      failureKind: undefined,
+      failureTimeoutMs: undefined,
     };
 
     const keywordSignals = new Map<string, string[]>();
@@ -367,9 +371,11 @@ export class RelevanceService {
         stats.model = result.model;
       } catch (error) {
         stats.failures++;
-        const model = (error as { model?: unknown })?.model;
-        if (typeof model === "string" && model) stats.model = model;
-        stats.lastError = toErrorMessage(error);
+        const failure = classifyFilterFailure(error);
+        stats.failureKind = failure.kind;
+        stats.failureTimeoutMs = failure.timeoutMs;
+        if (failure.model) stats.model = failure.model;
+        stats.lastError = failure.message;
         stats.failedMessageIds.push(...batch.map((message) => message.messageId));
         this.logger.error("filter batch failed", {
           size: batch.length,

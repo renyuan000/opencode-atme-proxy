@@ -100,6 +100,8 @@ export interface FilterStats {
     failures: number;
     failedMessageIds: string[];
     lastError?: string;
+    failureKind?: string;
+    failureTimeoutMs?: number;
 }
 export interface TaskRecord {
     id: string;

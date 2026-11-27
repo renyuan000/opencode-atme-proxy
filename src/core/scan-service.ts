@@ -10,6 +10,7 @@ import type { RelevanceService } from "./relevance.js";
 import type { TaskService } from "./task-service.js";
 import type { Classification, IncomingMessage, NotificationView } from "./types.js";
 import { formatLocalTime, toErrorMessage, truncate } from "./util.js";
+import { describeFilterFailure, type FilterFailure } from "./filter-error.js";
 
 export interface ScanServiceOptions {
   config: AppConfig;
@@ -302,11 +303,18 @@ export class ScanService {
       const log = this.options.logPath
         ? `日志：${this.options.logPath}`
         : "日志：journalctl -u atme-proxy";
+      const failure: FilterFailure = {
+        kind: (stats.failureKind ?? "unknown") as FilterFailure["kind"],
+        message: stats.lastError ?? "筛选模型失败",
+        ...(stats.model ? { model: stats.model } : {}),
+        ...(stats.failureTimeoutMs ? { timeoutMs: stats.failureTimeoutMs } : {}),
+      };
       await this.options.sendToApprover(
         [
           `筛选失败：${failed.length} 条消息未处理，已保留待重试。`,
+          `问题：${describeFilterFailure(failure)}`,
           `模型：${stats.model || "未知"}`,
-          `原因：${truncate(stats.lastError ?? "筛选模型失败", 500)}`,
+          `技术原因：${truncate(failure.message, 500)}`,
           log,
           "不会静默丢弃。",
         ].join("\n"),

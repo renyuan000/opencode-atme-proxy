@@ -1,6 +1,7 @@
 import { extractDocumentText } from "./document.js";
 import { ocrImage } from "./ocr.js";
 import { formatLocalTime, toErrorMessage, truncate } from "./util.js";
+import { describeFilterFailure } from "./filter-error.js";
 export class ScanService {
     options;
     constructor(options) {
@@ -250,10 +251,17 @@ export class ScanService {
             const log = this.options.logPath
                 ? `日志：${this.options.logPath}`
                 : "日志：journalctl -u atme-proxy";
+            const failure = {
+                kind: (stats.failureKind ?? "unknown"),
+                message: stats.lastError ?? "筛选模型失败",
+                ...(stats.model ? { model: stats.model } : {}),
+                ...(stats.failureTimeoutMs ? { timeoutMs: stats.failureTimeoutMs } : {}),
+            };
             await this.options.sendToApprover([
                 `筛选失败：${failed.length} 条消息未处理，已保留待重试。`,
+                `问题：${describeFilterFailure(failure)}`,
                 `模型：${stats.model || "未知"}`,
-                `原因：${truncate(stats.lastError ?? "筛选模型失败", 500)}`,
+                `技术原因：${truncate(failure.message, 500)}`,
                 log,
                 "不会静默丢弃。",
             ].join("\n"));

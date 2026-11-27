@@ -43,10 +43,11 @@ export class OpenCodeLlmClient implements LlmClient {
     });
     const timeoutMs = this.options.timeoutMs ?? 60_000;
     const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(new Error(`filter timed out after ${timeoutMs}ms`)),
-      timeoutMs,
-    );
+    const timer = setTimeout(() => {
+      const error = new Error(`筛选模型请求超时（${timeoutMs}ms）`);
+      Object.assign(error, { kind: "model_timeout", model: modelLabel, timeoutMs });
+      controller.abort(error);
+    }, timeoutMs);
     const onAbort = (): void => controller.abort(signal?.reason);
     signal?.addEventListener("abort", onAbort, { once: true });
     try {
@@ -63,7 +64,11 @@ export class OpenCodeLlmClient implements LlmClient {
       };
     } catch (error) {
       const wrapped = new Error(`filter ${modelLabel}: ${toErrorMessage(error)}`);
-      Object.assign(wrapped, { model: modelLabel });
+      Object.assign(wrapped, {
+        kind: (error as { kind?: unknown })?.kind ?? "model_error",
+        model: modelLabel,
+        timeoutMs: (error as { timeoutMs?: unknown })?.timeoutMs,
+      });
       throw wrapped;
     } finally {
       clearTimeout(timer);
