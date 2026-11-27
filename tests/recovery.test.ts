@@ -147,13 +147,13 @@ function task(state: TaskRecord["state"], updatedAt = Date.now()): TaskRecord {
   };
 }
 
-test("resume re-analyzes candidate tasks and nudges stale approvals", async () => {
+test("resume re-analyzes running tasks and nudges stale approvals", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-recovery-"));
   try {
     await ensureTestGroup(dir, "chat");
     const store = taskStore(dir);
     await store.load();
-    await store.save(task("candidate"));
+    await store.save(task("analyzing"));
     await store.save({
       ...task("awaiting_approval", Date.now() - 2 * 3600_000),
       id: "task_wait",
@@ -171,7 +171,7 @@ test("resume re-analyzes candidate tasks and nudges stale approvals", async () =
     const wait = await reloaded.get("task_wait");
     assert.ok(open);
     assert.ok(wait);
-    assert.notEqual(open?.state, "candidate");
+    assert.notEqual(open?.state, "analyzing");
     assert.ok(wait?.lastNudgeAt);
     assert.ok(
       adapter.sent.some(

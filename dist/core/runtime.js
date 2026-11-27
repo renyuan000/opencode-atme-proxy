@@ -1656,6 +1656,11 @@ export class ProxyRuntime {
         if (["analyzing", "executing", "verifying"].includes(task.state)) {
             return `任务正在处理中：${task.id} [${task.state}]`;
         }
+        task.archivedAt = undefined;
+        task.archivedReason = undefined;
+        task.state = "analyzing";
+        task.updatedAt = Date.now();
+        await this.tasks.save(task);
         this.track(this.taskService.analyzeTask(task)).catch((error) => {
             this.logger.error("manual task analysis failed", {
                 taskId: task.id,
@@ -1985,17 +1990,16 @@ export class ProxyRuntime {
             }),
             "",
             "重新分析：/任务分析 <taskId|群名> [状态] [数量]",
-            "归档：/任务清理 <群名> [状态] [天数] [确认]",
+            "归档：/任务归档 <群名|taskId> [状态] [天数] 确认",
         ];
         return lines.join("\n");
     }
     async reanalyzeTasks(arg) {
-        const scope = this.taskScope(arg, ["needs_info", "awaiting_approval", "failed", "expired"]);
+        const scope = this.taskScope(arg, ["candidate", "needs_info", "awaiting_approval", "failed", "expired"]);
         if (scope.groupKey && !scope.group)
             return `找不到群：${scope.groupKey}`;
         const tasks = (await this.tasks.list())
             .filter((task) => this.taskMatchesScope(task, scope))
-            .filter((task) => !task.archivedAt)
             .sort((a, b) => a.updatedAt - b.updatedAt)
             .slice(0, Math.min(10, scope.limit));
         if (tasks.length === 0)
@@ -2036,7 +2040,7 @@ export class ProxyRuntime {
         ].join("\n");
     }
     async archiveTasks(arg) {
-        const scope = this.taskScope(arg, ["needs_info"]);
+        const scope = this.taskScope(arg, ["candidate", "needs_info"]);
         if (scope.groupKey && !scope.group)
             return `找不到群：${scope.groupKey}`;
         const tasks = (await this.tasks.list())
@@ -2147,13 +2151,15 @@ export class ProxyRuntime {
             if (task.archivedAt || skip.has(task.state))
                 continue;
             const ageDays = (Date.now() - task.updatedAt) / 86_400_000;
-            const threshold = task.state === "needs_info"
-                ? needsInfoDays
-                : task.state === "awaiting_approval"
-                    ? approvalDays
-                    : terminal.has(task.state)
-                        ? terminalDays
-                        : Number.POSITIVE_INFINITY;
+            const threshold = task.state === "candidate"
+                ? (config?.candidateAfterDays ?? 14)
+                : task.state === "needs_info"
+                    ? needsInfoDays
+                    : task.state === "awaiting_approval"
+                        ? approvalDays
+                        : terminal.has(task.state)
+                            ? terminalDays
+                            : Number.POSITIVE_INFINITY;
             if (ageDays < threshold)
                 continue;
             this.pending.deleteForTask(task.id);
@@ -2175,6 +2181,7 @@ export class ProxyRuntime {
             this.logger.info("tasks archived by ttl", { count: archived });
         }
         const purged = this.taskLinks.purgeTasks({
+            candidateDays: config?.purgeCandidateAfterDays ?? 90,
             needsInfoDays: config?.purgeNeedsInfoAfterDays ?? 180,
             awaitingApprovalDays: config?.purgeAwaitingApprovalAfterDays ?? 90,
             terminalDays: config?.purgeTerminalAfterDays ?? 180,
@@ -2646,6 +2653,8 @@ export class ProxyRuntime {
                 continue;
             const task = await this.tasks.get(notification.taskId);
             if (!task || task.archivedAt)
+                continue;
+            if (task.state === "needs_info" && task.source === "group_scan" && !task.lastAnalyzedAt)
                 continue;
             if (!["needs_info", "awaiting_approval", "failed", "expired"].includes(task.state))
                 continue;

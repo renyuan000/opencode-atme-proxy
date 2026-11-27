@@ -74,6 +74,7 @@ export class OwnerCommandService {
         "/工作空间 <群名|chatId> 自动 自动发现 worktrees 项目",
         "/诊断 <群名|chatId> 检查项目路径、fs-root 白名单和配置建议",
         "/任务 [群名] [状态] [数量] 查看任务，默认不含归档",
+        "/任务整理 [群名] [candidate|needs_info|归档] [天数] 查看待整理或归档任务",
         "/任务分析 [群名|taskId] [状态] [数量] 后台重新分析",
         "/任务取消 <taskId,...> 停止运行中的分析/执行",
         "/任务清理 <taskId,...> [确认] 真正删除任务，保留 tombstone/审计",

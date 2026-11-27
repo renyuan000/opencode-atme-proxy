@@ -598,6 +598,7 @@ export class TaskStateDb {
   }
 
   purgeTasks(input: {
+    candidateDays: number;
     needsInfoDays: number;
     awaitingApprovalDays: number;
     terminalDays: number;
@@ -613,7 +614,7 @@ export class TaskStateDb {
       archived_at?: number;
       updated_at?: number;
     }>;
-    const active = new Set(["candidate", "analyzing", "executing", "verifying", "approved", "awaiting_merge"]);
+    const active = new Set(["analyzing", "executing", "verifying", "approved", "awaiting_merge"]);
     const terminal = new Set(["done", "rejected", "canceled", "failed", "expired"]);
     const purged: string[] = [];
     const transaction = this.db.transaction(() => {
@@ -628,6 +629,7 @@ export class TaskStateDb {
         const archivedAge = row.archived_at ? (now - row.archived_at) / 86_400_000 : 0;
         const shouldPurge =
           (row.archived_at && archivedAge >= input.archivedDays) ||
+          (state === "candidate" && ageDays >= input.candidateDays) ||
           (state === "needs_info" && ageDays >= input.needsInfoDays) ||
           (state === "awaiting_approval" && ageDays >= input.awaitingApprovalDays) ||
           (terminal.has(state) && ageDays >= input.terminalDays);

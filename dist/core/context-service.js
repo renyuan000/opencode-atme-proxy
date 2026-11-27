@@ -106,7 +106,9 @@ export class ContextService {
         });
         const allTasks = tasks.list ? await tasks.list() : [];
         const openTasks = allTasks
-            .filter((task) => !task.archivedAt && ["candidate", "analyzing", "needs_info", "awaiting_approval"].includes(task.state))
+            .filter((task) => !task.archivedAt &&
+            !(task.state === "needs_info" && task.source === "group_scan" && !task.lastAnalyzedAt) &&
+            ["analyzing", "needs_info", "awaiting_approval"].includes(task.state))
             .slice(0, 5)
             .map((task) => `- ${names.get(task.chatId) ?? task.chatName ?? task.chatId}: ${task.title} [${task.state}]`);
         const records = config.memory.enabled

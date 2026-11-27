@@ -429,7 +429,7 @@ xlsx > 20 sheet 或 > 500 行：分块
 7. 非 @ 群媒体相关时只建候选任务，深度分析需 owner 批准
 8. 审批等待不触发生成超时
 9. 群知识/证据可回溯到消息或文件
-10. 190 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
+10. 191 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
 
 ## 16. 开源与给同事使用前的检查
 
@@ -1263,7 +1263,7 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 
 1. 本地 OCR / 文件文本提取
 2. 相关性判断
-3. 高度相关时只创建候选任务，状态 `needs_info`
+3. 高度相关时只创建候选任务，状态 `candidate`；深度分析由 owner 按需触发
 4. 私聊提示：`回复 /分析 <taskId>`
 5. owner 执行 `/分析 <taskId>` 后才进入任务分析
 6. 不会自动做深度解析、建正式任务或执行
@@ -1321,7 +1321,7 @@ owner 私聊、审批、跨群汇总不再放在一个全局 LLM session，而�
 - 未完成任务提醒：同一群同一轮恢复内的任务合并为一张卡；标题 `未完成任务提醒`，右侧 `群名 · 状态 · N 条`；多任务用 `hr` 分层。混合状态显示 `N 条待处理`。
 - 不同群分别发卡；飞书一条消息只带一张卡片，不发送“无标题的连续卡片”。
 - 候选任务：标题为 `候选任务 · 群名`，右侧 `时间 发送人 · task`；群名解析顺序为 `task.chatName → 配置群名 → fetchChatName → 未知群`。
-- 候选任务创建时写入 `lastNudgeAt`，避免重启恢复时同一任务立刻再发“未完成任务提醒”。
+- 候选任务不写 `lastNudgeAt`，不进入重启自动分析或未完成提醒；按 `taskArchive.candidateAfterDays` 归档。
 - 右侧对齐使用 `column_set`；只有右侧文本时用空白 weighted 左列占位。该布局需真实飞书卡片回归确认。
 
 
@@ -1469,7 +1469,7 @@ LLM 输出增加：
 规则：
 
 - 只有 owner 可用
-- `重新分析` 只处理 `needs_info/awaiting_approval/failed/expired`
+- `重新分析` 处理 `candidate/needs_info/awaiting_approval/failed/expired`，可配合 `归档` 扫描归档记录
 - `executing/approved/verifying/awaiting_merge` 永不自动重跑或归档
 - `清理` 的语义是归档，不删除任务 JSON、审计和分析文件
 - 归档写入 `archivedAt/archivedReason`，从 open tasks、恢复、上下文中排除
@@ -1480,7 +1480,7 @@ LLM 输出增加：
 - `/任务会话 <taskId>` 查询任务关联 session
 - 每群 `cache/state.db` 记录任务生命周期事件（创建、补充、分析完成/失败、重新分析、归档），供后续 outbox/重放使用；旧 `task-links.json/events.jsonl` 首次启动导入
 - LLM 不允许直接删除任务，不允许绕过 owner
-- 自动归档由 `taskArchive` 配置控制：`needsInfoAfterDays` 90 天、`awaitingApprovalAfterDays` 30 天、`terminalAfterDays` 90 天；只写 `archivedAt`，不删除
+- 自动归档由 `taskArchive` 配置控制：`candidateAfterDays` 14 天、`needsInfoAfterDays` 90 天、`awaitingApprovalAfterDays` 30 天、`terminalAfterDays` 90 天；只写 `archivedAt`，不删除
 - `linkRetentionDays` 90 天、`eventRetentionDays` 180 天用于清理 `task_links/task_events` 历史记录；links 只清理已归档/终态任务
 - 首次从旧 JSON 迁移前会 checkpoint 并备份为 `state.db.pre-migration-*.bak`
 - 撤回消息会脱敏 `chat-context`、evidence 和任务补充正文，映射/审计保留

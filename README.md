@@ -27,15 +27,15 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **群工作空间**：一个群对应一个工作空间，代码项目平级放在 `worktrees/`，分析/文件/执行产物都留在群工作空间；不再强制“一个主仓 + 关联仓”。
 - **工作空间管理**：主人私聊 `/工作空间 <群名|chatId> ...` 即可查看、设置根目录、添加/删除项目、配置 test/lint、自动发现；不需要改代码。
 - **配置诊断**：主人私聊 `/诊断 <群名|chatId>` 会检查项目路径是否存在、是否在 OpenCode `fs-root` 白名单，并给出具体配置修改建议；私聊回复命中权限/目录错误时也会自动附上诊断。
-- **任务管理**：`/任务 [群名] [状态] [数量]` 查看；`/任务分析 [群名|taskId]` 后台重跑；`/任务清理 ... 确认` 归档，不删除；`/任务恢复 <taskId>` 恢复；`/任务会话 <taskId>` 查看关联 session。任务、消息/卡片/session 映射和事件写入每群 `cache/state.db`（SQLite），旧 JSON 首次启动导入。
-- **任务归档**：默认 90 天未更新的 `needs_info`、30 天的待审批、90 天的终态任务自动归档；只写 `archivedAt`，不删除任务、审计和分析文件。
+- **任务管理**：`/任务 [群名] [状态] [数量]` 查看；`/任务分析 [群名|taskId]` 后台重跑；`/任务归档 ...` 归档；`/任务清理 ... 确认` 真正删除；`/任务恢复 <taskId>` 恢复；`/任务会话 <taskId>` 查看关联 session。任务、消息/卡片/session 映射和事件写入每群 `cache/state.db`（SQLite），旧 JSON 首次启动导入。
+- **任务归档**：默认 14 天未处理的 `candidate`、90 天未更新的 `needs_info`、30 天的待审批、90 天的终态任务自动归档；只写 `archivedAt`，不删除任务、审计和分析文件。
 - **任务映射**：每群 `cache/state.db` 保存任务快照、消息/卡片到 taskId 的映射、session 到 taskId 的多对一映射、任务通知和生命周期事件；SQLite 为运行时事实源，旧 JSON 只做一次性导入。
 - **私聊承接**：候选/审批通知会记录 `task_notifications`；私聊 prompt 注入最近通知摘要，普通 DM 的“刚才/继续/补充/这个文档”等指代可在私聊 active task 上继续处理。
 - **运行监测**：`task_runs` 记录分析/执行/评审心跳和 lease；5 分钟无心跳会标记 stalled 并私聊提醒，分析/执行 prompt 有阶段超时。
 - **owner 私聊权限**：owner DM 允许 bash/联网，但禁止 edit；外部路径改为 ask；内置高风险命令 ask 规则（rm -rf 根目录、mkfs、dd、shutdown、force push、reset --hard、drop database 等），并固定 deny `rm -rf` 主要源码目录 `/mnt/d/Work/source*`、`/home/renyuan/*.git`；通过私聊 `/允许 <id>` / `/拒绝 <id>`，或直接回复“允许/拒绝/行/OK/好/不好/反对”等自然语言回复 OpenCode 权限请求。
 - **多项目开发**：任务分析会列出工作空间内项目；执行时为涉及项目分别创建独立 git worktree，避免直接修改源仓库。
 - **会话代际**：群职责/画像/术语变化、私聊偏好/决策变化时自动升 `sessionEpoch`，新会话不复用旧上下文。
-- **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`、`/诊断`、`/任务`、`/任务分析`、`/任务清理`、`/分析`、`/群消息`、`/群消息分析`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
+- **命令提示**：私聊发送 `/`、`／`、`?`、`？` 会返回命令列表（含 `/回复管理`、`/职责`、`/诊断`、`/任务`、`/任务整理`、`/任务分析`、`/任务归档`、`/任务清理`、`/分析`、`/群消息`、`/群消息分析`）。飞书不支持输入框斜杠自动补全，必须发送后才触发。
 - **私聊查群消息**：`/群消息 <群名关键词> [关键词] [数量]` 可以查询机器人所在群的最近消息；`/群消息分析 <群名关键词> [数量]` 主动生成群消息分析卡片；`/提及 <群名关键词> [数量]` 只查 @我/@机器人 的消息。不需要输入 chatId。
 - **卡片回复管理**：代答审批卡和开发审批卡都有「回复管理」，可看待审批草稿和最近 5 条可撤回回复；每条带群/发送人/时间/内容。撤回后原回复会重新变成待审批草稿，可 `/改写`、`/重写` 或 `/发送`。
 - **回执优先**：对方只是确认或同意时，只回“收到”，不分析、不查资料、不追问。
@@ -460,7 +460,7 @@ WSL2 可能随时重启，插件启动时会做四件事：
 1. **同步机器人所在群**：启动时调用飞书群列表，把新加入的群补进本次白名单（`autoSyncGroups` 默认 `true`）。
 2. **补拉最近的 @我 / @机器人 消息**：`recovery.lookbackSeconds` 默认 6 小时。
 3. **少量补拉非 @ 的群消息**：每个群最多 `maxPlainMessagesPerGroup` 条（默认 50），只做项目相关筛选，不刷屏。
-4. **续作未完成任务**：`candidate/analyzing` 重新分析；`awaiting_approval/needs_info` 到期提醒；`executing/verifying` 若超过 `staleRunningMinutes` 则标记中断并等你重新批准，**不会自动重放代码修改**。
+4. **续作未完成任务**：`analyzing` 重新分析；`candidate` 保留待 owner 按需整理，不自动分析；`awaiting_approval/needs_info` 到期提醒；`executing/verifying` 若超过 `staleRunningMinutes` 则标记中断并等你重新批准，**不会自动重放代码修改**。
 
 去重记录的是什么：
 
@@ -609,7 +609,7 @@ docs/REQUIREMENTS.md    需求文档 v0.2
 - 群工作空间、代码项目平级、workspace 私聊管理
 - 去重、游标、任务、分析、审批、执行、审计骨架
 - 简洁/详细回复策略、审批门禁、失败降级
-- 190 个单元/集成测试
+- 191 个单元/集成测试
 
 未完成 / 下一步：
 
@@ -999,7 +999,7 @@ On startup the bot:
 
 1. pulls recent `@me` / `@bot` messages (`recovery.lookbackSeconds`, default 6h);
 2. pulls a bounded sample of non-mention group messages per group (default 50) for relevance filtering only;
-3. resumes open tasks: `candidate/analyzing` re-analyzed; stale `awaiting_approval/needs_info` nudged; stale `executing/verifying` paused for re-approval instead of replaying code changes.
+3. resumes open tasks: `analyzing` re-analyzed; `candidate` remains for on-demand review; stale `awaiting_approval/needs_info` nudged; stale `executing/verifying` paused for re-approval instead of replaying code changes.
 
 What dedup stores:
 

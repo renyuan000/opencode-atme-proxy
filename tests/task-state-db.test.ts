@@ -70,3 +70,34 @@ test("stores task links and events in sqlite", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("purges aged candidate tasks without touching active tasks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-task-purge-"));
+  try {
+    const db = new TaskStateDb(join(dir, "cache", "state.db"), "chat");
+    db.saveTaskWithLinks(
+      "task_candidate",
+      JSON.stringify({
+        id: "task_candidate",
+        state: "candidate",
+        title: "old candidate",
+        updatedAt: Date.now() - 3 * 86_400_000,
+      }),
+      Date.now() - 3 * 86_400_000,
+      "dedup_candidate",
+      ["om_candidate"],
+    );
+    const purged = db.purgeTasks({
+      candidateDays: 1,
+      needsInfoDays: 90,
+      awaitingApprovalDays: 90,
+      terminalDays: 90,
+      archivedDays: 30,
+    });
+    assert.deepEqual(purged, ["task_candidate"]);
+    assert.equal(db.findByMessage("om_candidate"), undefined);
+    db.close();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

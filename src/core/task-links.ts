@@ -198,6 +198,7 @@ export class ScopedTaskLinks {
   }
 
   purgeTasks(input: {
+    candidateDays: number;
     needsInfoDays: number;
     awaitingApprovalDays: number;
     terminalDays: number;

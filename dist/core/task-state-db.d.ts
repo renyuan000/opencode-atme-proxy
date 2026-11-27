@@ -82,6 +82,7 @@ export declare class TaskStateDb {
     publish(event: TaskEvent): void;
     purgeTaskIds(taskIds: string[], reason?: string): string[];
     purgeTasks(input: {
+        candidateDays: number;
         needsInfoDays: number;
         awaitingApprovalDays: number;
         terminalDays: number;

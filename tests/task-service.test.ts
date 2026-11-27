@@ -19,7 +19,7 @@ function message(): IncomingMessage {
   };
 }
 
-test("candidate card resolves group and sender and records nudge time", async () => {
+test("candidate card resolves group and sender without active reminders", async () => {
   const saved = new Map<string, TaskRecord>();
   let view: NotificationView | undefined;
   const service = new TaskService({
@@ -61,7 +61,8 @@ test("candidate card resolves group and sender and records nudge time", async ()
   assert.ok(task);
   assert.equal(task.chatName, "产品-资产测绘");
   assert.equal(task.requester.displayName, "张雪");
-  assert.ok(task.lastNudgeAt);
+  assert.equal(task.state, "candidate");
+  assert.equal(task.lastNudgeAt, undefined);
   assert.equal(
     task.messageLink,
     "https://applink.feishu.cn/client/chat/open?openChatId=chat&position=99",
@@ -112,7 +113,7 @@ test("appends a reply supplement to the task", async () => {
     replyToMessageId: base.messageIds[0],
     text: "补充：看 npb-engine 默认配置",
   });
-  assert.equal(state, "needs_info");
+  assert.equal(state, "candidate");
   assert.equal(base.supplements?.[0]?.messageId, "m-supplement");
   assert.match(base.supplements?.[0]?.text ?? "", /npb-engine/);
 });

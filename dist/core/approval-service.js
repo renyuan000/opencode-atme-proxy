@@ -312,10 +312,12 @@ ${task.title}
         }
     }
     groupLabel(chatId) {
-        if (!chatId || /^oc_/.test(chatId))
+        if (!chatId)
             return "未知群";
-        return (this.options.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.name ??
-            chatId);
+        const name = this.options.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.name;
+        if (name)
+            return name;
+        return /^oc_/.test(chatId) ? "未知群" : chatId;
     }
     async replyManagementResult(toast) {
         const view = await this.replyManagementView(false);

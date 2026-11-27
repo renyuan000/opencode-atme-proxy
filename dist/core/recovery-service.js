@@ -217,6 +217,8 @@ export class RecoveryService {
         for (const task of tasks) {
             if (task.archivedAt)
                 continue;
+            if (task.state === "needs_info" && task.source === "group_scan" && !task.lastAnalyzedAt)
+                continue;
             if (now - task.updatedAt > maxAgeMs)
                 continue;
             if (task.state === "done" || task.state === "rejected" || task.state === "canceled") {
@@ -241,7 +243,7 @@ export class RecoveryService {
                 this.options.pending.findForTask(task.id)) {
                 continue;
             }
-            if (task.state === "candidate" || task.state === "analyzing") {
+            if (task.state === "analyzing") {
                 task.state = "analyzing";
                 task.updatedAt = now;
                 await this.options.tasks.save(task);

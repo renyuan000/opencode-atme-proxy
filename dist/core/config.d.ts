@@ -582,11 +582,13 @@ export declare const AppConfigSchema: z.ZodObject<{
     taskArchive: z.ZodOptional<z.ZodDefault<z.ZodObject<{
         enabled: z.ZodDefault<z.ZodBoolean>;
         sweepHours: z.ZodDefault<z.ZodNumber>;
+        candidateAfterDays: z.ZodDefault<z.ZodNumber>;
         needsInfoAfterDays: z.ZodDefault<z.ZodNumber>;
         awaitingApprovalAfterDays: z.ZodDefault<z.ZodNumber>;
         terminalAfterDays: z.ZodDefault<z.ZodNumber>;
         linkRetentionDays: z.ZodDefault<z.ZodNumber>;
         eventRetentionDays: z.ZodDefault<z.ZodNumber>;
+        purgeCandidateAfterDays: z.ZodDefault<z.ZodNumber>;
         purgeNeedsInfoAfterDays: z.ZodDefault<z.ZodNumber>;
         purgeAwaitingApprovalAfterDays: z.ZodDefault<z.ZodNumber>;
         purgeTerminalAfterDays: z.ZodDefault<z.ZodNumber>;
@@ -595,11 +597,13 @@ export declare const AppConfigSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         enabled: boolean;
         sweepHours: number;
+        candidateAfterDays: number;
         needsInfoAfterDays: number;
         awaitingApprovalAfterDays: number;
         terminalAfterDays: number;
         linkRetentionDays: number;
         eventRetentionDays: number;
+        purgeCandidateAfterDays: number;
         purgeNeedsInfoAfterDays: number;
         purgeAwaitingApprovalAfterDays: number;
         purgeTerminalAfterDays: number;
@@ -608,11 +612,13 @@ export declare const AppConfigSchema: z.ZodObject<{
     }, {
         enabled?: boolean | undefined;
         sweepHours?: number | undefined;
+        candidateAfterDays?: number | undefined;
         needsInfoAfterDays?: number | undefined;
         awaitingApprovalAfterDays?: number | undefined;
         terminalAfterDays?: number | undefined;
         linkRetentionDays?: number | undefined;
         eventRetentionDays?: number | undefined;
+        purgeCandidateAfterDays?: number | undefined;
         purgeNeedsInfoAfterDays?: number | undefined;
         purgeAwaitingApprovalAfterDays?: number | undefined;
         purgeTerminalAfterDays?: number | undefined;
@@ -1466,11 +1472,13 @@ export declare const AppConfigSchema: z.ZodObject<{
     taskArchive?: {
         enabled: boolean;
         sweepHours: number;
+        candidateAfterDays: number;
         needsInfoAfterDays: number;
         awaitingApprovalAfterDays: number;
         terminalAfterDays: number;
         linkRetentionDays: number;
         eventRetentionDays: number;
+        purgeCandidateAfterDays: number;
         purgeNeedsInfoAfterDays: number;
         purgeAwaitingApprovalAfterDays: number;
         purgeTerminalAfterDays: number;
@@ -1647,11 +1655,13 @@ export declare const AppConfigSchema: z.ZodObject<{
     taskArchive?: {
         enabled?: boolean | undefined;
         sweepHours?: number | undefined;
+        candidateAfterDays?: number | undefined;
         needsInfoAfterDays?: number | undefined;
         awaitingApprovalAfterDays?: number | undefined;
         terminalAfterDays?: number | undefined;
         linkRetentionDays?: number | undefined;
         eventRetentionDays?: number | undefined;
+        purgeCandidateAfterDays?: number | undefined;
         purgeNeedsInfoAfterDays?: number | undefined;
         purgeAwaitingApprovalAfterDays?: number | undefined;
         purgeTerminalAfterDays?: number | undefined;

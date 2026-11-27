@@ -222,11 +222,13 @@ const TaskArchiveSchema = z
     .object({
     enabled: z.boolean().default(true),
     sweepHours: z.number().int().min(1).max(24 * 7).default(12),
+    candidateAfterDays: z.number().int().min(1).max(3650).default(14),
     needsInfoAfterDays: z.number().int().min(1).max(3650).default(90),
     awaitingApprovalAfterDays: z.number().int().min(1).max(3650).default(30),
     terminalAfterDays: z.number().int().min(1).max(3650).default(90),
     linkRetentionDays: z.number().int().min(1).max(3650).default(90),
     eventRetentionDays: z.number().int().min(1).max(3650).default(180),
+    purgeCandidateAfterDays: z.number().int().min(1).max(3650).default(90),
     purgeNeedsInfoAfterDays: z.number().int().min(1).max(3650).default(180),
     purgeAwaitingApprovalAfterDays: z.number().int().min(1).max(3650).default(90),
     purgeTerminalAfterDays: z.number().int().min(1).max(3650).default(180),

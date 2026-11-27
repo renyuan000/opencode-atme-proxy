@@ -250,9 +250,8 @@ export class TaskService {
         const autoAnalyze = options?.autoAnalyze ??
             (source === "group_scan" ? false : this.options.config.policy.autoAnalyzeTasks);
         if (!autoAnalyze) {
-            task.state = "needs_info";
+            task.state = "candidate";
             task.updatedAt = Date.now();
-            task.lastNudgeAt = task.updatedAt;
             let group = task.chatName?.trim();
             if (!group && this.options.chatLabelFor) {
                 try {
