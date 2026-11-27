@@ -61,13 +61,28 @@ export class OpenCodeLlmClient {
         finally {
             clearTimeout(timer);
             signal?.removeEventListener("abort", onAbort);
-            await this.options.bridge.deleteSession(sessionId).catch((error) => {
+            await this.deleteFilterSession(sessionId).catch((error) => {
                 this.logger.warn("failed to delete filter session", {
                     sessionId,
                     error: toErrorMessage(error),
                 });
             });
         }
+    }
+    async deleteFilterSession(sessionId) {
+        let lastError;
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+            try {
+                await this.options.bridge.deleteSession(sessionId);
+                return;
+            }
+            catch (error) {
+                lastError = error;
+                if (attempt < 3)
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+        }
+        throw lastError;
     }
     async resolveModel() {
         if (this.resolvedModel)

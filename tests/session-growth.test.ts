@@ -72,6 +72,25 @@ function adapter(): PlatformAdapter {
   };
 }
 
+test("filter client retries failed ephemeral cleanup", async () => {
+  const bridge = new Bridge();
+  let attempts = 0;
+  const originalDelete = bridge.deleteSession.bind(bridge);
+  bridge.deleteSession = async (id: string) => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("temporary delete failure");
+    await originalDelete(id);
+  };
+  const client = new OpenCodeLlmClient({
+    bridge,
+    directory: "/tmp/x",
+    titlePrefix: "atme",
+  });
+  await client.complete([{ role: "user", content: "x" }]);
+  assert.equal(attempts, 2);
+  assert.equal(bridge.deleted.length, 1);
+});
+
 test("filter client deletes its session every time", async () => {
   const dir = await mkdtemp(join(tmpdir(), "atme-growth-"));
   try {

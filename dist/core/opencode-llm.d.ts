@@ -19,5 +19,6 @@ export declare class OpenCodeLlmClient implements LlmClient {
     private resolvedModel?;
     constructor(options: OpenCodeLlmOptions);
     complete(messages: LlmMessage[], signal?: AbortSignal): Promise<LlmCompletion>;
+    private deleteFilterSession;
     private resolveModel;
 }
