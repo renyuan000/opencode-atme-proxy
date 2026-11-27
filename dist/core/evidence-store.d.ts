@@ -45,6 +45,7 @@ export declare class EvidenceStore {
     constructor(options: EvidenceStoreOptions);
     append(record: EvidenceRecord): Promise<void>;
     flush(): Promise<void>;
+    private queueTask;
     search(input: {
         chatId: string;
         terms: string[];
@@ -71,7 +72,9 @@ export declare class EvidenceStore {
     }): Promise<EvidenceMessageChain>;
     private ensureIndex;
     redact(chatId: string, messageId: string): Promise<void>;
+    private redactNow;
     prune(): Promise<void>;
+    private pruneNow;
     private findChatDirs;
     private readActiveMonth;
     private chatDir;

@@ -85,6 +85,15 @@ export class EvidenceStore {
     async flush() {
         await this.writeQueue;
     }
+    queueTask(task) {
+        const next = this.writeQueue.then(task, task);
+        this.writeQueue = next.then(() => undefined, (error) => {
+            this.logger.warn("evidence queue task failed", {
+                error: toErrorMessage(error),
+            });
+        });
+        return next;
+    }
     async search(input) {
         if (!this.enabled || input.terms.length === 0)
             return [];
@@ -252,7 +261,9 @@ export class EvidenceStore {
     async redact(chatId, messageId) {
         if (!this.enabled)
             return;
-        await this.flush();
+        await this.queueTask(() => this.redactNow(chatId, messageId));
+    }
+    async redactNow(chatId, messageId) {
         for (const dir of await this.findChatDirs(chatId)) {
             let files;
             try {
@@ -298,7 +309,9 @@ export class EvidenceStore {
     async prune() {
         if (!this.enabled)
             return;
-        await this.flush();
+        await this.queueTask(() => this.pruneNow());
+    }
+    async pruneNow() {
         const cutoff = this.now() - this.options.retentionDays * 86_400_000;
         let chats;
         try {

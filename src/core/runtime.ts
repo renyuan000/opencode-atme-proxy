@@ -1526,6 +1526,7 @@ export class ProxyRuntime {
       this.documentCache.flush(),
       this.documentRefs.flush(),
       this.groupKnowledge.flush(),
+      this.evidence.flush(),
     ]);
     this.logger.info("runtime stopped");
   }

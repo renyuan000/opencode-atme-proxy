@@ -381,6 +381,9 @@ export class ScopedEvidence {
     async prune() {
         await Promise.all(this.layout.all().map((info) => this.store(info.chatId).prune()));
     }
+    async flush() {
+        await Promise.all([...this.stores.values()].map((store) => store.flush()));
+    }
 }
 export class ScopedTasks {
     layout;

@@ -46,7 +46,7 @@ A platform-agnostic, approval-gated bot framework that turns chat messages into 
 - **媒体上下文关联**：同一发送人、时间相近、中间无其他人发言的前置图片/文件会作为候选；本地 OCR 后由 LLM 判断是否同一事项，命中才并入当前 @ 上下文；@我 任务分析复用同一媒体簇，前置图片和文件内容都会进入任务分析；私聊通知优先给原消息 AppLink，失败回退群 AppLink，不生成附件副本。
 - **群摘要**：每群一个持久摘要会话，保留决策、被否决方案、假设、未解决问题，以及讨论主题/阶段；摘要按新增消息密度/字符量/信号触发，低密度消息不反复摘要，失败后 5 分钟退避。
 - **私聊长期上下文**：owner 私聊独立保存摘要、偏好、决策、目标、未解决问题和 `sessionEpoch`，并注入私聊回复。
-- **证据回查**：普通群消息按月存 `groups/<群名__短ID>/replies/<YYYY-MM>.jsonl`，并维护 `pointer.json`；记录包含 `replyToMessageId/threadId`，支持本地 `findReplyChain`（最多 5 层）和 `findMessageChain`（回复链 + 同线程混合）及按需回查最近 7 天原文。
+- **证据回查**：普通群消息按月存 `groups/<群名__短ID>/replies/<YYYY-MM>.jsonl`，并维护 `pointer.json`；记录包含 `replyToMessageId/threadId`，支持本地 `findReplyChain`（最多 5 层）和 `findMessageChain`（回复链 + 同线程混合）及按需回查最近 7 天原文。Evidence 写入使用异步队列，进程停止时会 flush。
 - **图片理解**：@我/@机器人 的图片会下载为视觉附件交给支持图片的 OpenCode 模型；最多 2 张、单张 3MB。非 @ 群消息扫描也会对图片做 OCR；默认优先本地 RapidOCR，失败回退 `tesseract`（需安装 `tesseract` 和 `chi_sim` 语言包）；OCR 结果按采样指纹缓存，并做并发 in-flight 去重；浅层扫描对近似截图用 dHash 复用识别结果。
 
 OCR 可选安装（推荐，中文截图更准）：

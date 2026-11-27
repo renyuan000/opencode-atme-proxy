@@ -120,6 +120,7 @@ export declare class ScopedEvidence {
     }): Promise<import("./evidence-store.js").EvidenceMessageChain>;
     redact(chatId: string, messageId: string): Promise<void>;
     prune(): Promise<void>;
+    flush(): Promise<void>;
 }
 export declare class ScopedTasks {
     private readonly layout;

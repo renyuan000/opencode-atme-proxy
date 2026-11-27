@@ -130,6 +130,19 @@ export class EvidenceStore {
     await this.writeQueue;
   }
 
+  private queueTask<T>(task: () => Promise<T>): Promise<T> {
+    const next = this.writeQueue.then(task, task);
+    this.writeQueue = next.then(
+      () => undefined,
+      (error) => {
+        this.logger.warn("evidence queue task failed", {
+          error: toErrorMessage(error),
+        });
+      },
+    );
+    return next;
+  }
+
   async search(input: {
     chatId: string;
     terms: string[];
@@ -298,7 +311,10 @@ export class EvidenceStore {
 
   async redact(chatId: string, messageId: string): Promise<void> {
     if (!this.enabled) return;
-    await this.flush();
+    await this.queueTask(() => this.redactNow(chatId, messageId));
+  }
+
+  private async redactNow(chatId: string, messageId: string): Promise<void> {
     for (const dir of await this.findChatDirs(chatId)) {
       let files: string[];
       try {
@@ -339,7 +355,10 @@ export class EvidenceStore {
 
   async prune(): Promise<void> {
     if (!this.enabled) return;
-    await this.flush();
+    await this.queueTask(() => this.pruneNow());
+  }
+
+  private async pruneNow(): Promise<void> {
     const cutoff = this.now() - this.options.retentionDays * 86_400_000;
     let chats: string[];
     try {
