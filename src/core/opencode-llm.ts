@@ -27,6 +27,7 @@ export class OpenCodeLlmClient implements LlmClient {
     const user = messages.find((message) => message.role === "user")?.content ?? "";
     const title = `${this.options.titlePrefix}:filter:${Date.now()}`;
     const model = this.options.model ?? (await this.resolveModel());
+    const modelLabel = model ? `${model.providerID}/${model.modelID}` : "opencode/default";
     const sessionId = await this.options.bridge.createSession({
       directory: this.options.directory,
       title,
@@ -57,9 +58,13 @@ export class OpenCodeLlmClient implements LlmClient {
       });
       return {
         text,
-        model: "opencode",
+        model: modelLabel,
         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
       };
+    } catch (error) {
+      const wrapped = new Error(`filter ${modelLabel}: ${toErrorMessage(error)}`);
+      Object.assign(wrapped, { model: modelLabel });
+      throw wrapped;
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);

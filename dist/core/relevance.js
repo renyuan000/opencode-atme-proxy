@@ -251,6 +251,9 @@ export class RelevanceService {
             }
             catch (error) {
                 stats.failures++;
+                const model = error?.model;
+                if (typeof model === "string" && model)
+                    stats.model = model;
                 stats.lastError = toErrorMessage(error);
                 stats.failedMessageIds.push(...batch.map((message) => message.messageId));
                 this.logger.error("filter batch failed", {

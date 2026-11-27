@@ -252,6 +252,7 @@ export class ScanService {
                 : "日志：journalctl -u atme-proxy";
             await this.options.sendToApprover([
                 `筛选失败：${failed.length} 条消息未处理，已保留待重试。`,
+                `模型：${stats.model || "未知"}`,
                 `原因：${truncate(stats.lastError ?? "筛选模型失败", 500)}`,
                 log,
                 "不会静默丢弃。",
