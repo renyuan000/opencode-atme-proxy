@@ -30,8 +30,8 @@ export declare class ContextService {
     constructor(options: ContextServiceOptions);
     memoryBlock(platform: string, chatId: string | undefined, text: string): string;
     summaryText(platform: string, chatId: string): string;
-    quotedContext(message: IncomingMessage): string[];
-    evidenceRecall(message: IncomingMessage): string[];
+    quotedContext(message: IncomingMessage): Promise<string[]>;
+    evidenceRecall(message: IncomingMessage): Promise<string[]>;
     ownerOverview(message: IncomingMessage): Promise<string>;
     analysisContext(task: TaskRecord): Promise<AnalysisContext>;
 }

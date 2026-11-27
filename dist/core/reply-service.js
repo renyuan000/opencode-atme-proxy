@@ -329,15 +329,15 @@ export class ReplyService {
         const summaryBlock = message.chat.kind === "group"
             ? this.options.contextService.summaryText(message.platform, message.chat.id)
             : "";
-        const quoteBlock = this.options.contextService.quotedContext(message);
-        const quotedChain = await this.loadQuotedChain(message);
+        const quoteBlock = await this.options.contextService.quotedContext(message);
+        const quotedChain = quoteBlock.length > 0 ? [] : await this.loadQuotedChain(message);
         quoteBlock.push(...quotedChain);
         const historyBlock = message.chat.kind === "group" &&
             (message.replyToMessageId ||
                 /(旧|历史|之前|刚才|上下文|综合|这个事情|那条|上一条|前面的)/.test(message.text))
             ? await this.loadRecentHistory(message)
             : [];
-        const evidenceBlock = this.options.contextService.evidenceRecall(message);
+        const evidenceBlock = await this.options.contextService.evidenceRecall(message);
         const media = await this.loadMediaContext(message);
         let images = media.images;
         const ocrText = media.ocrText;

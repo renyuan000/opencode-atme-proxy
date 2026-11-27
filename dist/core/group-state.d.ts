@@ -93,33 +93,33 @@ export declare class ScopedEvidence {
     private readonly stores;
     constructor(layout: GroupStateLayout, options: Omit<ConstructorParameters<typeof EvidenceStore>[0], "dir">);
     private store;
-    append(record: EvidenceRecord): void;
+    append(record: EvidenceRecord): Promise<void>;
     search(input: {
         chatId: string;
         terms: string[];
         days?: number;
         limit?: number;
-    }): EvidenceRecord[];
+    }): Promise<EvidenceRecord[]>;
     findByMessageId(input: {
         chatId: string;
         messageId: string;
         days?: number;
-    }): EvidenceRecord | undefined;
+    }): Promise<EvidenceRecord | undefined>;
     findReplyChain(input: {
         chatId: string;
         messageId: string;
         maxDepth?: number;
         days?: number;
-    }): EvidenceRecord[];
+    }): Promise<EvidenceRecord[]>;
     findMessageChain(input: {
         chatId: string;
         messageId: string;
         maxDepth?: number;
         maxThread?: number;
         days?: number;
-    }): import("./evidence-store.js").EvidenceMessageChain;
-    redact(chatId: string, messageId: string): void;
-    prune(): void;
+    }): Promise<import("./evidence-store.js").EvidenceMessageChain>;
+    redact(chatId: string, messageId: string): Promise<void>;
+    prune(): Promise<void>;
 }
 export declare class ScopedTasks {
     private readonly layout;

@@ -38,35 +38,37 @@ export declare class EvidenceStore {
     private readonly dirs;
     private readonly activeMonths;
     private readonly indexes;
+    private writeQueue;
     constructor(options: EvidenceStoreOptions);
-    append(record: EvidenceRecord): void;
+    append(record: EvidenceRecord): Promise<void>;
+    flush(): Promise<void>;
     search(input: {
         chatId: string;
         terms: string[];
         days?: number;
         limit?: number;
-    }): EvidenceRecord[];
+    }): Promise<EvidenceRecord[]>;
     findByMessageId(input: {
         chatId: string;
         messageId: string;
         days?: number;
-    }): EvidenceRecord | undefined;
+    }): Promise<EvidenceRecord | undefined>;
     findReplyChain(input: {
         chatId: string;
         messageId: string;
         maxDepth?: number;
         days?: number;
-    }): EvidenceRecord[];
+    }): Promise<EvidenceRecord[]>;
     findMessageChain(input: {
         chatId: string;
         messageId: string;
         maxDepth?: number;
         maxThread?: number;
         days?: number;
-    }): EvidenceMessageChain;
+    }): Promise<EvidenceMessageChain>;
     private ensureIndex;
-    redact(chatId: string, messageId: string): void;
-    prune(): void;
+    redact(chatId: string, messageId: string): Promise<void>;
+    prune(): Promise<void>;
     private findChatDirs;
     private chatDir;
 }

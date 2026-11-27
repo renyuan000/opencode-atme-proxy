@@ -420,28 +420,28 @@ export class ScopedEvidence {
     return store;
   }
 
-  append(record: EvidenceRecord): void {
-    this.store(record.chatId).append(record);
+  async append(record: EvidenceRecord): Promise<void> {
+    await this.store(record.chatId).append(record);
   }
 
-  search(input: { chatId: string; terms: string[]; days?: number; limit?: number }): EvidenceRecord[] {
+  async search(input: { chatId: string; terms: string[]; days?: number; limit?: number }): Promise<EvidenceRecord[]> {
     return this.store(chatIdOf(input.chatId)).search(input);
   }
 
-  findByMessageId(input: { chatId: string; messageId: string; days?: number }): EvidenceRecord | undefined {
+  async findByMessageId(input: { chatId: string; messageId: string; days?: number }): Promise<EvidenceRecord | undefined> {
     return this.store(chatIdOf(input.chatId)).findByMessageId(input);
   }
 
-  findReplyChain(input: {
+  async findReplyChain(input: {
     chatId: string;
     messageId: string;
     maxDepth?: number;
     days?: number;
-  }): EvidenceRecord[] {
+  }): Promise<EvidenceRecord[]> {
     return this.store(chatIdOf(input.chatId)).findReplyChain(input);
   }
 
-  findMessageChain(input: {
+  async findMessageChain(input: {
     chatId: string;
     messageId: string;
     maxDepth?: number;
@@ -451,12 +451,12 @@ export class ScopedEvidence {
     return this.store(chatIdOf(input.chatId)).findMessageChain(input);
   }
 
-  redact(chatId: string, messageId: string): void {
-    this.store(chatIdOf(chatId)).redact(chatIdOf(chatId), messageId);
+  async redact(chatId: string, messageId: string): Promise<void> {
+    await this.store(chatIdOf(chatId)).redact(chatIdOf(chatId), messageId);
   }
 
-  prune(): void {
-    for (const info of this.layout.all()) this.store(info.chatId).prune();
+  async prune(): Promise<void> {
+    await Promise.all(this.layout.all().map((info) => this.store(info.chatId).prune()));
   }
 }
 

@@ -20,7 +20,7 @@ test("writes inbound evidence and truncates long text", async () => {
       maxChars: 20,
       now: () => now,
     });
-    store.append({
+    await store.append({
       ts: now,
       platform: "feishu",
       chatId: "oc_1",
@@ -48,9 +48,9 @@ test("searches evidence by term", async () => {
   try {
     const now = new Date(2026, 10, 17, 12, 0, 0).getTime();
     const store = new EvidenceStore({ dir, retentionDays: 30, maxChars: 200, now: () => now });
-    store.append({ ts: now, platform: "feishu", chatId: "oc_1", messageId: "m1", direction: "inbound", senderName: "任元", text: "第 3 步：过滤 IP 是否入库" });
-    store.append({ ts: now, platform: "feishu", chatId: "oc_1", messageId: "m2", direction: "inbound", senderName: "杨丰印", text: "午饭吃什么" });
-    const found = store.search({ chatId: "oc_1", terms: ["过滤"], days: 7, limit: 5 });
+    await store.append({ ts: now, platform: "feishu", chatId: "oc_1", messageId: "m1", direction: "inbound", senderName: "任元", text: "第 3 步：过滤 IP 是否入库" });
+    await store.append({ ts: now, platform: "feishu", chatId: "oc_1", messageId: "m2", direction: "inbound", senderName: "杨丰印", text: "午饭吃什么" });
+    const found = await store.search({ chatId: "oc_1", terms: ["过滤"], days: 7, limit: 5 });
     assert.equal(found.length, 1);
     assert.equal(found[0]?.messageId, "m1");
   } finally {
@@ -68,7 +68,7 @@ test("prunes evidence older than retention", async () => {
       maxChars: 100,
       now: () => now,
     });
-    store.append({
+    await store.append({
       ts: now,
       platform: "feishu",
       chatId: "oc_1",
@@ -77,7 +77,7 @@ test("prunes evidence older than retention", async () => {
       text: "旧消息",
     });
     now += 62 * 86_400_000;
-    store.prune();
+    await store.prune();
     const file = join(dir, "群__oc_1", `${stamp(now - 62 * 86_400_000)}.jsonl`);
     await assert.rejects(readFile(file, "utf8"));
   } finally {
@@ -90,7 +90,7 @@ test("finds a quoted message by id", async () => {
   try {
     const now = new Date(2026, 10, 17, 12, 0, 0).getTime();
     const store = new EvidenceStore({ dir, retentionDays: 30, maxChars: 200, now: () => now });
-    store.append({
+    await store.append({
       ts: now,
       platform: "feishu",
       chatId: "oc_1",
@@ -99,8 +99,8 @@ test("finds a quoted message by id", async () => {
       senderName: "任元",
       text: "父消息：操作日志按类型分组",
     });
-    assert.equal(store.findByMessageId({ chatId: "oc_1", messageId: "m-parent" })?.text, "父消息：操作日志按类型分组");
-    store.append({
+    assert.equal((await store.findByMessageId({ chatId: "oc_1", messageId: "m-parent" }))?.text, "父消息：操作日志按类型分组");
+    await store.append({
       ts: now,
       platform: "feishu",
       chatId: "oc_1",
@@ -110,7 +110,7 @@ test("finds a quoted message by id", async () => {
       direction: "inbound",
       text: "子消息",
     });
-    store.append({
+    await store.append({
       ts: now + 1000,
       platform: "feishu",
       chatId: "oc_1",
@@ -119,9 +119,9 @@ test("finds a quoted message by id", async () => {
       direction: "inbound",
       text: "同线程消息",
     });
-    const chain = store.findReplyChain({ chatId: "oc_1", messageId: "m-child" });
+    const chain = await store.findReplyChain({ chatId: "oc_1", messageId: "m-child" });
     assert.deepEqual(chain.map((item) => item.messageId), ["m-child", "m-parent"]);
-    const mixed = store.findMessageChain({ chatId: "oc_1", messageId: "m-child" });
+    const mixed = await store.findMessageChain({ chatId: "oc_1", messageId: "m-child" });
     assert.deepEqual(mixed.reply.map((item) => item.messageId), ["m-child", "m-parent"]);
     assert.deepEqual(mixed.thread.map((item) => item.messageId), ["m-sibling"]);
   } finally {

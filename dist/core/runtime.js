@@ -1106,7 +1106,7 @@ export class ProxyRuntime {
         this.activeMessageIds.delete(key);
         this.chatContext.redact(key, event.messageId);
         if (event.chatId) {
-            this.evidence.redact(event.chatId, event.messageId);
+            await this.evidence.redact(event.chatId, event.messageId);
             await this.tasks.redactMessage(event.chatId, event.messageId);
         }
         this.dedup.add(key, event.chatId);
@@ -1192,7 +1192,7 @@ export class ProxyRuntime {
         await this.groupContext.load();
         await this.groupKnowledge.load();
         await this.refreshGroupKnowledge();
-        this.evidence.prune();
+        await this.evidence.prune();
         await this.ownerAccess.load();
         await this.ownerTargets.load();
         await this.documentCache.load();

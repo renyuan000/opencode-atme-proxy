@@ -147,7 +147,7 @@ export class NotificationService {
           error: toErrorMessage(error),
         });
       }
-      this.options.evidence.append({
+      await this.options.evidence.append({
         ts: Date.now(),
         platform: message.platform,
         chatId: message.chat.id,

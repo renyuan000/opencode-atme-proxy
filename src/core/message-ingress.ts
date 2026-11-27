@@ -118,7 +118,7 @@ export class MessageIngress {
           ...(message.chat.name ? { chatName: message.chat.name } : {}),
         },
       );
-      this.options.evidence.append({
+      await this.options.evidence.append({
         ts: message.createdAt,
         platform: message.platform,
         chatId: message.chat.id,

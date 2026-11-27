@@ -70,10 +70,28 @@ export class ContextService {
     );
   }
 
-  quotedContext(message: IncomingMessage): string[] {
+  async quotedContext(message: IncomingMessage): Promise<string[]> {
     if (!message.replyToMessageId && !message.threadId) return [];
     const chatKey = `${message.platform}:${message.chat.id}`;
     const lines: string[] = [];
+    const chain = await this.options.evidence.findMessageChain({
+      chatId: message.chat.id,
+      messageId: message.messageId,
+      maxDepth: 5,
+      maxThread: 10,
+      days: 30,
+    });
+    for (const item of chain.reply.slice(1)) {
+      lines.push(
+        `- ${item.senderName ?? item.senderId ?? "未知"}: ${truncateMiddle(item.text, 500)}`,
+      );
+    }
+    for (const item of chain.thread) {
+      lines.push(
+        `- [同线程] ${item.senderName ?? item.senderId ?? "未知"}: ${truncateMiddle(item.text, 300)}`,
+      );
+    }
+    if (lines.length > 0) return lines;
     if (message.replyToMessageId) {
       const [quoted] = this.options.chatContext.find(chatKey, [message.replyToMessageId]);
       if (quoted) {
@@ -81,7 +99,7 @@ export class ContextService {
           `- ${quoted.senderName ?? quoted.senderId}: ${truncateMiddle(quoted.text, 500)}`,
         );
       } else {
-        const evidence = this.options.evidence.findByMessageId({
+        const evidence = await this.options.evidence.findByMessageId({
           chatId: message.chat.id,
           messageId: message.replyToMessageId,
         });
@@ -108,7 +126,7 @@ export class ContextService {
     return lines;
   }
 
-  evidenceRecall(message: IncomingMessage): string[] {
+  async evidenceRecall(message: IncomingMessage): Promise<string[]> {
     const { config, chatContext, evidence } = this.options;
     if (config.evidence?.enabled === false) return [];
     const text = message.text.trim();
@@ -116,7 +134,7 @@ export class ContextService {
       text.length <= 20 ||
       /(哪个|这个|那个|上面|之前|上次|刚才|继续|那条|第.步)/.test(text);
     if (!referential && !message.replyToMessageId) return [];
-    const quoted = this.quotedContext(message).join(" ");
+    const quoted = (await this.quotedContext(message)).join(" ");
     const split = (value: string): string[] =>
       value
         .split(/[\s,，。；;、:：!！?？]+/)
@@ -131,8 +149,7 @@ export class ContextService {
       terms = split(recent).slice(0, 8);
     }
     if (terms.length === 0) return [];
-    return evidence
-      .search({ chatId: message.chat.id, terms, days: 7, limit: 5 })
+    return (await evidence.search({ chatId: message.chat.id, terms, days: 7, limit: 5 }))
       .filter((record) => record.messageId !== message.messageId)
       .map(
         (record) =>

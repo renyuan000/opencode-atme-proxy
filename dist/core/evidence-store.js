@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createLogger } from "./logger.js";
 import { truncateMiddle, toErrorMessage } from "./util.js";
@@ -37,6 +37,7 @@ export class EvidenceStore {
     dirs = new Map();
     activeMonths = new Map();
     indexes = new Map();
+    writeQueue = Promise.resolve();
     constructor(options) {
         this.options = options;
         this.enabled = options.enabled !== false;
@@ -45,16 +46,17 @@ export class EvidenceStore {
     }
     append(record) {
         if (!this.enabled)
-            return;
-        try {
+            return Promise.resolve();
+        const entry = {
+            ...record,
+            text: truncateMiddle(record.text, this.options.maxChars),
+        };
+        this.writeQueue = this.writeQueue
+            .then(async () => {
             const dir = this.chatDir(record.chatId, record.chatName);
-            mkdirSync(dir, { recursive: true, mode: 0o700 });
+            await mkdir(dir, { recursive: true, mode: 0o700 });
             const month = monthStamp(record.ts);
-            const entry = {
-                ...record,
-                text: truncateMiddle(record.text, this.options.maxChars),
-            };
-            appendFileSync(join(dir, `${month}.jsonl`), `${JSON.stringify(entry)}\n`, {
+            await appendFile(join(dir, `${month}.jsonl`), `${JSON.stringify(entry)}\n`, {
                 mode: 0o600,
             });
             const index = this.indexes.get(record.chatId);
@@ -62,28 +64,33 @@ export class EvidenceStore {
                 index.set(record.messageId, entry);
             if (this.activeMonths.get(record.chatId) !== month) {
                 this.activeMonths.set(record.chatId, month);
-                writeFileSync(join(dir, "pointer.json"), `${JSON.stringify({ version: 1, active: month, updatedAt: this.now() })}\n`, { encoding: "utf8", mode: 0o600 });
+                await writeFile(join(dir, "pointer.json"), `${JSON.stringify({ version: 1, active: month, updatedAt: this.now() })}\n`, { encoding: "utf8", mode: 0o600 });
             }
-        }
-        catch (error) {
+        })
+            .catch((error) => {
             this.logger.warn("evidence append failed", {
                 chatId: record.chatId,
                 messageId: record.messageId,
                 error: toErrorMessage(error),
             });
-        }
+        });
+        return this.writeQueue;
     }
-    search(input) {
+    async flush() {
+        await this.writeQueue;
+    }
+    async search(input) {
         if (!this.enabled || input.terms.length === 0)
             return [];
+        await this.flush();
         const terms = input.terms.map((term) => term.toLowerCase()).filter(Boolean);
         const cutoff = this.now() - (input.days ?? 7) * 86_400_000;
         const limit = input.limit ?? 5;
         const results = [];
-        for (const dir of this.findChatDirs(input.chatId)) {
+        for (const dir of await this.findChatDirs(input.chatId)) {
             let files;
             try {
-                files = readdirSync(dir).filter((file) => file.endsWith(".jsonl")).sort().reverse();
+                files = (await readdir(dir)).filter((file) => file.endsWith(".jsonl")).sort().reverse();
             }
             catch {
                 continue;
@@ -94,7 +101,7 @@ export class EvidenceStore {
                     continue;
                 let raw;
                 try {
-                    raw = readFileSync(join(dir, file), "utf8");
+                    raw = await readFile(join(dir, file), "utf8");
                 }
                 catch {
                     continue;
@@ -122,17 +129,17 @@ export class EvidenceStore {
         }
         return results;
     }
-    findByMessageId(input) {
+    async findByMessageId(input) {
         if (!this.enabled)
             return undefined;
         const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
-        const record = this.ensureIndex(input.chatId).get(input.messageId);
+        const record = (await this.ensureIndex(input.chatId)).get(input.messageId);
         if (record && record.ts >= cutoff)
             return record;
-        for (const dir of this.findChatDirs(input.chatId)) {
+        for (const dir of await this.findChatDirs(input.chatId)) {
             let files;
             try {
-                files = readdirSync(dir).filter((file) => file.endsWith(".jsonl")).sort().reverse();
+                files = (await readdir(dir)).filter((file) => file.endsWith(".jsonl")).sort().reverse();
             }
             catch {
                 continue;
@@ -143,7 +150,7 @@ export class EvidenceStore {
                     continue;
                 let raw;
                 try {
-                    raw = readFileSync(join(dir, file), "utf8");
+                    raw = await readFile(join(dir, file), "utf8");
                 }
                 catch {
                     continue;
@@ -152,11 +159,11 @@ export class EvidenceStore {
                     if (!line.trim())
                         continue;
                     try {
-                        const record = JSON.parse(line);
-                        if (record.ts < cutoff)
+                        const found = JSON.parse(line);
+                        if (found.ts < cutoff)
                             continue;
-                        if (record.messageId === input.messageId)
-                            return record;
+                        if (found.messageId === input.messageId)
+                            return found;
                     }
                     catch {
                         continue;
@@ -166,14 +173,14 @@ export class EvidenceStore {
         }
         return undefined;
     }
-    findReplyChain(input) {
-        return this.findMessageChain(input).reply;
+    async findReplyChain(input) {
+        return (await this.findMessageChain(input)).reply;
     }
-    findMessageChain(input) {
+    async findMessageChain(input) {
         if (!this.enabled)
             return { reply: [], thread: [] };
         const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
-        const index = this.ensureIndex(input.chatId);
+        const index = await this.ensureIndex(input.chatId);
         const current = index.get(input.messageId);
         const reply = [];
         const seen = new Set();
@@ -197,15 +204,16 @@ export class EvidenceStore {
             : [];
         return { reply, thread };
     }
-    ensureIndex(chatId) {
+    async ensureIndex(chatId) {
+        await this.flush();
         const existing = this.indexes.get(chatId);
         if (existing)
             return existing;
         const index = new Map();
-        for (const dir of this.findChatDirs(chatId)) {
+        for (const dir of await this.findChatDirs(chatId)) {
             let files;
             try {
-                files = readdirSync(dir).filter((file) => file.endsWith(".jsonl"));
+                files = (await readdir(dir)).filter((file) => file.endsWith(".jsonl"));
             }
             catch {
                 continue;
@@ -213,7 +221,7 @@ export class EvidenceStore {
             for (const file of files) {
                 let raw;
                 try {
-                    raw = readFileSync(join(dir, file), "utf8");
+                    raw = await readFile(join(dir, file), "utf8");
                 }
                 catch {
                     continue;
@@ -235,13 +243,14 @@ export class EvidenceStore {
         this.indexes.set(chatId, index);
         return index;
     }
-    redact(chatId, messageId) {
+    async redact(chatId, messageId) {
         if (!this.enabled)
             return;
-        for (const dir of this.findChatDirs(chatId)) {
+        await this.flush();
+        for (const dir of await this.findChatDirs(chatId)) {
             let files;
             try {
-                files = readdirSync(dir).filter((file) => file.endsWith(".jsonl"));
+                files = (await readdir(dir)).filter((file) => file.endsWith(".jsonl"));
             }
             catch {
                 continue;
@@ -249,7 +258,7 @@ export class EvidenceStore {
             for (const file of files) {
                 const path = join(dir, file);
                 try {
-                    const lines = readFileSync(path, "utf8").split("\n");
+                    const lines = (await readFile(path, "utf8")).split("\n");
                     let changed = false;
                     const next = lines.map((line) => {
                         if (!line.trim())
@@ -266,23 +275,28 @@ export class EvidenceStore {
                         }
                     });
                     if (changed) {
-                        writeFileSync(path, next.join("\n"), "utf8");
+                        await writeFile(path, next.join("\n"), "utf8");
                         this.indexes.delete(chatId);
                     }
                 }
                 catch (error) {
-                    this.logger.warn("evidence redact failed", { chatId, messageId, error: toErrorMessage(error) });
+                    this.logger.warn("evidence redact failed", {
+                        chatId,
+                        messageId,
+                        error: toErrorMessage(error),
+                    });
                 }
             }
         }
     }
-    prune() {
+    async prune() {
         if (!this.enabled)
             return;
+        await this.flush();
         const cutoff = this.now() - this.options.retentionDays * 86_400_000;
         let chats;
         try {
-            chats = readdirSync(this.options.dir);
+            chats = await readdir(this.options.dir);
         }
         catch {
             return;
@@ -291,9 +305,9 @@ export class EvidenceStore {
             const dir = join(this.options.dir, chat);
             let files;
             try {
-                if (!statSync(dir).isDirectory())
+                if (!(await stat(dir)).isDirectory())
                     continue;
-                files = readdirSync(dir);
+                files = await readdir(dir);
             }
             catch {
                 continue;
@@ -305,7 +319,7 @@ export class EvidenceStore {
                 if (Number.isNaN(periodEnd) || periodEnd >= cutoff)
                     continue;
                 try {
-                    rmSync(join(dir, file));
+                    await rm(join(dir, file));
                     this.indexes.delete(chat);
                 }
                 catch (error) {
@@ -317,10 +331,10 @@ export class EvidenceStore {
             }
         }
     }
-    findChatDirs(chatId) {
+    async findChatDirs(chatId) {
         const suffix = `__${sanitize(chatId)}`;
         try {
-            return readdirSync(this.options.dir)
+            return (await readdir(this.options.dir))
                 .filter((name) => name.endsWith(suffix))
                 .map((name) => join(this.options.dir, name));
         }

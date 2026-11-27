@@ -360,27 +360,26 @@ export class ScopedEvidence {
         this.stores.set(chatId, store);
         return store;
     }
-    append(record) {
-        this.store(record.chatId).append(record);
+    async append(record) {
+        await this.store(record.chatId).append(record);
     }
-    search(input) {
+    async search(input) {
         return this.store(chatIdOf(input.chatId)).search(input);
     }
-    findByMessageId(input) {
+    async findByMessageId(input) {
         return this.store(chatIdOf(input.chatId)).findByMessageId(input);
     }
-    findReplyChain(input) {
+    async findReplyChain(input) {
         return this.store(chatIdOf(input.chatId)).findReplyChain(input);
     }
-    findMessageChain(input) {
+    async findMessageChain(input) {
         return this.store(chatIdOf(input.chatId)).findMessageChain(input);
     }
-    redact(chatId, messageId) {
-        this.store(chatIdOf(chatId)).redact(chatIdOf(chatId), messageId);
+    async redact(chatId, messageId) {
+        await this.store(chatIdOf(chatId)).redact(chatIdOf(chatId), messageId);
     }
-    prune() {
-        for (const info of this.layout.all())
-            this.store(info.chatId).prune();
+    async prune() {
+        await Promise.all(this.layout.all().map((info) => this.store(info.chatId).prune()));
     }
 }
 export class ScopedTasks {
