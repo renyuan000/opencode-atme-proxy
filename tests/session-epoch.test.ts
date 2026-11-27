@@ -161,3 +161,64 @@ test("worker context hydrates once and rehydrates when the context key changes",
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("sweepDeadSessions removes dead and archived records but keeps live ones", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dead-sessions-"));
+  try {
+    const sessions = new SessionStore(join(dir, "sessions.json"));
+    await sessions.load();
+    sessions.set("coordinator:feishu:chat", "live-coordinator", "/repo", {
+      kind: "coordinator",
+      chatId: "chat",
+    });
+    sessions.set("group:feishu:chat", "archived-group", "/repo", {
+      kind: "group",
+      chatId: "chat",
+    });
+    sessions.set("worker:reply:feishu:chat", "dead-worker", "/repo", {
+      kind: "worker",
+      chatId: "chat",
+    });
+    await sessions.flush();
+
+    const deleted: string[] = [];
+    const logger = {
+      info() {},
+      warn() {},
+      error() {},
+      child() {
+        return this;
+      },
+    };
+    const manager = new SessionManager({
+      bridge: {
+        createSession: async () => "unused",
+        prompt: async () => "ok",
+        deleteSession: async (sessionId: string) => {
+          deleted.push(sessionId);
+        },
+        getSession: async (sessionId: string) => {
+          if (sessionId === "archived-group") return { timeArchived: 1 } as never;
+          if (sessionId === "live-coordinator") return {} as never;
+          return undefined;
+        },
+      } as never,
+      sessions,
+      config: {
+        opencode: { sessionTitlePrefix: "atme", keepSessions: true },
+        subagents: { enabled: true, analyst: "analyst", reviewer: "reviewer" },
+      } as never,
+      logger: logger as never,
+      readOnlyPermission: [],
+    });
+
+    await manager.sweepDeadSessions();
+
+    assert.deepEqual(deleted, ["archived-group"]);
+    assert.equal(sessions.get("coordinator:feishu:chat")?.sessionId, "live-coordinator");
+    assert.equal(sessions.get("group:feishu:chat"), undefined);
+    assert.equal(sessions.get("worker:reply:feishu:chat"), undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
