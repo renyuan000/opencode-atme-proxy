@@ -399,7 +399,18 @@ export class TaskService {
       }
       if (!task.messageLink && messageLink) task.messageLink = messageLink;
       await this.options.tasks.save(task);
-      const meta = `${formatLocalTime(task.createdAt)} ${sender} · task`;
+      const mentionLabels = [
+        ...new Set(
+          (message.mentions ?? [])
+            .map((mention) => mention.displayName?.trim() || "成员")
+            .filter(Boolean),
+        ),
+      ];
+      const mentionMeta =
+        mentionLabels.length > 0
+          ? ` · ${mentionLabels.map((name) => `@${name}`).join(" ")}`
+          : "";
+      const meta = `${formatLocalTime(task.createdAt)} ${sender}${mentionMeta} · task`;
       const link = {
         label: messageLink ? "打开原消息" : "打开群聊",
         url:

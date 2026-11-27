@@ -7,7 +7,7 @@ import { EvidenceStore } from "../src/core/evidence-store.js";
 
 function stamp(ts: number): string {
   const date = new Date(ts);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
 test("writes inbound evidence and truncates long text", async () => {
@@ -26,13 +26,17 @@ test("writes inbound evidence and truncates long text", async () => {
       chatId: "oc_1",
       chatName: "产品/流分",
       messageId: "m1",
+      replyToMessageId: "m-parent",
+      threadId: "thread-1",
       direction: "inbound",
       text: "这是一条很长的消息".repeat(5),
     });
     const file = join(dir, "产品_流分__oc_1", `${stamp(now)}.jsonl`);
     const raw = await readFile(file, "utf8");
-    const record = JSON.parse(raw.trim()) as { text: string; direction: string };
+    const record = JSON.parse(raw.trim()) as { text: string; direction: string; replyToMessageId?: string; threadId?: string };
     assert.equal(record.direction, "inbound");
+    assert.equal(record.replyToMessageId, "m-parent");
+    assert.equal(record.threadId, "thread-1");
     assert.ok(record.text.includes("…[截断]…"));
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -72,9 +76,9 @@ test("prunes evidence older than retention", async () => {
       direction: "inbound",
       text: "旧消息",
     });
-    now += 31 * 86_400_000;
+    now += 62 * 86_400_000;
     store.prune();
-    const file = join(dir, "群__oc_1", `${stamp(now - 31 * 86_400_000)}.jsonl`);
+    const file = join(dir, "群__oc_1", `${stamp(now - 62 * 86_400_000)}.jsonl`);
     await assert.rejects(readFile(file, "utf8"));
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -551,6 +551,8 @@ group-context.json
 group-knowledge.json
 memory/
 evidence/
+  /<YYYY-MM>.jsonl
+  /pointer.json
 files/
 tasks/
 ```
@@ -715,6 +717,8 @@ group-context.json
 chat-context.json
 memory/
 evidence/
+  /<YYYY-MM>.jsonl
+  /pointer.json
 files/
 tasks/
 ```

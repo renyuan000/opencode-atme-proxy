@@ -5,6 +5,8 @@ export interface EvidenceRecord {
     chatId: string;
     chatName?: string;
     messageId: string;
+    replyToMessageId?: string;
+    threadId?: string;
     direction: "inbound" | "outbound";
     senderId?: string;
     senderName?: string;
@@ -30,6 +32,7 @@ export declare class EvidenceStore {
     private readonly logger;
     private readonly now;
     private readonly dirs;
+    private readonly activeMonths;
     constructor(options: EvidenceStoreOptions);
     append(record: EvidenceRecord): void;
     search(input: {

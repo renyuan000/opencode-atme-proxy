@@ -124,6 +124,8 @@ export class MessageIngress {
         chatId: message.chat.id,
         ...(message.chat.name ? { chatName: message.chat.name } : {}),
         messageId: message.messageId,
+        ...(message.replyToMessageId ? { replyToMessageId: message.replyToMessageId } : {}),
+        ...(message.threadId ? { threadId: message.threadId } : {}),
         direction: "inbound",
         senderId: message.sender.id,
         ...(message.sender.displayName ? { senderName: message.sender.displayName } : {}),

@@ -6,12 +6,28 @@ const UNSAFE = /[/\\:*?"<>|]/g;
 function sanitize(value) {
     return value.replace(UNSAFE, "_").slice(0, 80);
 }
-function dateStamp(ts) {
+function monthStamp(ts) {
     const date = new Date(ts);
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    return `${year}-${month}`;
+}
+function filePeriodStart(file) {
+    const value = file.replace(/\.jsonl$/, "");
+    if (/^\d{4}-\d{2}$/.test(value))
+        return Date.parse(`${value}-01T00:00:00`);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value))
+        return Date.parse(`${value}T00:00:00`);
+    return Number.NaN;
+}
+function filePeriodEnd(file) {
+    const value = file.replace(/\.jsonl$/, "");
+    if (/^\d{4}-\d{2}$/.test(value)) {
+        const [year, month] = value.split("-").map(Number);
+        return new Date(year, month, 1).getTime();
+    }
+    const start = filePeriodStart(file);
+    return Number.isNaN(start) ? Number.NaN : start + 86_400_000;
 }
 export class EvidenceStore {
     options;
@@ -19,6 +35,7 @@ export class EvidenceStore {
     logger;
     now;
     dirs = new Map();
+    activeMonths = new Map();
     constructor(options) {
         this.options = options;
         this.enabled = options.enabled !== false;
@@ -31,13 +48,18 @@ export class EvidenceStore {
         try {
             const dir = this.chatDir(record.chatId, record.chatName);
             mkdirSync(dir, { recursive: true, mode: 0o700 });
+            const month = monthStamp(record.ts);
             const entry = {
                 ...record,
                 text: truncateMiddle(record.text, this.options.maxChars),
             };
-            appendFileSync(join(dir, `${dateStamp(record.ts)}.jsonl`), `${JSON.stringify(entry)}\n`, {
+            appendFileSync(join(dir, `${month}.jsonl`), `${JSON.stringify(entry)}\n`, {
                 mode: 0o600,
             });
+            if (this.activeMonths.get(record.chatId) !== month) {
+                this.activeMonths.set(record.chatId, month);
+                writeFileSync(join(dir, "pointer.json"), `${JSON.stringify({ version: 1, active: month, updatedAt: this.now() })}\n`, { encoding: "utf8", mode: 0o600 });
+            }
         }
         catch (error) {
             this.logger.warn("evidence append failed", {
@@ -63,9 +85,8 @@ export class EvidenceStore {
                 continue;
             }
             for (const file of files) {
-                const stamp = file.slice(0, 10);
-                const ts = Date.parse(`${stamp}T00:00:00`);
-                if (Number.isNaN(ts) || ts < cutoff)
+                const periodEnd = filePeriodEnd(file);
+                if (Number.isNaN(periodEnd) || periodEnd < cutoff)
                     continue;
                 let raw;
                 try {
@@ -84,6 +105,8 @@ export class EvidenceStore {
                     catch {
                         continue;
                     }
+                    if (record.ts < cutoff)
+                        continue;
                     const haystack = record.text.toLowerCase();
                     if (!terms.some((term) => haystack.includes(term)))
                         continue;
@@ -108,9 +131,8 @@ export class EvidenceStore {
                 continue;
             }
             for (const file of files) {
-                const stamp = file.slice(0, 10);
-                const ts = Date.parse(`${stamp}T00:00:00`);
-                if (Number.isNaN(ts) || ts < cutoff)
+                const periodEnd = filePeriodEnd(file);
+                if (Number.isNaN(periodEnd) || periodEnd < cutoff)
                     continue;
                 let raw;
                 try {
@@ -124,6 +146,8 @@ export class EvidenceStore {
                         continue;
                     try {
                         const record = JSON.parse(line);
+                        if (record.ts < cutoff)
+                            continue;
                         if (record.messageId === input.messageId)
                             return record;
                     }
@@ -199,9 +223,8 @@ export class EvidenceStore {
             for (const file of files) {
                 if (!file.endsWith(".jsonl"))
                     continue;
-                const stamp = file.slice(0, 10);
-                const ts = Date.parse(`${stamp}T00:00:00`);
-                if (Number.isNaN(ts) || ts >= cutoff)
+                const periodEnd = filePeriodEnd(file);
+                if (Number.isNaN(periodEnd) || periodEnd >= cutoff)
                     continue;
                 try {
                     rmSync(join(dir, file));

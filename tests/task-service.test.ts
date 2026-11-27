@@ -13,7 +13,7 @@ function message(): IncomingMessage {
     senderType: "user",
     text: "系统日志页合并流分/引擎日志",
     messageLink: "https://applink.feishu.cn/client/chat/open?openChatId=chat&position=99",
-    mentions: [],
+    mentions: [{ platform: "feishu", id: "u2", displayName: "张三" }],
     createdAt: Date.now(),
     rawType: "text",
   };
@@ -69,7 +69,7 @@ test("candidate card resolves group and sender without active reminders", async 
   );
   assert.ok(view);
   assert.equal(view.title, "候选任务 · 产品-资产测绘");
-  assert.match(view.headerMeta?.right ?? "", /张雪 · task/);
+  assert.match(view.headerMeta?.right ?? "", /张雪 · @张三 · task/);
   assert.equal(view.link?.label, "打开原消息");
   assert.match(view.link?.url ?? "", /position=99/);
   assert.equal(saved.get(task.id)?.chatName, "产品-资产测绘");
