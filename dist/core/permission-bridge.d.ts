@@ -5,6 +5,7 @@ export interface PermissionBridgeOptions {
     bridge: OpenCodeBridge;
     sendToOwner(text: string): Promise<boolean>;
     sendPermissionCard?(view: PermissionView): Promise<boolean>;
+    onSessionCompacted?(sessionId: string): void | Promise<void>;
     logger: Logger;
 }
 export declare function parsePermissionReply(text: string): "allow" | "deny" | undefined;
@@ -19,6 +20,7 @@ export declare class PermissionBridge {
     private reconnect;
     private consume;
     pendingCount(): number;
+    private handleCompaction;
     private handleRequest;
     requestView(requestId: string): PermissionView | undefined;
     reply(arg: string, reply: "once" | "always" | "reject"): Promise<string>;

@@ -9,6 +9,7 @@ export interface SessionRecord {
     taskId?: string;
     chatId?: string;
     conversationId?: string;
+    contextKey?: string;
     archivedAt?: number;
 }
 export declare class SessionStore {
@@ -24,11 +25,13 @@ export declare class SessionStore {
         taskId?: string;
         chatId?: string;
         conversationId?: string;
+        contextKey?: string;
         createdAt?: number;
         archivedAt?: number;
     }): void;
     list(kind?: SessionKind): Array<[string, SessionRecord]>;
     delete(key: string): void;
+    markContextDirty(sessionId: string): boolean;
     findByTask(taskId: string, kind?: SessionKind): Array<[string, SessionRecord]>;
     flush(): Promise<void>;
 }

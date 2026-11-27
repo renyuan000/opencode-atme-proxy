@@ -13,6 +13,7 @@ export interface SessionRecord {
   taskId?: string;
   chatId?: string;
   conversationId?: string;
+  contextKey?: string;
   archivedAt?: number;
 }
 
@@ -60,6 +61,7 @@ export class SessionStore {
             ...(typeof value.conversationId === "string"
               ? { conversationId: value.conversationId }
               : {}),
+            ...(typeof value.contextKey === "string" ? { contextKey: value.contextKey } : {}),
             ...(typeof value.archivedAt === "number" ? { archivedAt: value.archivedAt } : {}),
           });
         }
@@ -79,7 +81,7 @@ export class SessionStore {
     key: string,
     sessionId: string,
     directory: string,
-    meta?: { kind?: SessionKind; taskId?: string; chatId?: string; conversationId?: string; createdAt?: number; archivedAt?: number },
+    meta?: { kind?: SessionKind; taskId?: string; chatId?: string; conversationId?: string; contextKey?: string; createdAt?: number; archivedAt?: number },
   ): void {
     const now = Date.now();
     const existing = this.sessions.get(key);
@@ -93,6 +95,9 @@ export class SessionStore {
       ...(meta?.chatId ?? existing?.chatId ? { chatId: meta?.chatId ?? existing?.chatId } : {}),
       ...(meta?.conversationId ?? existing?.conversationId
         ? { conversationId: meta?.conversationId ?? existing?.conversationId }
+        : {}),
+      ...(meta?.contextKey ?? existing?.contextKey
+        ? { contextKey: meta?.contextKey ?? existing?.contextKey }
         : {}),
       ...(meta?.archivedAt ?? existing?.archivedAt
         ? { archivedAt: meta?.archivedAt ?? existing?.archivedAt }
@@ -108,6 +113,17 @@ export class SessionStore {
 
   delete(key: string): void {
     if (this.sessions.delete(key)) this.dirty = true;
+  }
+
+  markContextDirty(sessionId: string): boolean {
+    for (const [key, record] of this.sessions.entries()) {
+      if (record.sessionId !== sessionId || !record.contextKey) continue;
+      const { contextKey: _contextKey, ...rest } = record;
+      this.sessions.set(key, { ...rest, updatedAt: Date.now() });
+      this.dirty = true;
+      return true;
+    }
+    return false;
   }
 
   findByTask(taskId: string, kind: SessionKind = "child"): Array<[string, SessionRecord]> {

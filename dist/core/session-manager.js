@@ -99,8 +99,11 @@ export class SessionManager {
         await this.options.sessions.flush();
         return sessionId;
     }
+    workerKey(input) {
+        return `${this.sessionKey(`worker:${input.role}`, input.platform, input.chatId, input.conversationId)}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
+    }
     async createWorkerSession(input) {
-        const key = `${this.sessionKey(`worker:${input.role}`, input.platform, input.chatId, input.conversationId)}${input.webFetch ? ":web:fetch" : input.web ? ":web" : ""}`;
+        const key = this.workerKey(input);
         const existing = this.options.sessions.get(key);
         if (existing && existing.directory === input.directory) {
             const probe = this.options.bridge.getSession;
@@ -162,10 +165,13 @@ export class SessionManager {
                 ...(signal ? { signal } : {}),
             });
             try {
+                const text = typeof promptText === "function"
+                    ? await promptText({ hydrate: true, sessionId })
+                    : promptText;
                 return await this.options.bridge.prompt(sessionId, {
                     directory: input.directory,
                     title: input.title,
-                    text: promptText,
+                    text,
                     ...(attachments ? { attachments } : {}),
                     ...(signal ? { signal } : {}),
                 });
@@ -175,16 +181,32 @@ export class SessionManager {
                 await this.finishSession(sessionId, input.title, input.directory, "worker_fallback");
             }
         }
-        const key = this.sessionKey(`worker:${input.role}`, input.platform, input.chatId, input.conversationId);
+        const key = this.workerKey(input);
         const run = async () => {
             const sessionId = await this.createWorkerSession(input);
-            return this.options.bridge.prompt(sessionId, {
+            const hydrate = Boolean(input.contextKey) && this.options.sessions.get(key)?.contextKey !== input.contextKey;
+            const text = typeof promptText === "function"
+                ? await promptText({ hydrate, sessionId })
+                : promptText;
+            const result = await this.options.bridge.prompt(sessionId, {
                 directory: input.directory,
                 title: input.title,
-                text: promptText,
+                text,
                 ...(attachments ? { attachments } : {}),
                 ...(signal ? { signal } : {}),
             });
+            if (input.contextKey) {
+                this.options.sessions.set(key, sessionId, input.directory, {
+                    kind: "worker",
+                    chatId: input.chatId,
+                    ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+                    ...(input.taskId ? { taskId: input.taskId } : {}),
+                    contextKey: input.contextKey,
+                    createdAt: this.options.sessions.get(key)?.createdAt ?? Date.now(),
+                });
+                await this.options.sessions.flush();
+            }
+            return result;
         };
         const previous = this.workerLocks.get(key) ?? Promise.resolve();
         const current = previous.then(run, run);

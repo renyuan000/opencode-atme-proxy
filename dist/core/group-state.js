@@ -543,6 +543,13 @@ export class ScopedSessions {
     findByTask(taskId, kind = "child") {
         return [...this.stores.values()].flatMap((store) => store.findByTask(taskId, kind));
     }
+    markContextDirty(sessionId) {
+        for (const store of this.stores.values()) {
+            if (store.markContextDirty(sessionId))
+                return true;
+        }
+        return false;
+    }
     async flush() {
         await Promise.all([...this.stores.values()].map((store) => store.flush()));
     }

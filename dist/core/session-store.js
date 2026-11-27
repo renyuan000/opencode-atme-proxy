@@ -34,6 +34,7 @@ export class SessionStore {
                         ...(typeof value.conversationId === "string"
                             ? { conversationId: value.conversationId }
                             : {}),
+                        ...(typeof value.contextKey === "string" ? { contextKey: value.contextKey } : {}),
                         ...(typeof value.archivedAt === "number" ? { archivedAt: value.archivedAt } : {}),
                     });
                 }
@@ -62,6 +63,9 @@ export class SessionStore {
             ...(meta?.conversationId ?? existing?.conversationId
                 ? { conversationId: meta?.conversationId ?? existing?.conversationId }
                 : {}),
+            ...(meta?.contextKey ?? existing?.contextKey
+                ? { contextKey: meta?.contextKey ?? existing?.contextKey }
+                : {}),
             ...(meta?.archivedAt ?? existing?.archivedAt
                 ? { archivedAt: meta?.archivedAt ?? existing?.archivedAt }
                 : {}),
@@ -75,6 +79,17 @@ export class SessionStore {
     delete(key) {
         if (this.sessions.delete(key))
             this.dirty = true;
+    }
+    markContextDirty(sessionId) {
+        for (const [key, record] of this.sessions.entries()) {
+            if (record.sessionId !== sessionId || !record.contextKey)
+                continue;
+            const { contextKey: _contextKey, ...rest } = record;
+            this.sessions.set(key, { ...rest, updatedAt: Date.now() });
+            this.dirty = true;
+            return true;
+        }
+        return false;
     }
     findByTask(taskId, kind = "child") {
         return [...this.sessions.entries()].filter(([, record]) => record.kind === kind && record.taskId === taskId);

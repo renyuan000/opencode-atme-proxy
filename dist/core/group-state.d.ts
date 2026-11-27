@@ -152,6 +152,8 @@ export declare class ScopedSessions {
     set(key: string, sessionId: string, directory: string, meta?: {
         kind?: SessionKind;
         taskId?: string;
+        conversationId?: string;
+        contextKey?: string;
         createdAt?: number;
         archivedAt?: number;
         chatId?: string;
@@ -159,6 +161,7 @@ export declare class ScopedSessions {
     list(kind?: SessionKind): Array<[string, SessionRecord]>;
     delete(key: string): void;
     findByTask(taskId: string, kind?: SessionKind): Array<[string, SessionRecord]>;
+    markContextDirty(sessionId: string): boolean;
     flush(): Promise<void>;
 }
 export declare class ScopedSentReplies {

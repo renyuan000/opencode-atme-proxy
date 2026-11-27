@@ -107,3 +107,57 @@ test("session store preserves group and worker kinds after reload", async () => 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("worker context hydrates once and rehydrates when the context key changes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-context-hydration-"));
+  try {
+    const sessions = new SessionStore(join(dir, "sessions.json"));
+    await sessions.load();
+    const logger = {
+      info() {},
+      warn() {},
+      error() {},
+      child() {
+        return this;
+      },
+    };
+    const manager = new SessionManager({
+      bridge: {
+        createSession: async () => "s1",
+        prompt: async () => "ok",
+        deleteSession: async () => {},
+      } as never,
+      sessions,
+      config: {
+        opencode: { sessionTitlePrefix: "atme", keepSessions: true },
+        subagents: { enabled: true, analyst: "analyst", reviewer: "reviewer" },
+      } as never,
+      logger: logger as never,
+      readOnlyPermission: [],
+    });
+    const seen: boolean[] = [];
+    const run = (contextKey: string) =>
+      manager.runWorker(
+        {
+          platform: "feishu",
+          chatId: "chat",
+          directory: "/repo",
+          title: "worker",
+          role: "reply",
+          contextKey,
+        },
+        ({ hydrate }) => {
+          seen.push(hydrate);
+          return "prompt";
+        },
+      );
+    await run("v1");
+    await run("v1");
+    await run("v2");
+    sessions.markContextDirty("s1");
+    await run("v2");
+    assert.deepEqual(seen, [true, false, true, true]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -25,8 +25,14 @@ export interface WorkerInput {
     webFetch?: boolean;
     conversationId?: string;
     taskId?: string;
+    contextKey?: string;
     onSession?: (sessionId: string) => void | Promise<void>;
 }
+export interface WorkerPromptContext {
+    hydrate: boolean;
+    sessionId: string;
+}
+export type WorkerPrompt = string | ((context: WorkerPromptContext) => string | Promise<string>);
 export interface ChildInput {
     platform: string;
     chatId: string;
@@ -70,8 +76,9 @@ export declare class SessionManager {
     private sessionKey;
     coordinatorSession(platform: string, chatId: string, directory: string, title: string, conversationId?: string): Promise<string>;
     createGroupSession(platform: string, chatId: string, directory: string, conversationId?: string, title?: string): Promise<string>;
+    private workerKey;
     createWorkerSession(input: WorkerInput): Promise<string>;
-    runWorker(input: WorkerInput, promptText: string, signal?: AbortSignal, attachments?: PromptAttachment[]): Promise<string>;
+    runWorker(input: WorkerInput, promptText: WorkerPrompt, signal?: AbortSignal, attachments?: PromptAttachment[]): Promise<string>;
     runEphemeral(input: WorkerInput, promptText: string, signal?: AbortSignal, attachments?: PromptAttachment[]): Promise<string>;
     createChildSession(input: ChildInput): Promise<{
         sessionId: string;

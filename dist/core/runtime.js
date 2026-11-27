@@ -699,6 +699,15 @@ export class ProxyRuntime {
                 await this.options.platform.send({ kind: "user", userId: ownerId }, rendered);
                 return true;
             },
+            onSessionCompacted: (sessionId) => {
+                this.sessions.markContextDirty(sessionId);
+                void this.sessions.flush().catch((error) => {
+                    this.logger.warn("session context flush failed", {
+                        sessionId,
+                        error: toErrorMessage(error),
+                    });
+                });
+            },
             logger: this.logger.child("permission-bridge"),
         });
         this.recoveryService = new RecoveryService({

@@ -610,7 +610,7 @@ export class ScopedSessions {
     key: string,
     sessionId: string,
     directory: string,
-    meta?: { kind?: SessionKind; taskId?: string; createdAt?: number; archivedAt?: number; chatId?: string },
+    meta?: { kind?: SessionKind; taskId?: string; conversationId?: string; contextKey?: string; createdAt?: number; archivedAt?: number; chatId?: string },
   ): void {
     const existingChatId = this.get(key)?.chatId;
     const chatId =
@@ -628,6 +628,13 @@ export class ScopedSessions {
 
   findByTask(taskId: string, kind: SessionKind = "child"): Array<[string, SessionRecord]> {
     return [...this.stores.values()].flatMap((store) => store.findByTask(taskId, kind));
+  }
+
+  markContextDirty(sessionId: string): boolean {
+    for (const store of this.stores.values()) {
+      if (store.markContextDirty(sessionId)) return true;
+    }
+    return false;
   }
 
   async flush(): Promise<void> {

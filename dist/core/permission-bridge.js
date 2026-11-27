@@ -84,11 +84,23 @@ export class PermissionBridge {
         for await (const event of events.stream) {
             if (this.abort?.signal.aborted)
                 break;
+            if (await this.handleCompaction(event))
+                continue;
             await this.handleRequest(event);
         }
     }
     pendingCount() {
         return this.pending.size;
+    }
+    async handleCompaction(event) {
+        if (event?.type !== "session.compacted" && event?.type !== "session.next.compaction.ended") {
+            return false;
+        }
+        const data = event.data ?? event.properties ?? {};
+        const sessionId = String(data.sessionID ?? data.sessionId ?? "");
+        if (sessionId)
+            await this.options.onSessionCompacted?.(sessionId);
+        return true;
     }
     async handleRequest(event) {
         if (event?.type !== "permission.asked" && event?.type !== "permission.v2.asked")

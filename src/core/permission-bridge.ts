@@ -14,6 +14,7 @@ export interface PermissionBridgeOptions {
   bridge: OpenCodeBridge;
   sendToOwner(text: string): Promise<boolean>;
   sendPermissionCard?(view: PermissionView): Promise<boolean>;
+  onSessionCompacted?(sessionId: string): void | Promise<void>;
   logger: Logger;
 }
 
@@ -107,12 +108,23 @@ export class PermissionBridge {
     const events = await client.event.subscribe();
     for await (const event of events.stream) {
       if (this.abort?.signal.aborted) break;
+      if (await this.handleCompaction(event)) continue;
       await this.handleRequest(event);
     }
   }
 
   pendingCount(): number {
     return this.pending.size;
+  }
+
+  private async handleCompaction(event: any): Promise<boolean> {
+    if (event?.type !== "session.compacted" && event?.type !== "session.next.compaction.ended") {
+      return false;
+    }
+    const data = event.data ?? event.properties ?? {};
+    const sessionId = String(data.sessionID ?? data.sessionId ?? "");
+    if (sessionId) await this.options.onSessionCompacted?.(sessionId);
+    return true;
   }
 
   private async handleRequest(event: any): Promise<void> {
