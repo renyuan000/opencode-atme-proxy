@@ -71,7 +71,6 @@ export declare class SessionManager {
     private readonly taskChildCounts;
     private readonly childSlots;
     private readonly visionSlots;
-    private readonly activeSessions;
     constructor(options: SessionManagerOptions);
     private epochFor;
     private sessionKey;
@@ -86,7 +85,6 @@ export declare class SessionManager {
         release: () => void;
     }>;
     archiveTaskChildren(taskId: string): Promise<void>;
-    sweepDeadSessions(): Promise<void>;
     sweepSessions(): Promise<void>;
     finishSession(sessionId: string, title: string, directory: string, purpose: string): Promise<void>;
 }

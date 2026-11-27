@@ -7,7 +7,6 @@ export class SessionManager {
     taskChildCounts = new Map();
     childSlots;
     visionSlots;
-    activeSessions = new Set();
     constructor(options) {
         this.options = options;
         this.childSlots = new Semaphore(options.config.subagents.maxChildrenGlobal);
@@ -185,35 +184,29 @@ export class SessionManager {
         const key = this.workerKey(input);
         const run = async () => {
             const sessionId = await this.createWorkerSession(input);
-            this.activeSessions.add(sessionId);
-            try {
-                const hydrate = Boolean(input.contextKey) && this.options.sessions.get(key)?.contextKey !== input.contextKey;
-                const text = typeof promptText === "function"
-                    ? await promptText({ hydrate, sessionId })
-                    : promptText;
-                const result = await this.options.bridge.prompt(sessionId, {
-                    directory: input.directory,
-                    title: input.title,
-                    text,
-                    ...(attachments ? { attachments } : {}),
-                    ...(signal ? { signal } : {}),
+            const hydrate = Boolean(input.contextKey) && this.options.sessions.get(key)?.contextKey !== input.contextKey;
+            const text = typeof promptText === "function"
+                ? await promptText({ hydrate, sessionId })
+                : promptText;
+            const result = await this.options.bridge.prompt(sessionId, {
+                directory: input.directory,
+                title: input.title,
+                text,
+                ...(attachments ? { attachments } : {}),
+                ...(signal ? { signal } : {}),
+            });
+            if (input.contextKey) {
+                this.options.sessions.set(key, sessionId, input.directory, {
+                    kind: "worker",
+                    chatId: input.chatId,
+                    ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+                    ...(input.taskId ? { taskId: input.taskId } : {}),
+                    contextKey: input.contextKey,
+                    createdAt: this.options.sessions.get(key)?.createdAt ?? Date.now(),
                 });
-                if (input.contextKey) {
-                    this.options.sessions.set(key, sessionId, input.directory, {
-                        kind: "worker",
-                        chatId: input.chatId,
-                        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
-                        ...(input.taskId ? { taskId: input.taskId } : {}),
-                        contextKey: input.contextKey,
-                        createdAt: this.options.sessions.get(key)?.createdAt ?? Date.now(),
-                    });
-                    await this.options.sessions.flush();
-                }
-                return result;
+                await this.options.sessions.flush();
             }
-            finally {
-                this.activeSessions.delete(sessionId);
-            }
+            return result;
         };
         const previous = this.workerLocks.get(key) ?? Promise.resolve();
         const current = previous.then(run, run);
@@ -238,7 +231,6 @@ export class SessionManager {
                 ...(input.permission ? { permission: input.permission } : {}),
                 ...(input.model ? { model: input.model } : {}),
             });
-            this.activeSessions.add(sessionId);
             return await this.options.bridge.prompt(sessionId, {
                 directory: input.directory,
                 title: input.title,
@@ -248,8 +240,6 @@ export class SessionManager {
             });
         }
         finally {
-            if (sessionId)
-                this.activeSessions.delete(sessionId);
             releaseSlot();
             if (sessionId) {
                 try {
@@ -371,46 +361,7 @@ export class SessionManager {
         }
         await this.options.sessions.flush();
     }
-    async sweepDeadSessions() {
-        const probe = this.options.bridge.getSession;
-        if (!probe)
-            return;
-        for (const kind of ["worker", "group", "coordinator"]) {
-            for (const [key, record] of this.options.sessions.list(kind)) {
-                if (this.activeSessions.has(record.sessionId))
-                    continue;
-                let alive;
-                try {
-                    alive = await probe.call(this.options.bridge, record.sessionId, record.directory);
-                }
-                catch (error) {
-                    this.options.logger.warn("session probe failed during cleanup", {
-                        sessionId: record.sessionId,
-                        error: toErrorMessage(error),
-                    });
-                    continue;
-                }
-                if (alive && !alive.timeArchived)
-                    continue;
-                if (alive) {
-                    try {
-                        await this.options.bridge.deleteSession(record.sessionId);
-                    }
-                    catch (error) {
-                        this.options.logger.warn("archived session delete failed", {
-                            sessionId: record.sessionId,
-                            error: toErrorMessage(error),
-                        });
-                        continue;
-                    }
-                }
-                this.options.sessions.delete(key);
-            }
-        }
-        await this.options.sessions.flush();
-    }
     async sweepSessions() {
-        await this.sweepDeadSessions();
         if (!this.options.config.subagents.enabled)
             return;
         const now = Date.now();

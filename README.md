@@ -658,7 +658,15 @@ P2：
 
 ### Session 清理脚本
 
-仓库提供 `scripts/session-cleanup.mjs`，默认只生成计划，不删除：
+仓库提供 `scripts/session-cleanup.mjs`。先做只读审计，确认哪些 session 空闲或异常：
+
+```bash
+node scripts/session-cleanup.mjs audit \
+  --directory /mnt/d/Work/source/go-projects/net-inspect/npb-transform.git \
+  --all
+```
+
+`audit` 只列清单，不写计划、不删除、不归档；加 `--json` 输出 JSON。需要生成删除计划时：
 
 ```bash
 node scripts/session-cleanup.mjs plan \

@@ -24,11 +24,17 @@ for (let index = 0; index < args.length; index += 1) {
 }
 if (options.help || command === "help") {
   console.log(`用法：
+  node scripts/session-cleanup.mjs audit [选项]
   node scripts/session-cleanup.mjs plan [选项]
   node scripts/session-cleanup.mjs interactive [选项]
 
+audit：
+  只读列出全部 atme session，不写计划、不删除；适合排查空闲/异常 session。
+
 interactive：
   ↑/↓ 选择，Enter 查看/确认，Esc/n 返回列表，q/Ctrl+C 退出。
+
+apply：
   node scripts/session-cleanup.mjs apply --plan-file <文件> [选项]
 
 选项：
@@ -40,20 +46,24 @@ interactive：
   --all                          等价于 --min-age-minutes 0，仅用于查看全部
   --include-old-protected        允许将旧的非当前持久 session 列为候选（默认不列）
   --max-count <数量>             最多列出多少个 session，默认 500
+  --json                         audit 输出 JSON，不输出表格
 
 默认只把“0 消息、超过最小年龄、且不是持久角色”的会话列为候选，因此默认可能没有候选。
 使用 --include-old-protected 时，只允许旧的非当前持久 session；同标题最新 session 始终保护。
 `);
   process.exit(0);
 }
-if (!["plan", "apply", "interactive"].includes(command)) {
+if (!["audit", "plan", "apply", "interactive"].includes(command)) {
   console.error(`未知命令：${command}`);
   process.exit(2);
 }
 
 let directory = resolve(String(options.directory ?? process.cwd()));
 const baseUrl = String(options["base-url"] ?? "http://127.0.0.1:19876").replace(/\/+$/, "");
-const minAgeMinutes = options.all ? 0 : Math.max(0, Number(options["min-age-minutes"] ?? 60));
+const minAgeMinutes =
+  options.all || command === "audit"
+    ? 0
+    : Math.max(0, Number(options["min-age-minutes"] ?? 60));
 const maxCount = Math.max(1, Number(options["max-count"] ?? 500));
 const planFile = String(options["plan-file"] ?? "/tmp/opencode/atme-session-cleanup-plan.json");
 const persistentPrefixes = [
@@ -233,6 +243,28 @@ async function collectItems() {
     return (rank[a.reason] ?? 9) - (rank[b.reason] ?? 9) || a.title.localeCompare(b.title);
   });
   return items;
+}
+
+async function auditSessions() {
+  const items = await collectItems();
+  if (options.json) {
+    console.log(JSON.stringify({ directory, baseUrl, generatedAt: Date.now(), items }, null, 2));
+    return;
+  }
+  console.log(`目录：${directory}`);
+  console.log(`只读审计：共 ${items.length} 个 atme session，不删除、不归档。`);
+  console.log("状态             条数    字节       sessionId  标题  首条(20字)  后续user(20字)  内容预览");
+  for (const item of items) printRow(item);
+  const counts = items.reduce((acc, item) => {
+    acc[item.reason] = (acc[item.reason] ?? 0) + 1;
+    return acc;
+  }, {});
+  const summary = Object.entries(counts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([reason, count]) => `${reason}=${count}`)
+    .join("，");
+  console.log(`\n汇总：${summary || "无"}`);
+  console.log("说明：candidate 仅表示空且非受保护，仍不会自动删除。");
 }
 
 async function createPlan() {
@@ -485,7 +517,8 @@ async function applyPlan() {
 }
 
 try {
-  if (command === "plan") await createPlan();
+  if (command === "audit") await auditSessions();
+  else if (command === "plan") await createPlan();
   else if (command === "interactive") await interactive();
   else await applyPlan();
 } catch (error) {
