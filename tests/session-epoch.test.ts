@@ -217,3 +217,57 @@ test("transient session probe failure keeps the existing worker session", async 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("not-found probe result keeps the existing worker mapping", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-session-404-"));
+  try {
+    const sessions = new SessionStore(join(dir, "sessions.json"));
+    await sessions.load();
+    sessions.set("worker:reply:feishu:chat:e1", "existing-worker", "/repo", {
+      kind: "worker",
+      chatId: "chat",
+    });
+    await sessions.flush();
+    let created = 0;
+    const logger = {
+      info() {},
+      warn() {},
+      error() {},
+      child() {
+        return this;
+      },
+    };
+    const manager = new SessionManager({
+      bridge: {
+        createSession: async () => {
+          created += 1;
+          return "new-worker";
+        },
+        prompt: async () => "ok",
+        deleteSession: async () => {},
+        getSession: async () => undefined,
+      } as never,
+      sessions,
+      config: {
+        opencode: { sessionTitlePrefix: "atme", keepSessions: true },
+        subagents: { enabled: true, analyst: "analyst", reviewer: "reviewer" },
+      } as never,
+      logger: logger as never,
+      readOnlyPermission: [],
+    });
+
+    const sessionId = await manager.createWorkerSession({
+      platform: "feishu",
+      chatId: "chat",
+      directory: "/repo",
+      title: "worker",
+      role: "reply",
+    });
+
+    assert.equal(sessionId, "existing-worker");
+    assert.equal(created, 0);
+    assert.equal(sessions.get("worker:reply:feishu:chat:e1")?.sessionId, "existing-worker");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

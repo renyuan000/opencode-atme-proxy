@@ -126,12 +126,14 @@ export class SessionManager {
     const existing = this.options.sessions.get(key);
     if (existing) {
       const alive = await this.probeSession(existing.sessionId, existing.directory);
-      if (alive === "unsupported" || alive === "unknown") return existing.sessionId;
-      if (!alive || alive.timeArchived) {
-        this.options.sessions.delete(key);
-      } else {
+      if (alive === "unsupported" || alive === "unknown" || (alive && !alive.timeArchived)) {
         return existing.sessionId;
       }
+      this.options.logger.warn("session probe reported unavailable; keeping mapping", {
+        sessionId: existing.sessionId,
+        archived: Boolean(alive?.timeArchived),
+      });
+      return existing.sessionId;
     }
     const inflight = this.coordinatorLocks.get(key);
     if (inflight) return inflight;
@@ -172,9 +174,14 @@ export class SessionManager {
     const existing = this.options.sessions.get(key);
     if (existing) {
       const alive = await this.probeSession(existing.sessionId, existing.directory);
-      if (alive === "unsupported" || alive === "unknown") return existing.sessionId;
-      if (alive && !alive.timeArchived) return existing.sessionId;
-      this.options.sessions.delete(key);
+      if (alive === "unsupported" || alive === "unknown" || (alive && !alive.timeArchived)) {
+        return existing.sessionId;
+      }
+      this.options.logger.warn("session probe reported unavailable; keeping mapping", {
+        sessionId: existing.sessionId,
+        archived: Boolean(alive?.timeArchived),
+      });
+      return existing.sessionId;
     }
     const sessionId = await this.options.bridge.createSession({
       directory,
@@ -215,6 +222,20 @@ export class SessionManager {
         await input.onSession?.(existing.sessionId);
         return existing.sessionId;
       }
+      this.options.logger.warn("session probe reported unavailable; keeping mapping", {
+        sessionId: existing.sessionId,
+        archived: Boolean(alive?.timeArchived),
+      });
+      if (input.taskId) {
+        await this.options.linkTaskSession?.({
+          chatId: input.chatId,
+          taskId: input.taskId,
+          role: input.role,
+          sessionId: existing.sessionId,
+        });
+      }
+      await input.onSession?.(existing.sessionId);
+      return existing.sessionId;
     }
     if (existing) this.options.sessions.delete(key);
     const coordinator = await this.coordinatorSession(
