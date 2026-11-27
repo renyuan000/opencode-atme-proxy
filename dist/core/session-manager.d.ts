@@ -72,6 +72,7 @@ export declare class SessionManager {
     private readonly childSlots;
     private readonly visionSlots;
     constructor(options: SessionManagerOptions);
+    private probeSession;
     private epochFor;
     private sessionKey;
     coordinatorSession(platform: string, chatId: string, directory: string, title: string, conversationId?: string): Promise<string>;

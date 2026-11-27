@@ -1,6 +1,6 @@
 import type { AppConfig } from "./config.js";
 import type { Logger } from "./logger.js";
-import type { OpenCodeBridge, PromptAttachment } from "./opencode.js";
+import type { OpenCodeBridge, PromptAttachment, SessionInfo } from "./opencode.js";
 import type { SessionStore } from "./session-store.js";
 import { Semaphore } from "./rate-limit.js";
 import { toErrorMessage } from "./util.js";
@@ -80,6 +80,23 @@ export class SessionManager {
     this.visionSlots = new Semaphore(Math.min(2, options.config.subagents.maxChildrenGlobal));
   }
 
+  private async probeSession(
+    sessionId: string,
+    directory: string,
+  ): Promise<SessionInfo | "unknown" | "unsupported" | undefined> {
+    const probe = this.options.bridge.getSession;
+    if (!probe) return "unsupported";
+    try {
+      return await probe.call(this.options.bridge, sessionId, directory);
+    } catch (error) {
+      this.options.logger.warn("session probe failed; keeping existing session", {
+        sessionId,
+        error: toErrorMessage(error),
+      });
+      return "unknown";
+    }
+  }
+
   private epochFor(chatId: string): number {
     const value = this.options.epochFor?.(chatId) ?? 1;
     return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 1;
@@ -108,13 +125,8 @@ export class SessionManager {
     const key = this.sessionKey("coordinator", platform, chatId, conversationId);
     const existing = this.options.sessions.get(key);
     if (existing) {
-      const probe = this.options.bridge.getSession;
-      if (!probe) return existing.sessionId;
-      const alive = await probe.call(
-        this.options.bridge,
-        existing.sessionId,
-        existing.directory,
-      );
+      const alive = await this.probeSession(existing.sessionId, existing.directory);
+      if (alive === "unsupported" || alive === "unknown") return existing.sessionId;
       if (!alive || alive.timeArchived) {
         this.options.sessions.delete(key);
       } else {
@@ -159,17 +171,9 @@ export class SessionManager {
     const key = this.sessionKey("group", platform, chatId, conversationId);
     const existing = this.options.sessions.get(key);
     if (existing) {
-      const probe = this.options.bridge.getSession;
-      if (probe) {
-        const alive = await probe.call(
-          this.options.bridge,
-          existing.sessionId,
-          existing.directory,
-        );
-        if (alive && !alive.timeArchived) return existing.sessionId;
-      } else {
-        return existing.sessionId;
-      }
+      const alive = await this.probeSession(existing.sessionId, existing.directory);
+      if (alive === "unsupported" || alive === "unknown") return existing.sessionId;
+      if (alive && !alive.timeArchived) return existing.sessionId;
       this.options.sessions.delete(key);
     }
     const sessionId = await this.options.bridge.createSession({
@@ -198,14 +202,8 @@ export class SessionManager {
     const key = this.workerKey(input);
     const existing = this.options.sessions.get(key);
     if (existing && existing.directory === input.directory) {
-      const probe = this.options.bridge.getSession;
-      if (!probe) return existing.sessionId;
-      const alive = await probe.call(
-        this.options.bridge,
-        existing.sessionId,
-        existing.directory,
-      );
-      if (alive && !alive.timeArchived) {
+      const alive = await this.probeSession(existing.sessionId, existing.directory);
+      if (alive === "unsupported" || alive === "unknown" || (alive && !alive.timeArchived)) {
         if (input.taskId) {
           await this.options.linkTaskSession?.({
             chatId: input.chatId,

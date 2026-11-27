@@ -155,7 +155,11 @@ export class HttpOpenCodeBridge implements OpenCodeBridge {
       sessionID: sessionId,
       ...(directory ? { directory } : {}),
     });
-    if (result.error || !result.data) return undefined;
+    if (result.error) {
+      if (isNotFoundError(result.error)) return undefined;
+      throw new Error(`getSession failed: ${formatError(result.error)}`);
+    }
+    if (!result.data) throw new Error("getSession returned no data");
     return toSessionInfo(result.data);
   }
 
@@ -258,7 +262,11 @@ export class InjectedOpenCodeBridge implements OpenCodeBridge {
       sessionID: sessionId,
       ...(directory ? { directory } : {}),
     });
-    if (result.error || !result.data) return undefined;
+    if (result.error) {
+      if (isNotFoundError(result.error)) return undefined;
+      throw new Error(`getSession failed: ${formatError(result.error)}`);
+    }
+    if (!result.data) throw new Error("getSession returned no data");
     return toSessionInfo(result.data);
   }
 
@@ -327,6 +335,22 @@ function toSessionInfo(session: {
     ...(session.parentID ? { parentID: session.parentID } : {}),
     ...(session.time?.archived ? { timeArchived: session.time.archived } : {}),
   };
+}
+
+function isNotFoundError(error: unknown): boolean {
+  const value = error as {
+    name?: unknown;
+    status?: unknown;
+    statusCode?: unknown;
+    data?: { status?: unknown; statusCode?: unknown };
+  };
+  return (
+    value?.name === "NotFoundError" ||
+    value?.status === 404 ||
+    value?.statusCode === 404 ||
+    value?.data?.status === 404 ||
+    value?.data?.statusCode === 404
+  );
 }
 
 function formatError(error: unknown): string {

@@ -99,8 +99,13 @@ export class HttpOpenCodeBridge {
             sessionID: sessionId,
             ...(directory ? { directory } : {}),
         });
-        if (result.error || !result.data)
-            return undefined;
+        if (result.error) {
+            if (isNotFoundError(result.error))
+                return undefined;
+            throw new Error(`getSession failed: ${formatError(result.error)}`);
+        }
+        if (!result.data)
+            throw new Error("getSession returned no data");
         return toSessionInfo(result.data);
     }
     async archiveSession(sessionId, directory) {
@@ -197,8 +202,13 @@ export class InjectedOpenCodeBridge {
             sessionID: sessionId,
             ...(directory ? { directory } : {}),
         });
-        if (result.error || !result.data)
-            return undefined;
+        if (result.error) {
+            if (isNotFoundError(result.error))
+                return undefined;
+            throw new Error(`getSession failed: ${formatError(result.error)}`);
+        }
+        if (!result.data)
+            throw new Error("getSession returned no data");
         return toSessionInfo(result.data);
     }
     async archiveSession(sessionId, directory) {
@@ -240,6 +250,14 @@ function toSessionInfo(session) {
         ...(session.parentID ? { parentID: session.parentID } : {}),
         ...(session.time?.archived ? { timeArchived: session.time.archived } : {}),
     };
+}
+function isNotFoundError(error) {
+    const value = error;
+    return (value?.name === "NotFoundError" ||
+        value?.status === 404 ||
+        value?.statusCode === 404 ||
+        value?.data?.status === 404 ||
+        value?.data?.statusCode === 404);
 }
 function formatError(error) {
     if (!error)
