@@ -84,7 +84,6 @@ export class TaskService {
   async analyzeTask(task: TaskRecord): Promise<void> {
     const startedAt = Date.now();
     task.analysisStartedAt = startedAt;
-    task.analysisPendingAt = undefined;
     task.updatedAt = startedAt;
     await this.options.tasks.save(task);
     const longTimer = setTimeout(() => {
