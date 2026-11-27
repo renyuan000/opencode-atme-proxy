@@ -16,6 +16,7 @@ export interface OpenCodeLlmOptions {
 
 export class OpenCodeLlmClient implements LlmClient {
   private readonly logger: Logger;
+  private resolvedModel?: { providerID: string; modelID: string };
 
   constructor(private readonly options: OpenCodeLlmOptions) {
     this.logger = options.logger ?? createLogger({ scope: "opencode-llm" });
@@ -25,11 +26,12 @@ export class OpenCodeLlmClient implements LlmClient {
     const system = messages.find((message) => message.role === "system")?.content ?? "";
     const user = messages.find((message) => message.role === "user")?.content ?? "";
     const title = `${this.options.titlePrefix}:filter:${Date.now()}`;
+    const model = this.options.model ?? (await this.resolveModel());
     const sessionId = await this.options.bridge.createSession({
       directory: this.options.directory,
       title,
       ...(this.options.agent ? { agent: this.options.agent } : {}),
-      ...(this.options.model ? { model: this.options.model } : {}),
+      ...(model ? { model } : {}),
       permission: [
         { permission: "edit", pattern: "*", action: "deny" },
         { permission: "bash", pattern: "*", action: "deny" },
@@ -68,5 +70,37 @@ export class OpenCodeLlmClient implements LlmClient {
         });
       });
     }
+  }
+
+  private async resolveModel(): Promise<{ providerID: string; modelID: string } | undefined> {
+    if (this.resolvedModel) return this.resolvedModel;
+    try {
+      const client = this.options.bridge.getClient() as unknown as {
+        session?: {
+          list(input?: Record<string, unknown>): Promise<any>;
+        };
+      };
+      const result = await client.session?.list();
+      const sessions = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+      const candidates = sessions
+        .filter((session: any) => session.model?.providerID && session.model.id)
+        .filter((session: any) => !String(session.title ?? "").includes(":filter:"))
+        .sort((a: any, b: any) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0));
+      const directSessions = candidates.filter(
+        (session: any) => !String(session.title ?? "").startsWith("atme:"),
+      );
+      const model = (directSessions[0] ?? candidates[0])?.model;
+      if (model?.providerID && model.id) {
+        this.resolvedModel = { providerID: model.providerID, modelID: model.id };
+        this.logger.info("filter model resolved", this.resolvedModel);
+      } else {
+        this.logger.warn("filter model unresolved; using OpenCode default");
+      }
+    } catch (error) {
+      this.logger.debug("failed to resolve filter model", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return this.resolvedModel;
   }
 }

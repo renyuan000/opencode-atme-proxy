@@ -3,6 +3,7 @@ import { toErrorMessage } from "./util.js";
 export class OpenCodeLlmClient {
     options;
     logger;
+    resolvedModel;
     constructor(options) {
         this.options = options;
         this.logger = options.logger ?? createLogger({ scope: "opencode-llm" });
@@ -11,11 +12,12 @@ export class OpenCodeLlmClient {
         const system = messages.find((message) => message.role === "system")?.content ?? "";
         const user = messages.find((message) => message.role === "user")?.content ?? "";
         const title = `${this.options.titlePrefix}:filter:${Date.now()}`;
+        const model = this.options.model ?? (await this.resolveModel());
         const sessionId = await this.options.bridge.createSession({
             directory: this.options.directory,
             title,
             ...(this.options.agent ? { agent: this.options.agent } : {}),
-            ...(this.options.model ? { model: this.options.model } : {}),
+            ...(model ? { model } : {}),
             permission: [
                 { permission: "edit", pattern: "*", action: "deny" },
                 { permission: "bash", pattern: "*", action: "deny" },
@@ -52,6 +54,34 @@ export class OpenCodeLlmClient {
                 });
             });
         }
+    }
+    async resolveModel() {
+        if (this.resolvedModel)
+            return this.resolvedModel;
+        try {
+            const client = this.options.bridge.getClient();
+            const result = await client.session?.list();
+            const sessions = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+            const candidates = sessions
+                .filter((session) => session.model?.providerID && session.model.id)
+                .filter((session) => !String(session.title ?? "").includes(":filter:"))
+                .sort((a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0));
+            const directSessions = candidates.filter((session) => !String(session.title ?? "").startsWith("atme:"));
+            const model = (directSessions[0] ?? candidates[0])?.model;
+            if (model?.providerID && model.id) {
+                this.resolvedModel = { providerID: model.providerID, modelID: model.id };
+                this.logger.info("filter model resolved", this.resolvedModel);
+            }
+            else {
+                this.logger.warn("filter model unresolved; using OpenCode default");
+            }
+        }
+        catch (error) {
+            this.logger.debug("failed to resolve filter model", {
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+        return this.resolvedModel;
     }
 }
 //# sourceMappingURL=opencode-llm.js.map

@@ -16,6 +16,8 @@ export interface OpenCodeLlmOptions {
 export declare class OpenCodeLlmClient implements LlmClient {
     private readonly options;
     private readonly logger;
+    private resolvedModel?;
     constructor(options: OpenCodeLlmOptions);
     complete(messages: LlmMessage[], signal?: AbortSignal): Promise<LlmCompletion>;
+    private resolveModel;
 }

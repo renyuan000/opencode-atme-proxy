@@ -168,6 +168,9 @@ const OpenCodeSchema = z.object({
   replyModel: z
     .object({ providerID: z.string().min(1), modelID: z.string().min(1) })
     .optional(),
+  filterModel: z
+    .object({ providerID: z.string().min(1), modelID: z.string().min(1) })
+    .optional(),
   keepSessions: z.boolean().default(true),
   sessionListVisible: z.boolean().default(true),
 });

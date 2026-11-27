@@ -3752,7 +3752,9 @@ function createFilterClient(options, logger) {
             directory: config.project.worktree ?? config.repos[0]?.path ?? process.cwd(),
             titlePrefix: config.opencode.sessionTitlePrefix,
             ...(config.opencode.analysisAgent ? { agent: config.opencode.analysisAgent } : {}),
-            ...(config.analysis.model ? { model: config.analysis.model } : {}),
+            ...(config.opencode.filterModel ?? config.analysis.model
+                ? { model: config.opencode.filterModel ?? config.analysis.model }
+                : {}),
             timeoutMs: config.filter.timeoutMs,
             logger: logger.child("filter"),
         });

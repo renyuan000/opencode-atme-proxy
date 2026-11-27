@@ -238,6 +238,7 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 | `platforms.feishu.groups[].chatId`     | 群 chat_id（`oc_` 开头），可多个            |
 | `filter.baseUrl/model`                 | OpenAI 兼容的低成本模型                  |
 | `filter.timeoutMs`                     | 筛选模型超时，默认 60000ms               |
+| `opencode.filterModel`                 | 筛选专用模型；不配则复用已有 OpenCode session 的模型 |
 | `opencode.baseUrl`                     | `http://127.0.0.1:19876`                 |
 | `groups[].workspace`                   | 群工作空间：root/projects/docs；优先于 project |
 | `project.worktree`                     | 旧模式主项目代码目录；不填则自动解析      |

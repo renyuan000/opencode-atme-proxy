@@ -749,6 +749,16 @@ export declare const AppConfigSchema: z.ZodObject<{
             providerID: string;
             modelID: string;
         }>>;
+        filterModel: z.ZodOptional<z.ZodObject<{
+            providerID: z.ZodString;
+            modelID: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            providerID: string;
+            modelID: string;
+        }, {
+            providerID: string;
+            modelID: string;
+        }>>;
         keepSessions: z.ZodDefault<z.ZodBoolean>;
         sessionListVisible: z.ZodDefault<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
@@ -765,6 +775,10 @@ export declare const AppConfigSchema: z.ZodObject<{
             providerID: string;
             modelID: string;
         } | undefined;
+        filterModel?: {
+            providerID: string;
+            modelID: string;
+        } | undefined;
     }, {
         baseUrl?: string | undefined;
         password?: string | undefined;
@@ -774,6 +788,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         analysisAgent?: string | undefined;
         executionAgent?: string | undefined;
         replyModel?: {
+            providerID: string;
+            modelID: string;
+        } | undefined;
+        filterModel?: {
             providerID: string;
             modelID: string;
         } | undefined;
@@ -1248,6 +1266,10 @@ export declare const AppConfigSchema: z.ZodObject<{
             providerID: string;
             modelID: string;
         } | undefined;
+        filterModel?: {
+            providerID: string;
+            modelID: string;
+        } | undefined;
     };
     version: number;
     app: {
@@ -1618,6 +1640,10 @@ export declare const AppConfigSchema: z.ZodObject<{
         analysisAgent?: string | undefined;
         executionAgent?: string | undefined;
         replyModel?: {
+            providerID: string;
+            modelID: string;
+        } | undefined;
+        filterModel?: {
             providerID: string;
             modelID: string;
         } | undefined;
