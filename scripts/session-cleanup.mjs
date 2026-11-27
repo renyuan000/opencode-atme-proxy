@@ -80,6 +80,19 @@ function textOfParts(message) {
     .trim();
 }
 
+function initialText(messages) {
+  for (const message of messages) {
+    if (message?.info?.role !== "user") continue;
+    const text = textOfParts(message);
+    if (text) return text;
+  }
+  for (const message of messages) {
+    const text = textOfParts(message);
+    if (text) return text;
+  }
+  return "";
+}
+
 async function fetchMessages(id) {
   const url = `${baseUrl}/session/${encodeURIComponent(id)}/message?directory=${encodeURIComponent(directory)}`;
   const response = await fetch(url);
@@ -123,9 +136,10 @@ function formatBytes(bytes) {
 function printRow(item) {
   const kind = item.reason.padEnd(18);
   const title = truncate(item.title, 52).padEnd(52);
+  const initial = truncate(item.initialPreview || "-", 20).padEnd(20);
   const preview = truncate(item.preview || "-", 42);
   console.log(
-    `${kind} ${String(item.messageCount).padStart(2)} ${formatBytes(item.bytes).padStart(7)} ${item.id}  ${title}  ${preview}`,
+    `${kind} ${String(item.messageCount).padStart(2)} ${formatBytes(item.bytes).padStart(7)} ${item.id}  ${title}  ${initial}  ${preview}`,
   );
 }
 
@@ -157,6 +171,7 @@ async function createPlan() {
     }
     const count = messages.length;
     const text = messages.map(textOfParts).filter(Boolean).join(" / ");
+    const initial = initialText(messages);
     const bytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
     const ageMinutes = (now - Number(session.updated ?? 0)) / 60_000;
     const latestForTitle = latest.get(session.title);
@@ -180,6 +195,7 @@ async function createPlan() {
       updated: Number(session.updated ?? 0),
       messageCount: count,
       bytes,
+      initialPreview: truncate(initial, 20),
       preview: text,
       reason,
     });
@@ -197,7 +213,7 @@ async function createPlan() {
   });
   console.log(`目录：${directory}`);
   console.log(`atme session：${items.length}，候选空 session：${items.filter((item) => item.reason === "candidate").length}`);
-  console.log("状态             条数    字节       sessionId  标题  内容预览");
+  console.log("状态             条数    字节       sessionId  标题  首条(20字)  内容预览");
   for (const item of items) printRow(item);
   const candidates = items.filter((item) => item.reason === "candidate");
   await writeFile(
