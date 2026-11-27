@@ -656,6 +656,21 @@ P2：
 - 上下文摘要（当前只保留最近 N 条原文）。
 - Web 审批降级（无卡片平台）。
 
+### Session 清理脚本
+
+仓库提供 `scripts/session-cleanup.mjs`，默认只生成计划，不删除：
+
+```bash
+node scripts/session-cleanup.mjs plan \
+  --directory /mnt/d/Work/source/go-projects/net-inspect/npb-transform.git \
+  --min-age-minutes 60
+
+node scripts/session-cleanup.mjs apply \
+  --plan-file /tmp/opencode/atme-session-cleanup-plan.json
+```
+
+只有 `apply --yes` 才会真正删除；删除前会重新检查 session 标题、消息数、更新时间，并保护同标题最新持久 session。
+
 ### 赞助
 
 项目免费开源。如果它帮你节省了时间，欢迎自愿赞助，不影响任何功能或授权。
