@@ -14,8 +14,11 @@ export interface EvidenceRecord {
     text: string;
     attachments?: Array<{
         kind: string;
+        key?: string;
         name?: string;
         size?: number;
+        mime?: string;
+        localPath?: string;
     }>;
 }
 export interface EvidenceMessageChain {
@@ -70,5 +73,6 @@ export declare class EvidenceStore {
     redact(chatId: string, messageId: string): Promise<void>;
     prune(): Promise<void>;
     private findChatDirs;
+    private readActiveMonth;
     private chatDir;
 }

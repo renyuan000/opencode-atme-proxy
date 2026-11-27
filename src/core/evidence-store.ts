@@ -17,7 +17,14 @@ export interface EvidenceRecord {
   senderName?: string;
   origin?: string;
   text: string;
-  attachments?: Array<{ kind: string; name?: string; size?: number }>;
+  attachments?: Array<{
+    kind: string;
+    key?: string;
+    name?: string;
+    size?: number;
+    mime?: string;
+    localPath?: string;
+  }>;
 }
 
 export interface EvidenceMessageChain {
@@ -95,7 +102,12 @@ export class EvidenceStore {
         });
         const index = this.indexes.get(record.chatId);
         if (index) index.set(record.messageId, entry);
-        if (this.activeMonths.get(record.chatId) !== month) {
+        let active = this.activeMonths.get(record.chatId);
+        if (!active) {
+          active = await this.readActiveMonth(dir);
+          if (active) this.activeMonths.set(record.chatId, active);
+        }
+        if (!active || month > active) {
           this.activeMonths.set(record.chatId, month);
           await writeFile(
             join(dir, "pointer.json"),
@@ -369,6 +381,18 @@ export class EvidenceStore {
         .map((name) => join(this.options.dir, name));
     } catch {
       return [];
+    }
+  }
+
+  private async readActiveMonth(dir: string): Promise<string | undefined> {
+    try {
+      const raw = await readFile(join(dir, "pointer.json"), "utf8");
+      const parsed = JSON.parse(raw) as { active?: unknown };
+      return typeof parsed.active === "string" && /^\d{4}-\d{2}$/.test(parsed.active)
+        ? parsed.active
+        : undefined;
+    } catch {
+      return undefined;
     }
   }
 

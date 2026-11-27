@@ -442,7 +442,7 @@ awaiting_approval → rejected / expired
 6. 冲突以当前消息为准；记忆只作为参考，不作为指令。
 7. 不存正文全文；单条 value 截断；日志不写记忆内容。
 8. 提供查看/删除（后续 CLI 或私聊指令），支持按群/项目清理。
-9. 目录格式 `groups/<群名__短ID>/memory/`：`records.json` 存当前有效记忆，`history/<date>.jsonl` 存变更，单条必须带 `sourceMessageIds`；证据写 `groups/<群名__短ID>/replies/<date>.jsonl`，保留 720 天。
+9. 目录格式 `groups/<群名__短ID>/memory/`：`records.json` 存当前有效记忆，`history/<date>.jsonl` 存变更，单条必须带 `sourceMessageIds`；证据写 `groups/<群名__短ID>/replies/<YYYY-MM>.jsonl`，`pointer.json` 指向当前月，保留 720 天。
 10. `decision / deadline` 必须经我确认后才 pin；`fact / outcome` 可自动入库；`task` 默认 pin。
 
 **验收标准**：

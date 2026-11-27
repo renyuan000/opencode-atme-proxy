@@ -429,7 +429,7 @@ xlsx > 20 sheet 或 > 500 行：分块
 7. 非 @ 群媒体相关时只建候选任务，深度分析需 owner 批准
 8. 审批等待不触发生成超时
 9. 群知识/证据可回溯到消息或文件
-10. 191 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
+10. 192 个单元测试通过，新增文件/队列/DM context/上下文 key/私聊绑定/通知卡片测试
 
 ## 16. 开源与给同事使用前的检查
 
@@ -1475,7 +1475,7 @@ LLM 输出增加：
 - 只有 owner 可用
 - `重新分析` 处理 `candidate/needs_info/awaiting_approval/failed/expired`，可配合 `归档` 扫描归档记录
 - `executing/approved/verifying/awaiting_merge` 永不自动重跑或归档
-- `清理` 的语义是归档，不删除任务 JSON、审计和分析文件
+- `/任务归档` 只写 `archivedAt`，不删除任务 JSON、审计和分析文件；`/任务清理` 才真正删除并保留 tombstone
 - 归档写入 `archivedAt/archivedReason`，从 open tasks、恢复、上下文中排除
 - `/任务恢复` 取消归档
 - 自然语言由 `TaskAdminService` 让 LLM 解析成结构化意图；本地代码校验群、状态、数量和权限

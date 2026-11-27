@@ -456,7 +456,7 @@ C. 同群未关闭任务（7 天内，最多 5 个）
 |------------------------|------------------------------|----------------------------------------------|
 | 临时 child session     | 7 天归档 / 30 天删除         | 只清理对话载体；持久会话豁免                  |
 | 持久会话（主/群/worker） | 长期                         | 不参与 7/30 清理                             |
-| 相关原文与回复         | 720 天                       | `groups/<群名__短ID>/replies/<date>.jsonl`   |
+| 相关原文与回复         | 720 天                       | `groups/<群名__短ID>/replies/<YYYY-MM>.jsonl`（`pointer.json` 指向当前月）   |
 | 低相关消息             | 不存正文                     | 只留 `message_id`                            |
 | 当前记忆               | pinned 永久；非 pinned 720 天 | `groups/<群名__短ID>/memory/records.json`    |
 | 记忆变更史             | 720 天                       | `groups/<群名__短ID>/memory/history/<date>.jsonl` |
@@ -636,7 +636,7 @@ worker 执行     并行（受全局 / 每任务上限约束）
 
 ## 14. 待实现清单
 
-1. `replies/<群名__chatId>/<date>.jsonl` 写入与清理（已实现）。
+1. `replies/<群名__chatId>/<YYYY-MM>.jsonl` 写入与清理（已实现；`pointer.json` 指向当前月）。
 2. `memory/<chatId>/records.json`、`history/`、`index.json`（已实现；群名命名待补）。
 3. 记忆记录 schema 校验（来源必填、kind 白名单、key 去重）（来源必填已实现）。
 4. 每日提炼任务 + 独立评审调用。

@@ -128,3 +128,45 @@ test("finds a quoted message by id", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("keeps the newest month pointer when backfilling older messages", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-evidence-pointer-"));
+  try {
+    let now = new Date(2026, 10, 17, 12, 0, 0).getTime();
+    const store = new EvidenceStore({ dir, retentionDays: 720, maxChars: 200, now: () => now });
+    await store.append({
+      ts: now,
+      platform: "feishu",
+      chatId: "oc_1",
+      messageId: "m-nov",
+      direction: "inbound",
+      text: "十一月",
+    });
+    const pointer = join(dir, "群__oc_1", "pointer.json");
+    assert.equal(JSON.parse(await readFile(pointer, "utf8")).active, "2026-11");
+
+    now = new Date(2026, 11, 2, 12, 0, 0).getTime();
+    await store.append({
+      ts: now,
+      platform: "feishu",
+      chatId: "oc_1",
+      messageId: "m-dec",
+      direction: "inbound",
+      text: "十二月",
+    });
+    assert.equal(JSON.parse(await readFile(pointer, "utf8")).active, "2026-12");
+
+    await store.append({
+      ts: new Date(2026, 9, 1, 12, 0, 0).getTime(),
+      platform: "feishu",
+      chatId: "oc_1",
+      messageId: "m-oct-backfill",
+      direction: "inbound",
+      text: "十月补录",
+    });
+    assert.equal(JSON.parse(await readFile(pointer, "utf8")).active, "2026-12");
+    assert.equal((await store.findByMessageId({ chatId: "oc_1", messageId: "m-oct-backfill", days: 120 }))?.text, "十月补录");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -62,7 +62,13 @@ export class EvidenceStore {
             const index = this.indexes.get(record.chatId);
             if (index)
                 index.set(record.messageId, entry);
-            if (this.activeMonths.get(record.chatId) !== month) {
+            let active = this.activeMonths.get(record.chatId);
+            if (!active) {
+                active = await this.readActiveMonth(dir);
+                if (active)
+                    this.activeMonths.set(record.chatId, active);
+            }
+            if (!active || month > active) {
                 this.activeMonths.set(record.chatId, month);
                 await writeFile(join(dir, "pointer.json"), `${JSON.stringify({ version: 1, active: month, updatedAt: this.now() })}\n`, { encoding: "utf8", mode: 0o600 });
             }
@@ -340,6 +346,18 @@ export class EvidenceStore {
         }
         catch {
             return [];
+        }
+    }
+    async readActiveMonth(dir) {
+        try {
+            const raw = await readFile(join(dir, "pointer.json"), "utf8");
+            const parsed = JSON.parse(raw);
+            return typeof parsed.active === "string" && /^\d{4}-\d{2}$/.test(parsed.active)
+                ? parsed.active
+                : undefined;
+        }
+        catch {
+            return undefined;
         }
     }
     chatDir(chatId, chatName) {
