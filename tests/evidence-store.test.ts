@@ -170,3 +170,24 @@ test("keeps the newest month pointer when backfilling older messages", async () 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("falls back to monthly evidence when the index is absent", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-evidence-fallback-"));
+  try {
+    const now = new Date(2026, 10, 17, 12, 0, 0).getTime();
+    const store = new EvidenceStore({ dir, retentionDays: 30, maxChars: 200, now: () => now });
+    await store.append({
+      ts: now,
+      platform: "feishu",
+      chatId: "oc_1",
+      messageId: "m_fallback",
+      direction: "inbound",
+      text: "fallback message",
+    });
+    await rm(join(dir, "群__oc_1", "index.jsonl"));
+    const reopened = new EvidenceStore({ dir, retentionDays: 30, maxChars: 200, now: () => now });
+    assert.equal((await reopened.findByMessageId({ chatId: "oc_1", messageId: "m_fallback" }))?.text, "fallback message");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -100,6 +100,9 @@ export class EvidenceStore {
         await appendFile(join(dir, `${month}.jsonl`), `${JSON.stringify(entry)}\n`, {
           mode: 0o600,
         });
+        await appendFile(join(dir, "index.jsonl"), `${JSON.stringify(entry)}\n`, {
+          mode: 0o600,
+        });
         const index = this.indexes.get(record.chatId);
         if (index) index.set(record.messageId, entry);
         let active = this.activeMonths.get(record.chatId);
@@ -158,7 +161,10 @@ export class EvidenceStore {
     for (const dir of await this.findChatDirs(input.chatId)) {
       let files: string[];
       try {
-        files = (await readdir(dir)).filter((file) => file.endsWith(".jsonl")).sort().reverse();
+        files = (await readdir(dir))
+          .filter((file) => file.endsWith(".jsonl") && file !== "index.jsonl")
+          .sort()
+          .reverse();
       } catch {
         continue;
       }
@@ -202,7 +208,10 @@ export class EvidenceStore {
     for (const dir of await this.findChatDirs(input.chatId)) {
       let files: string[];
       try {
-        files = (await readdir(dir)).filter((file) => file.endsWith(".jsonl")).sort().reverse();
+        files = (await readdir(dir))
+          .filter((file) => file.endsWith(".jsonl") && file !== "index.jsonl")
+          .sort()
+          .reverse();
       } catch {
         continue;
       }
@@ -249,13 +258,21 @@ export class EvidenceStore {
     if (!this.enabled) return { reply: [], thread: [] };
     const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
     const index = await this.ensureIndex(input.chatId);
-    const current = index.get(input.messageId);
+    const current = await this.findByMessageId({
+      chatId: input.chatId,
+      messageId: input.messageId,
+      days: input.days,
+    });
     const reply: EvidenceRecord[] = [];
     const seen = new Set<string>();
     let id: string | undefined = input.messageId;
     while (id && reply.length < (input.maxDepth ?? 5) && !seen.has(id)) {
       seen.add(id);
-      const record = index.get(id);
+      const record = await this.findByMessageId({
+        chatId: input.chatId,
+        messageId: id,
+        days: input.days,
+      });
       if (!record || record.ts < cutoff) break;
       reply.push(record);
       id = record.replyToMessageId;
@@ -281,20 +298,43 @@ export class EvidenceStore {
     if (existing) return existing;
     const index = new Map<string, EvidenceRecord>();
     for (const dir of await this.findChatDirs(chatId)) {
+      let raw: string | undefined;
+      try {
+        raw = await readFile(join(dir, "index.jsonl"), "utf8");
+      } catch {
+      }
+      let indexed = false;
+      if (raw) {
+        for (const line of raw.split("\n")) {
+          if (!line.trim()) continue;
+          try {
+            const record = JSON.parse(line) as EvidenceRecord;
+            if (record.messageId) {
+              index.set(record.messageId, record);
+              indexed = true;
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+      if (indexed) continue;
       let files: string[];
       try {
-        files = (await readdir(dir)).filter((file) => file.endsWith(".jsonl"));
+        files = (await readdir(dir)).filter(
+          (file) => file.endsWith(".jsonl") && file !== "index.jsonl",
+        );
       } catch {
         continue;
       }
       for (const file of files) {
-        let raw: string;
+        let rawFile: string;
         try {
-          raw = await readFile(join(dir, file), "utf8");
+          rawFile = await readFile(join(dir, file), "utf8");
         } catch {
           continue;
         }
-        for (const line of raw.split("\n")) {
+        for (const line of rawFile.split("\n")) {
           if (!line.trim()) continue;
           try {
             const record = JSON.parse(line) as EvidenceRecord;
@@ -318,7 +358,9 @@ export class EvidenceStore {
     for (const dir of await this.findChatDirs(chatId)) {
       let files: string[];
       try {
-        files = (await readdir(dir)).filter((file) => file.endsWith(".jsonl"));
+        files = (await readdir(dir)).filter(
+          (file) => file.endsWith(".jsonl") && file !== "index.jsonl",
+        );
       } catch {
         continue;
       }
@@ -340,6 +382,19 @@ export class EvidenceStore {
           });
           if (changed) {
             await writeFile(path, next.join("\n"), "utf8");
+            for (const line of next) {
+              if (!line.trim()) continue;
+              try {
+                const record = JSON.parse(line) as EvidenceRecord;
+                if (record.messageId === messageId) {
+                  await appendFile(join(dir, "index.jsonl"), `${JSON.stringify(record)}\n`, {
+                    mode: 0o600,
+                  });
+                }
+              } catch {
+                continue;
+              }
+            }
             this.indexes.delete(chatId);
           }
         } catch (error) {
@@ -381,6 +436,7 @@ export class EvidenceStore {
         if (Number.isNaN(periodEnd) || periodEnd >= cutoff) continue;
         try {
           await rm(join(dir, file));
+          await rm(join(dir, "index.jsonl"), { force: true });
           this.indexes.delete(chat);
         } catch (error) {
           this.logger.warn("evidence prune failed", {
