@@ -106,11 +106,24 @@ test("finds a quoted message by id", async () => {
       chatId: "oc_1",
       messageId: "m-child",
       replyToMessageId: "m-parent",
+      threadId: "thread-1",
       direction: "inbound",
       text: "子消息",
     });
+    store.append({
+      ts: now + 1000,
+      platform: "feishu",
+      chatId: "oc_1",
+      messageId: "m-sibling",
+      threadId: "thread-1",
+      direction: "inbound",
+      text: "同线程消息",
+    });
     const chain = store.findReplyChain({ chatId: "oc_1", messageId: "m-child" });
     assert.deepEqual(chain.map((item) => item.messageId), ["m-child", "m-parent"]);
+    const mixed = store.findMessageChain({ chatId: "oc_1", messageId: "m-child" });
+    assert.deepEqual(mixed.reply.map((item) => item.messageId), ["m-child", "m-parent"]);
+    assert.deepEqual(mixed.thread.map((item) => item.messageId), ["m-sibling"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

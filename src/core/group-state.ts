@@ -441,6 +441,16 @@ export class ScopedEvidence {
     return this.store(chatIdOf(input.chatId)).findReplyChain(input);
   }
 
+  findMessageChain(input: {
+    chatId: string;
+    messageId: string;
+    maxDepth?: number;
+    maxThread?: number;
+    days?: number;
+  }) {
+    return this.store(chatIdOf(input.chatId)).findMessageChain(input);
+  }
+
   redact(chatId: string, messageId: string): void {
     this.store(chatIdOf(chatId)).redact(chatIdOf(chatId), messageId);
   }

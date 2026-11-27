@@ -111,6 +111,13 @@ export declare class ScopedEvidence {
         maxDepth?: number;
         days?: number;
     }): EvidenceRecord[];
+    findMessageChain(input: {
+        chatId: string;
+        messageId: string;
+        maxDepth?: number;
+        maxThread?: number;
+        days?: number;
+    }): import("./evidence-store.js").EvidenceMessageChain;
     redact(chatId: string, messageId: string): void;
     prune(): void;
 }

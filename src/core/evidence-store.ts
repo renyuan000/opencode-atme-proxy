@@ -20,6 +20,11 @@ export interface EvidenceRecord {
   attachments?: Array<{ kind: string; name?: string; size?: number }>;
 }
 
+export interface EvidenceMessageChain {
+  reply: EvidenceRecord[];
+  thread: EvidenceRecord[];
+}
+
 export interface EvidenceStoreOptions {
   dir: string;
   enabled?: boolean;
@@ -197,20 +202,43 @@ export class EvidenceStore {
     maxDepth?: number;
     days?: number;
   }): EvidenceRecord[] {
-    if (!this.enabled) return [];
+    return this.findMessageChain(input).reply;
+  }
+
+  findMessageChain(input: {
+    chatId: string;
+    messageId: string;
+    maxDepth?: number;
+    maxThread?: number;
+    days?: number;
+  }): EvidenceMessageChain {
+    if (!this.enabled) return { reply: [], thread: [] };
     const cutoff = this.now() - (input.days ?? 30) * 86_400_000;
     const index = this.ensureIndex(input.chatId);
-    const chain: EvidenceRecord[] = [];
+    const current = index.get(input.messageId);
+    const reply: EvidenceRecord[] = [];
     const seen = new Set<string>();
     let id: string | undefined = input.messageId;
-    while (id && chain.length < (input.maxDepth ?? 5) && !seen.has(id)) {
+    while (id && reply.length < (input.maxDepth ?? 5) && !seen.has(id)) {
       seen.add(id);
       const record = index.get(id);
       if (!record || record.ts < cutoff) break;
-      chain.push(record);
+      reply.push(record);
       id = record.replyToMessageId;
     }
-    return chain;
+    const threadId = current?.threadId ?? reply[0]?.threadId;
+    const thread = threadId
+      ? [...index.values()]
+          .filter(
+            (record) =>
+              record.threadId === threadId &&
+              record.ts >= cutoff &&
+              !seen.has(record.messageId),
+          )
+          .sort((a, b) => a.ts - b.ts)
+          .slice(-(input.maxThread ?? 10))
+      : [];
+    return { reply, thread };
   }
 
   private ensureIndex(chatId: string): Map<string, EvidenceRecord> {
