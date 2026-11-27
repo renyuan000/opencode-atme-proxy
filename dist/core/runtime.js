@@ -1072,8 +1072,8 @@ export class ProxyRuntime {
     sendToOwner(text, sourceMessageId) {
         return this.notificationService.sendToOwner(text, sourceMessageId);
     }
-    sendOwnerReply(message, text) {
-        return this.notificationService.sendOwnerReply(message, text, message.replyToMessageId);
+    sendOwnerReply(message, text, replyToMessageId) {
+        return this.notificationService.sendOwnerReply(message, text, replyToMessageId ?? message.replyToMessageId);
     }
     async acknowledge(message) {
         const emoji = this.config.reply.ackReaction ?? "OK";
@@ -2740,7 +2740,8 @@ export class ProxyRuntime {
         else {
             replyText = `补充已收到\n${taskLine}\n${contextLine}`;
         }
-        await this.sendOwnerReply(message, replyText);
+        const replyTarget = message.replyToMessageId ?? task.candidateMessageId ?? task.approvalMessageId;
+        await this.sendOwnerReply(message, replyText, replyTarget);
         return true;
     }
     async withPermissionGuidance(message, reply) {

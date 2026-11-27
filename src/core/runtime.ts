@@ -1315,8 +1315,16 @@ export class ProxyRuntime {
     return this.notificationService.sendToOwner(text, sourceMessageId);
   }
 
-  private sendOwnerReply(message: IncomingMessage, text: string): Promise<boolean> {
-    return this.notificationService.sendOwnerReply(message, text, message.replyToMessageId);
+  private sendOwnerReply(
+    message: IncomingMessage,
+    text: string,
+    replyToMessageId?: string,
+  ): Promise<boolean> {
+    return this.notificationService.sendOwnerReply(
+      message,
+      text,
+      replyToMessageId ?? message.replyToMessageId,
+    );
   }
 
   private async acknowledge(message: IncomingMessage): Promise<void> {
@@ -3058,7 +3066,9 @@ export class ProxyRuntime {
     } else {
       replyText = `补充已收到\n${taskLine}\n${contextLine}`;
     }
-    await this.sendOwnerReply(message, replyText);
+    const replyTarget =
+      message.replyToMessageId ?? task.candidateMessageId ?? task.approvalMessageId;
+    await this.sendOwnerReply(message, replyText, replyTarget);
     return true;
   }
 
