@@ -288,6 +288,20 @@ ATME_OPENCODE_URL=http://127.0.0.1:19876
 - 如果你想先用起来、不想单独配筛选模型：把 `filter.enabled` 设为 `false`，@ 消息仍会走 OpenCode 主模型，但周期筛选会关闭。
 - OpenCode 模式下筛选超时由 `filter.timeoutMs` 控制；超时会快速失败并保留消息待重试，不再等满整个扫描任务。
 - 你的 OpenCode 已配好，**不需要再配一遍模型**；`setup` 里的“低成本模型”是可选项。
+### 2.1.1 模型配置总览
+
+插件里显式配置模型的位置有四类：
+
+| 用途 | 配置 | 说明 |
+|------|------|------|
+| 筛选（OpenCode） | `opencode.filterModel` | 不配时复用最近直接 OpenCode session 的模型；再不行才用 OpenCode 默认模型 |
+| 筛选（独立网关） | `filter.model` + `filter.baseUrl` | `filter.mode=external` 时使用 |
+| 群回复/代答 | `opencode.replyModel` | reply worker 的模型；不配则用 OpenCode/agent 默认模型 |
+| 任务分析/核实 | `analysis.model` | analysis 与 analysis-check worker 的模型；不配则用 OpenCode/agent 默认模型 |
+
+执行/评审如果未显式配置模型，最终由 OpenCode 的 `executionAgent`/`reviewer` 或 OpenCode 默认模型决定。
+
+筛选失败告警会带上实际使用的 `provider/model`、失败原因和日志路径。
 
 ### 3. 启动
 
