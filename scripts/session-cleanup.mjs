@@ -30,9 +30,10 @@ if (options.help || command === "help") {
 选项：
   --directory <目录>             OpenCode 项目目录，默认当前目录
   --base-url <URL>               默认 http://127.0.0.1:19876
-  --min-age-minutes <分钟>       只考虑超过该时间未更新的 session，默认 60
+  --min-age-minutes <分钟>       候选最小年龄，默认 60；0 表示全部列出
   --plan-file <文件>             默认 /tmp/opencode/atme-session-cleanup-plan.json
   --yes                          真正执行删除；没有该参数只模拟
+  --all                          等价于 --min-age-minutes 0，仅用于查看全部
   --include-old-protected        允许将旧的非当前持久 session 列为候选（默认不列）
   --max-count <数量>             最多列出多少个 session，默认 500
 
@@ -48,7 +49,7 @@ if (!["plan", "apply"].includes(command)) {
 
 let directory = resolve(String(options.directory ?? process.cwd()));
 const baseUrl = String(options["base-url"] ?? "http://127.0.0.1:19876").replace(/\/+$/, "");
-const minAgeMinutes = Math.max(1, Number(options["min-age-minutes"] ?? 60));
+const minAgeMinutes = options.all ? 0 : Math.max(0, Number(options["min-age-minutes"] ?? 60));
 const maxCount = Math.max(1, Number(options["max-count"] ?? 500));
 const planFile = String(options["plan-file"] ?? "/tmp/opencode/atme-session-cleanup-plan.json");
 const persistentPrefixes = [
@@ -216,6 +217,10 @@ async function applyPlan() {
     throw new Error(`计划目录不匹配：${plan.directory} != ${directory}`);
   }
   const candidates = Array.isArray(plan.candidates) ? plan.candidates : [];
+  const planMinAge = Number(plan.minAgeMinutes ?? minAgeMinutes);
+  if (options.yes && planMinAge < 1) {
+    throw new Error("拒绝执行：计划使用 min-age=0；请至少设置 1 分钟后重新生成计划");
+  }
   if (candidates.length === 0) {
     console.log("计划中没有候选 session。");
     return;
