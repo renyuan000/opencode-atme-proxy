@@ -25,6 +25,10 @@ for (let index = 0; index < args.length; index += 1) {
 if (options.help || command === "help") {
   console.log(`用法：
   node scripts/session-cleanup.mjs plan [选项]
+  node scripts/session-cleanup.mjs interactive [选项]
+
+interactive：
+  ↑/↓ 选择，Enter 查看/确认，Esc/n 返回列表，q/Ctrl+C 退出。
   node scripts/session-cleanup.mjs apply --plan-file <文件> [选项]
 
 选项：
@@ -42,7 +46,7 @@ if (options.help || command === "help") {
 `);
   process.exit(0);
 }
-if (!["plan", "apply"].includes(command)) {
+if (!["plan", "apply", "interactive"].includes(command)) {
   console.error(`未知命令：${command}`);
   process.exit(2);
 }
@@ -93,6 +97,20 @@ function initialText(messages) {
   return "";
 }
 
+function laterUserText(messages) {
+  let seenUser = false;
+  for (const message of messages) {
+    if (message?.info?.role !== "user") continue;
+    if (!seenUser) {
+      seenUser = true;
+      continue;
+    }
+    const text = textOfParts(message);
+    if (text) return text;
+  }
+  return "";
+}
+
 async function fetchMessages(id) {
   const url = `${baseUrl}/session/${encodeURIComponent(id)}/message?directory=${encodeURIComponent(directory)}`;
   const response = await fetch(url);
@@ -137,9 +155,10 @@ function printRow(item) {
   const kind = item.reason.padEnd(18);
   const title = truncate(item.title, 52).padEnd(52);
   const initial = truncate(item.initialPreview || "-", 20).padEnd(20);
+  const later = truncate(item.laterUserPreview || "-", 20).padEnd(20);
   const preview = truncate(item.preview || "-", 42);
   console.log(
-    `${kind} ${String(item.messageCount).padStart(2)} ${formatBytes(item.bytes).padStart(7)} ${item.id}  ${title}  ${initial}  ${preview}`,
+    `${kind} ${String(item.messageCount).padStart(2)} ${formatBytes(item.bytes).padStart(7)} ${item.id}  ${title}  ${initial}  ${later}  ${preview}`,
   );
 }
 
@@ -148,7 +167,7 @@ function truncate(value, max) {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
-async function createPlan() {
+async function collectItems() {
   const sessions = listSessions().filter(atmeTitle);
   const latest = latestByTitle(sessions);
   const now = Date.now();
@@ -172,6 +191,7 @@ async function createPlan() {
     const count = messages.length;
     const text = messages.map(textOfParts).filter(Boolean).join(" / ");
     const initial = initialText(messages);
+    const laterUser = laterUserText(messages);
     const bytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
     const ageMinutes = (now - Number(session.updated ?? 0)) / 60_000;
     const latestForTitle = latest.get(session.title);
@@ -196,6 +216,7 @@ async function createPlan() {
       messageCount: count,
       bytes,
       initialPreview: truncate(initial, 20),
+      laterUserPreview: truncate(laterUser, 20),
       preview: text,
       reason,
     });
@@ -211,9 +232,15 @@ async function createPlan() {
     };
     return (rank[a.reason] ?? 9) - (rank[b.reason] ?? 9) || a.title.localeCompare(b.title);
   });
+  return items;
+}
+
+async function createPlan() {
+  const items = await collectItems();
+  const now = Date.now();
   console.log(`目录：${directory}`);
   console.log(`atme session：${items.length}，候选空 session：${items.filter((item) => item.reason === "candidate").length}`);
-  console.log("状态             条数    字节       sessionId  标题  首条(20字)  内容预览");
+  console.log("状态             条数    字节       sessionId  标题  首条(20字)  后续user(20字)  内容预览");
   for (const item of items) printRow(item);
   const candidates = items.filter((item) => item.reason === "candidate");
   await writeFile(
@@ -223,6 +250,160 @@ async function createPlan() {
   );
   console.log(`\n计划文件：${planFile}`);
   console.log("默认只生成计划，不删除。持久角色 session 即使为空也不会被列为候选。");
+}
+
+async function interactive() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("interactive 需要真实终端；非 TTY 环境请使用 plan/apply");
+  }
+  const items = await collectItems();
+  if (items.length === 0) {
+    console.log("没有可显示的 atme session。");
+    return;
+  }
+  const readline = await import("node:readline");
+  readline.emitKeypressEvents(process.stdin);
+  const stdin = process.stdin;
+  const stdout = process.stdout;
+  const previousRaw = stdin.isRaw;
+  let selected = 0;
+  let mode = "list";
+  let status = "↑/↓ 选择 · Enter 查看/确认 · q/Esc 退出";
+  let closed = false;
+
+  const finish = (code = 0) => {
+    if (closed) return;
+    closed = true;
+    try {
+      stdin.setRawMode(previousRaw);
+    } catch {}
+    stdin.pause();
+    stdout.write("\x1b[?25h\x1b[0m\n");
+    process.exit(code);
+  };
+
+  const selectedItem = () => items[selected];
+  const line = (value, width) => truncate(value, width).padEnd(width);
+  const reasonLabel = (reason) => ({
+    candidate: "候选可删",
+    nonempty: "非空",
+    recent: "近期活动",
+    "protected-current": "当前保护",
+    "protected-role": "角色保护",
+    "read-error": "读取失败",
+  }[reason] ?? reason);
+
+  const renderList = () => {
+    const columns = Number(stdout.columns ?? 120);
+    const rows = Math.max(8, Number(stdout.rows ?? 30));
+    const viewHeight = Math.max(5, rows - 8);
+    const start = Math.max(0, Math.min(selected - Math.floor(viewHeight / 2), items.length - viewHeight));
+    const visible = items.slice(start, start + viewHeight);
+    const header = `  ${line("状态", 10)} ${line("条数", 4)} ${line("字节", 8)}  ${line("sessionId", 30)}  ${line("标题", 50)}  ${line("首条(20字)", 20)}  ${line("后续user(20字)", 20)}`;
+    stdout.write("\x1b[2J\x1b[H\x1b[?25l");
+    stdout.write(`Session cleanup  ${items.length} 个 atme session  ${selected + 1}/${items.length}\n`);
+    stdout.write(`${header}\n`);
+    visible.forEach((item, offset) => {
+      const index = start + offset;
+      const marker = index === selected ? ">" : " ";
+      const row = `${marker} ${line(reasonLabel(item.reason), 10)} ${String(item.messageCount).padStart(4)} ${formatBytes(item.bytes).padStart(8)}  ${line(item.id, 30)}  ${line(item.title, 50)}  ${line(item.initialPreview || "-", 20)}  ${line(item.laterUserPreview || "-", 20)}`;
+      stdout.write(`${index === selected ? "\x1b[7m" : ""}${row.slice(0, columns)}\x1b[0m\n`);
+    });
+    if (start > 0) stdout.write(`... 上方还有 ${start} 个\n`);
+    if (start + viewHeight < items.length) stdout.write(`... 下方还有 ${items.length - start - viewHeight} 个\n`);
+    stdout.write(`\n${status}\n`);
+  };
+
+  const renderDetail = () => {
+    const item = selectedItem();
+    if (!item) return;
+    stdout.write("\x1b[2J\x1b[H\x1b[?25l");
+    stdout.write("Session 详情 / 删除确认\n\n");
+    stdout.write(`ID：${item.id}\n`);
+    stdout.write(`标题：${item.title}\n`);
+    stdout.write(`状态：${reasonLabel(item.reason)}（${item.reason}）\n`);
+    stdout.write(`消息数：${item.messageCount}\n`);
+    stdout.write(`字节数：${formatBytes(item.bytes)}\n`);
+    stdout.write(`首条：${item.initialPreview || "-"}\n`);
+    stdout.write(`后续用户：${item.laterUserPreview || "-"}\n`);
+    stdout.write(`内容：${truncate(item.preview || "-", 800)}\n\n`);
+    if (item.reason === "candidate") {
+      stdout.write("Enter / y 确认删除   Esc / n 返回列表   q 退出\n");
+    } else {
+      stdout.write("该 session 不是候选，不能在这里删除。Esc / n 返回列表   q 退出\n");
+    }
+  };
+
+  const deleteSelected = () => {
+    const item = selectedItem();
+    if (!item || item.reason !== "candidate") return;
+    const result = spawnSync("opencode", ["session", "delete", item.id], {
+      cwd: directory,
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    if (result.status === 0) {
+      items.splice(selected, 1);
+      if (items.length === 0) {
+        finish(0);
+        return;
+      }
+      selected = Math.min(selected, items.length - 1);
+      status = `已删除：${item.id}`;
+      mode = "list";
+      renderList();
+    } else {
+      status = `删除失败：${(result.stderr || result.stdout || `exit ${result.status}`).trim()}`;
+      mode = "list";
+      renderList();
+    }
+  };
+
+  const onKey = (_str, key) => {
+    if (key?.ctrl && key.name === "c") {
+      finish(130);
+      return;
+    }
+    if (mode === "list") {
+      if (key?.name === "q" || key?.name === "escape") {
+        finish(0);
+        return;
+      }
+      if (key?.name === "up") {
+        selected = Math.max(0, selected - 1);
+        renderList();
+        return;
+      }
+      if (key?.name === "down") {
+        selected = Math.min(items.length - 1, selected + 1);
+        renderList();
+        return;
+      }
+      if (key?.name === "return" || key?.name === "enter") {
+        mode = "detail";
+        renderDetail();
+      }
+      return;
+    }
+    if (key?.name === "q") {
+      finish(0);
+      return;
+    }
+    if (key?.name === "escape" || key?.name === "n") {
+      mode = "list";
+      status = "已取消";
+      renderList();
+      return;
+    }
+    if (key?.name === "return" || key?.name === "enter" || key?.name === "y") {
+      deleteSelected();
+    }
+  };
+
+  stdin.setRawMode(true);
+  stdin.resume();
+  stdin.on("keypress", onKey);
+  renderList();
 }
 
 async function applyPlan() {
@@ -305,6 +486,7 @@ async function applyPlan() {
 
 try {
   if (command === "plan") await createPlan();
+  else if (command === "interactive") await interactive();
   else await applyPlan();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
