@@ -1,5 +1,5 @@
 import { assertTransition, canTransition } from "./task-state.js";
-import { sha256 } from "./util.js";
+import { sha256, toErrorMessage } from "./util.js";
 export class ApprovalService {
     options;
     constructor(options) {
@@ -312,7 +312,7 @@ ${task.title}
         }
     }
     groupLabel(chatId) {
-        if (!chatId)
+        if (!chatId || /^oc_/.test(chatId))
             return "未知群";
         return (this.options.config.platforms.feishu.groups.find((group) => group.chatId === chatId)?.name ??
             chatId);
@@ -339,8 +339,11 @@ ${task.title}
                 return name;
             }
         }
-        catch {
-            // Try the source message below, then keep the open_id as last resort.
+        catch (error) {
+            this.options.logger.warn("sender name lookup failed", {
+                senderId: value,
+                error: toErrorMessage(error),
+            });
         }
         if (sourceMessageId) {
             try {
@@ -351,11 +354,19 @@ ${task.title}
                     return name;
                 }
             }
-            catch {
-                // Keep the open_id as last resort.
+            catch (error) {
+                this.options.logger.warn("source message sender name lookup failed", {
+                    senderId: value,
+                    sourceMessageId,
+                    error: toErrorMessage(error),
+                });
             }
         }
-        return value;
+        this.options.logger.warn("sender name unavailable; using placeholder", {
+            senderId: value,
+            sourceMessageId,
+        });
+        return "未知成员";
     }
     async restorePendingDraft(task, record) {
         if (this.options.pending.get(`${task.id}:reply`) || this.options.pending.findForTask(task.id)) {
@@ -416,7 +427,9 @@ ${task.title}
                     : this.groupLabel(task?.chatId ?? card.chatId),
                 senderLabel: withNames
                     ? await this.resolveSenderLabel(sender, card.sourceMessageId)
-                    : sender,
+                    : /^ou_/.test(sender)
+                        ? "未知成员"
+                        : sender,
                 draft: card.draft ?? "（无草稿）",
                 excerpt: task?.excerpt ?? "",
                 createdAt: card.createdAt,
@@ -431,7 +444,9 @@ ${task.title}
                     : this.groupLabel(item.chatId),
                 senderLabel: withNames
                     ? await this.resolveSenderLabel(item.senderLabel, item.sourceMessageId)
-                    : item.senderLabel,
+                    : /^ou_/.test(item.senderLabel)
+                        ? "未知成员"
+                        : item.senderLabel,
                 text: item.text,
                 sourceText: item.sourceText,
                 sentAt: item.sentAt,

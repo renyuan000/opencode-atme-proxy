@@ -380,9 +380,20 @@ export class FeishuAdapter implements PlatformAdapter {
       url: `/open-apis/contact/v3/users/${encodeURIComponent(openId)}`,
       params: { user_id_type: "open_id" },
     });
-    if (response?.code !== 0) return undefined;
+    if (response?.code !== 0) {
+      this.logger.warn("feishu user name lookup failed", {
+        openId,
+        code: response?.code,
+        msg: response?.msg,
+      });
+      return undefined;
+    }
     const name = response?.data?.user?.name;
-    return typeof name === "string" && name ? name : undefined;
+    if (typeof name !== "string" || !name) {
+      this.logger.warn("feishu user name lookup returned no name", { openId });
+      return undefined;
+    }
+    return name;
   }
 
   async forwardMessage(
@@ -891,7 +902,9 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
           template: "blue",
           title: {
           tag: "plain_text",
-          content: resolved ? "已处理：代答审批" : "需要你确认：是否代答",
+          content: resolved
+            ? "已处理：代答审批"
+            : `需要你确认：是否代答${view.chatLabel ? ` · ${view.chatLabel}` : ""}`,
         },
         },
         elements: [
@@ -1007,6 +1020,12 @@ export function renderApprovalCard(view: Parameters<PlatformAdapter["renderAppro
 }
 
 export function renderReplyManagementCard(view: ReplyManagementView): OutboundMessage {
+  const displayLabel = (value: string | undefined, fallback: string): string => {
+    if (!value) return fallback;
+    if (/^ou_/.test(value)) return "未知成员";
+    if (/^oc_/.test(value)) return "未知群";
+    return value;
+  };
   const elements: Array<Record<string, unknown>> = [];
   const groupHeader = (label: string) => {
     elements.push({
@@ -1024,18 +1043,33 @@ export function renderReplyManagementCard(view: ReplyManagementView): OutboundMe
     elements.push({ tag: "action", actions });
   };
 
+  const groupLabels = new Map<string, string>();
+  const groupKey = (label: string | undefined): string => label || "__unknown__";
+  const groupLabel = (label: string | undefined): string => {
+    const key = groupKey(label);
+    const existing = groupLabels.get(key);
+    if (existing) return existing;
+    const next = displayLabel(label, "未知群");
+    groupLabels.set(key, next);
+    return next;
+  };
   const pendingByGroup = new Map<string, typeof view.pending>();
   for (const item of view.pending) {
-    const group = pendingByGroup.get(item.chatLabel) ?? [];
+    const key = groupKey(item.chatLabel);
+    groupLabel(item.chatLabel);
+    const group = pendingByGroup.get(key) ?? [];
     group.push(item);
-    pendingByGroup.set(item.chatLabel, group);
+    pendingByGroup.set(key, group);
   }
   const sentByGroup = new Map<string, typeof view.sent>();
   for (const item of view.sent) {
-    const group = sentByGroup.get(item.chatLabel) ?? [];
+    const key = groupKey(item.chatLabel);
+    groupLabel(item.chatLabel);
+    const group = sentByGroup.get(key) ?? [];
     group.push(item);
-    sentByGroup.set(item.chatLabel, group);
+    sentByGroup.set(key, group);
   }
+  const groupKeys = [...new Set([...pendingByGroup.keys(), ...sentByGroup.keys()])];
 
   if (view.pending.length === 0 && view.sent.length === 0) {
     itemText(["当前没有待审批草稿，也没有可撤回回复。"]);
@@ -1043,12 +1077,12 @@ export function renderReplyManagementCard(view: ReplyManagementView): OutboundMe
 
   if (view.pending.length > 0) {
     elements.push({ tag: "div", text: { tag: "lark_md", content: "**待审批草稿**" } });
-    for (const [group, items] of pendingByGroup) {
-      groupHeader(group);
+    for (const [key, items] of pendingByGroup) {
+      groupHeader(groupLabels.get(key) ?? "未知群");
       for (const item of items.slice(0, 5)) {
         const time = new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false });
         itemText([
-          `发送人：${item.senderLabel}`,
+          `发送人：${displayLabel(item.senderLabel, "未知成员")}`,
           `时间：${time}`,
           `草稿：${item.draft.slice(0, 160)}`,
           `原消息：${item.excerpt.slice(0, 120)}`,
@@ -1076,12 +1110,12 @@ export function renderReplyManagementCard(view: ReplyManagementView): OutboundMe
       tag: "div",
       text: { tag: "lark_md", content: "**最近已发送（仅可撤回）**" },
     });
-    for (const [group, items] of sentByGroup) {
-      groupHeader(group);
+    for (const [key, items] of sentByGroup) {
+      groupHeader(groupLabels.get(key) ?? "未知群");
       for (const item of items.slice(0, 8)) {
         const time = new Date(item.sentAt).toLocaleString("zh-CN", { hour12: false });
         itemText([
-          `发送人：${item.senderLabel}`,
+          `发送人：${displayLabel(item.senderLabel, "未知成员")}`,
           `时间：${time}`,
           `回复：${item.text.slice(0, 160)}`,
           `原消息：${item.sourceText.slice(0, 120)}`,
@@ -1104,7 +1138,15 @@ export function renderReplyManagementCard(view: ReplyManagementView): OutboundMe
       config: { wide_screen_mode: true },
       header: {
         template: "orange",
-        title: { tag: "plain_text", content: "回复管理" },
+        title: {
+          tag: "plain_text",
+          content:
+            groupKeys.length === 0
+              ? "回复管理"
+              : groupKeys.length === 1
+                ? `回复管理 · ${groupLabels.get(groupKeys[0]!) ?? "未知群"}`
+                : `回复管理 · ${groupKeys.length} 个群`,
+        },
       },
       elements,
     },

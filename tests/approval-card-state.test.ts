@@ -56,6 +56,15 @@ test("reply management card shows recallable reply data", () => {
         excerpt: "原消息",
         createdAt: Date.now(),
       },
+      {
+        taskId: "task_2",
+        planHash: "h2",
+        chatLabel: "资产群",
+        senderLabel: "ou_test",
+        draft: "第二份草稿",
+        excerpt: "第二条原消息",
+        createdAt: Date.now(),
+      },
     ],
     sent: [
       {
@@ -72,7 +81,9 @@ test("reply management card shows recallable reply data", () => {
   assert.equal(out.kind, "card");
   const text = JSON.stringify((out as { card: unknown }).card);
   assert.match(text, /产品群/);
-  assert.match(text, /李四/);
+  assert.match(text, /回复管理 · 2 个群/);
+  assert.match(text, /未知成员/);
+  assert.doesNotMatch(text, /ou_test/);
   assert.match(text, /今天先放 5%/);
   assert.match(text, /撤回此回复/);
   assert.match(text, /recall_reply/);
