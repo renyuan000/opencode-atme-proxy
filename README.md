@@ -669,7 +669,7 @@ node scripts/session-cleanup.mjs apply \
   --plan-file /tmp/opencode/atme-session-cleanup-plan.json
 ```
 
-只有 `apply --yes` 才会真正删除；删除前会重新检查 session 标题、消息数、更新时间，并保护同标题最新持久 session。
+只有 `apply --yes` 才会真正删除；删除前会重新检查 session 标题、消息数、更新时间，并保护同标题最新持久 session。默认不会列出持久角色 session；如需把旧的非当前 `atme:chat` 等空 session 纳入候选，使用 `--include-old-protected`，仍会保护同标题最新 session。
 
 ### 赞助
 

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+process.stdout.on("error", (error) => {
+  if (error?.code === "EPIPE") process.exit(0);
+  throw error;
+});
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -29,10 +33,11 @@ if (options.help || command === "help") {
   --min-age-minutes <分钟>       只考虑超过该时间未更新的 session，默认 60
   --plan-file <文件>             默认 /tmp/opencode/atme-session-cleanup-plan.json
   --yes                          真正执行删除；没有该参数只模拟
+  --include-old-protected        允许将旧的非当前持久 session 列为候选（默认不列）
   --max-count <数量>             最多列出多少个 session，默认 500
 
-默认只把“0 消息、超过最小年龄、且不是同标题最新持久 session”的会话列为候选。
-不会删除 atme:chat / atme:group / atme:worker / atme:dm-summary 的同标题最新会话。
+默认只把“0 消息、超过最小年龄、且不是持久角色”的会话列为候选，因此默认可能没有候选。
+使用 --include-old-protected 时，只允许旧的非当前持久 session；同标题最新 session 始终保护。
 `);
   process.exit(0);
 }
@@ -52,6 +57,7 @@ const persistentPrefixes = [
   "atme:worker:",
   "atme:dm-summary:",
   "atme:analysis-check:",
+  "atme:exec:",
 ];
 
 function atmeTitle(session) {
@@ -153,7 +159,10 @@ async function createPlan() {
     const bytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
     const ageMinutes = (now - Number(session.updated ?? 0)) / 60_000;
     const latestForTitle = latest.get(session.title);
-    const isLatestPersistent = isPersistent(session.title) && latestForTitle?.id === session.id;
+    const isPersistentTitle = isPersistent(session.title);
+    const isLatestPersistent = isPersistentTitle && latestForTitle?.id === session.id;
+    const allowOldProtected = Boolean(options["include-old-protected"]);
+    const protectedRole = isPersistentTitle && (!allowOldProtected || isLatestPersistent);
     const recent = ageMinutes < minAgeMinutes;
     const reason = count !== 0
       ? "nonempty"
@@ -161,7 +170,9 @@ async function createPlan() {
         ? "recent"
         : isLatestPersistent
           ? "protected-current"
-          : "candidate";
+          : protectedRole
+            ? "protected-role"
+            : "candidate";
     items.push({
       id: session.id,
       title: session.title,
@@ -173,7 +184,14 @@ async function createPlan() {
     });
   }
   items.sort((a, b) => {
-    const rank = { candidate: 0, nonempty: 1, recent: 2, "protected-current": 3, "read-error": 4 };
+    const rank = {
+      candidate: 0,
+      nonempty: 1,
+      recent: 2,
+      "protected-current": 3,
+      "protected-role": 4,
+      "read-error": 5,
+    };
     return (rank[a.reason] ?? 9) - (rank[b.reason] ?? 9) || a.title.localeCompare(b.title);
   });
   console.log(`目录：${directory}`);
@@ -187,7 +205,7 @@ async function createPlan() {
     "utf8",
   );
   console.log(`\n计划文件：${planFile}`);
-  console.log("默认只生成计划，不删除。");
+  console.log("默认只生成计划，不删除。持久角色 session 即使为空也不会被列为候选。");
 }
 
 async function applyPlan() {
@@ -217,8 +235,8 @@ async function applyPlan() {
       continue;
     }
     const latestForTitle = latest.get(session.title);
-    if (isPersistent(session.title) && latestForTitle?.id === session.id) {
-      console.log(`skip  ${session.id}：同标题最新持久 session`);
+    if (isPersistent(session.title) && (!options["include-old-protected"] || latest.get(session.title)?.id === session.id)) {
+      console.log(`skip  ${session.id}：持久角色 session 默认不删除`);
       skipped += 1;
       continue;
     }
