@@ -43,6 +43,40 @@ export class NotificationService {
             return false;
         }
     }
+    async sendOwnerReply(message, text, replyToMessageId) {
+        const openId = this.options.ownerOpenId();
+        if (!openId)
+            return false;
+        try {
+            await this.options.sendLimiter.take();
+            const result = await this.options.platform.reply({ chatId: message.chat.id, messageId: replyToMessageId ?? message.messageId }, { kind: "text", text, uuid: stableUuid("owner-reply", message.messageId, sha256(text).slice(0, 16)) });
+            try {
+                await this.options.sentReplies.add({
+                    platform: message.platform,
+                    chatId: `user:${openId}`,
+                    senderLabel: "机器人",
+                    sourceMessageId: message.messageId,
+                    sentMessageId: result.messageId,
+                    text,
+                    sourceText: message.text,
+                    sentAt: Date.now(),
+                });
+            }
+            catch (error) {
+                this.options.logger.warn("failed to record owner reply", {
+                    error: toErrorMessage(error),
+                });
+            }
+            return true;
+        }
+        catch (error) {
+            this.options.logger.warn("failed to reply to owner thread", {
+                messageId: message.messageId,
+                error: toErrorMessage(error),
+            });
+            return this.sendToOwner(text, message.messageId);
+        }
+    }
     async sendOwnerNotification(view) {
         return (await this.sendOwnerNotificationResult(view)).ok;
     }

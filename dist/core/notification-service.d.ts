@@ -30,6 +30,7 @@ export declare class NotificationService {
     private readonly options;
     constructor(options: NotificationServiceOptions);
     sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
+    sendOwnerReply(message: IncomingMessage, text: string, replyToMessageId?: string): Promise<boolean>;
     sendOwnerNotification(view: NotificationView): Promise<boolean>;
     sendOwnerNotificationResult(view: NotificationView): Promise<{
         ok: boolean;

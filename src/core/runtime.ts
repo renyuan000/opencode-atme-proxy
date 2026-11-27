@@ -1315,6 +1315,10 @@ export class ProxyRuntime {
     return this.notificationService.sendToOwner(text, sourceMessageId);
   }
 
+  private sendOwnerReply(message: IncomingMessage, text: string): Promise<boolean> {
+    return this.notificationService.sendOwnerReply(message, text, message.replyToMessageId);
+  }
+
   private async acknowledge(message: IncomingMessage): Promise<void> {
     const emoji = this.config.reply.ackReaction ?? "OK";
     if (!emoji) return;
@@ -3028,6 +3032,12 @@ export class ProxyRuntime {
     if (!task) return false;
     const state = await this.taskService.appendSupplement(task, message);
     await this.markProcessed(message);
+    const group = task.chatName ?? this.config.platforms.feishu.groups.find(
+      (item) => item.chatId === task.chatId,
+    )?.name ?? "未知群";
+    const taskLine = `任务：${task.title}`;
+    const contextLine = `任务ID：${task.id}\n群：${group}`;
+    let replyText: string;
     if (state === "awaiting_approval" || state === "needs_info") {
       this.pending.deleteForTask(task.id);
       await this.pending.flush();
@@ -3040,12 +3050,15 @@ export class ProxyRuntime {
           error: toErrorMessage(error),
         });
       });
-      await this.sendToOwner(`已收到补充，正在重新分析：${task.title}`);
+      replyText = `补充已收到，正在重新分析\n${taskLine}\n${contextLine}`;
     } else if (state === "executing") {
-      await this.sendToOwner(`已记录补充；当前执行不会中途改变：${task.title}`);
+      replyText = `补充已记录；当前执行不会中途改变\n${taskLine}\n${contextLine}`;
+    } else if (state === "candidate") {
+      replyText = `补充已收到；该候选任务暂未分析\n${taskLine}\n${contextLine}`;
     } else {
-      await this.sendToOwner(`已收到补充：${task.title}`);
+      replyText = `补充已收到\n${taskLine}\n${contextLine}`;
     }
+    await this.sendOwnerReply(message, replyText);
     return true;
   }
 

@@ -101,6 +101,7 @@ export declare class ProxyRuntime {
     private resolveMessageLink;
     private resolveSenderLabel;
     private sendToOwner;
+    private sendOwnerReply;
     private acknowledge;
     private linkAbort;
     private onMessageRecalled;
