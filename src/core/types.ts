@@ -186,6 +186,8 @@ export interface TaskRecord {
   archivedAt?: number;
   archivedReason?: string;
   lastAnalyzedAt?: number;
+  analysisStartedAt?: number;
+  analysisPendingAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -310,6 +312,14 @@ export interface NotificationHeaderMeta {
   right?: string;
 }
 
+export interface NotificationAction {
+  label: string;
+  action: string;
+  taskId?: string;
+  planHash?: string;
+  type?: "primary" | "default" | "danger";
+}
+
 export interface NotificationView {
   title: string;
   subtitle?: string;
@@ -317,6 +327,7 @@ export interface NotificationView {
   sections: NotificationSection[];
   link?: { label: string; url: string };
   footer?: string;
+  actions?: NotificationAction[];
 }
 
 export interface PendingReplySummary {

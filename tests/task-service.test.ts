@@ -72,6 +72,11 @@ test("candidate card resolves group and sender without active reminders", async 
   assert.match(view.headerMeta?.right ?? "", /张雪 · @张三 · task/);
   assert.equal(view.link?.label, "打开原消息");
   assert.match(view.link?.url ?? "", /position=99/);
+  assert.deepEqual(
+    view.actions?.map((item) => item.action),
+    ["candidate_analyze", "candidate_skip"],
+  );
+  assert.equal(view.actions?.[0]?.taskId, task.id);
   assert.equal(saved.get(task.id)?.chatName, "产品-资产测绘");
 });
 
@@ -117,3 +122,92 @@ test("appends a reply supplement to the task", async () => {
   assert.equal(base.supplements?.[0]?.messageId, "m-supplement");
   assert.match(base.supplements?.[0]?.text ?? "", /npb-engine/);
 });
+
+test("analysis with a supplement queued during the run schedules a rerun", async () => {
+  const saved = new Map<string, TaskRecord>();
+  let analyses = 0;
+  let started = 0;
+  const service = new TaskService({
+    config: {
+      policy: { autoAnalyzeTasks: false },
+      filter: { profile: { keywords: [] } },
+      memory: { enabled: false, extract: false },
+      concurrency: { analysisTimeoutMs: 5000 },
+    } as unknown as AppConfig,
+    stateDir: "/tmp",
+    tasks: {
+      findByDedupKey: () => undefined,
+      get: async (taskId: string) => saved.get(taskId),
+      list: async () => [...saved.values()],
+      save: async (task: TaskRecord) => {
+        saved.set(task.id, task);
+      },
+    } as any,
+    audit: { append: async () => undefined } as any,
+    contextService: {} as any,
+    sessionManager: {} as any,
+    logger: { warn() {}, info() {}, error() {}, child() { return this; } } as any,
+    readOnlyPermission: [],
+    resolveProject: async () => ({ worktree: "/tmp", resolved: true }),
+    projectId: () => undefined,
+    memory: { upsert: () => {}, flush: async () => {} } as any,
+    startAnalysis: () => {
+      started += 1;
+    },
+    sendToApprover: async () => true,
+    sendApproval: async () => {},
+  } as any);
+  const task: TaskRecord = {
+    ...candidateTaskForRerun(),
+    state: "analyzing",
+  };
+  saved.set(task.id, task);
+  (service as any).buildAnalysis = async (current: TaskRecord) => {
+    analyses += 1;
+    const latest = saved.get(current.id)!;
+    latest.analysisPendingAt = Date.now();
+    await (service as any).options.tasks.save(latest);
+    return {
+      taskId: current.id,
+      version: 1,
+      needsInfo: false,
+      goal: "g",
+      scope: ["s"],
+      outOfScope: [],
+      repos: [],
+      plan: [{ step: "s" }],
+      commands: [],
+      risks: [],
+      openQuestions: [],
+      acceptanceCriteria: ["a"],
+      model: "m",
+      createdAt: Date.now(),
+      planHash: "h",
+    };
+  };
+  (service as any).verifyAnalysis = async () => ({ drift: "none", reasons: [], unverifiedIdentifiers: [], checked: [] });
+  await service.analyzeTask(task);
+  assert.equal(analyses, 1);
+  assert.equal(started, 1);
+  assert.equal(saved.get(task.id)?.state, "analyzing");
+});
+
+function candidateTaskForRerun(): TaskRecord {
+  return {
+    id: "task_rerun",
+    platform: "feishu",
+    chatId: "chat",
+    messageIds: ["m"],
+    source: "group_scan",
+    requester: { platform: "feishu", id: "u" },
+    title: "t",
+    excerpt: "e",
+    keywords: [],
+    relevance: { reason: "r", confidence: 1 },
+    dedupKey: "d",
+    actionability: "task",
+    state: "candidate",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}

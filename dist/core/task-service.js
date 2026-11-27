@@ -10,6 +10,15 @@ export class TaskService {
         this.options = options;
     }
     async analyzeTask(task) {
+        const startedAt = Date.now();
+        task.analysisStartedAt = startedAt;
+        task.analysisPendingAt = undefined;
+        task.updatedAt = startedAt;
+        await this.options.tasks.save(task);
+        const longTimer = setTimeout(() => {
+            void this.options.sendToApprover(`任务分析已超过 2 分钟，仍在进行：${task.title}\n任务ID：${task.id}\n完成后会继续发送审批卡。`);
+        }, 120_000);
+        longTimer.unref?.();
         const run = await this.options.startTaskRun?.({
             taskId: task.id,
             chatId: task.chatId,
@@ -81,9 +90,13 @@ export class TaskService {
         }
         finally {
             clearTimeout(timer);
+            clearTimeout(longTimer);
             if (heartbeat)
                 clearInterval(heartbeat);
         }
+        const pendingAt = (await this.options.tasks.get(task.id))?.analysisPendingAt;
+        if (pendingAt)
+            task.analysisPendingAt = pendingAt;
         await this.options.tasks.save(task);
         const stateDir = this.options.stateDirFor?.(task.chatId) ?? this.options.stateDir;
         await writeJsonAtomic(join(stateDir, "analyses", task.id, `${analysis.version}.json`), analysis);
@@ -98,6 +111,18 @@ export class TaskService {
         task.lastAnalyzedAt = Date.now();
         task.updatedAt = Date.now();
         await this.options.tasks.save(task);
+        const latest = await this.options.tasks.get(task.id);
+        if (latest?.analysisPendingAt && latest.analysisPendingAt >= startedAt) {
+            latest.analysisPendingAt = undefined;
+            latest.state = "analyzing";
+            latest.updatedAt = Date.now();
+            await this.options.tasks.save(latest);
+            this.options.startAnalysis(latest);
+            await this.options.sendToApprover(`收到分析中的补充，已重新开始分析：${latest.title}\n任务ID：${latest.id}`);
+            if (run)
+                await this.options.finishTaskRun?.(run.id, latest.chatId, "analyzing");
+            return;
+        }
         if (run)
             await this.options.finishTaskRun?.(run.id, task.chatId, task.state);
         await this.options.audit.append({
@@ -328,6 +353,10 @@ export class TaskService {
                     ],
                     link,
                     footer: `如需分析，回复 /分析 ${task.id}`,
+                    actions: [
+                        { label: "开始分析", action: "candidate_analyze", taskId: task.id, type: "primary" },
+                        { label: "暂不分析", action: "candidate_skip", taskId: task.id },
+                    ],
                 });
                 if (result.messageId) {
                     task.candidateMessageId = result.messageId;
@@ -361,6 +390,10 @@ export class TaskService {
                     ],
                     link,
                     footer: `如需分析，回复 /分析 ${task.id}`,
+                    actions: [
+                        { label: "开始分析", action: "candidate_analyze", taskId: task.id, type: "primary" },
+                        { label: "暂不分析", action: "candidate_skip", taskId: task.id },
+                    ],
                 });
             }
             else {

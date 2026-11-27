@@ -396,3 +396,136 @@ test("owner file attachment text is passed to the model", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+function candidateTask(taskId = "task_candidate"): any {
+  return {
+    id: taskId,
+    platform: "feishu",
+    chatId: "p2p",
+    chatName: "产品-流分装置",
+    messageIds: ["m-source"],
+    candidateMessageId: "m-card",
+    source: "group_scan",
+    requester: { platform: "feishu", id: "u1", displayName: "东海忠" },
+    title: "候选任务标题",
+    excerpt: "补充上下文",
+    keywords: [],
+    relevance: { reason: "test", confidence: 0.7 },
+    dedupKey: `dedup_${taskId}`,
+    actionability: "task",
+    state: "candidate",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+test("candidate reply with analysis intent starts analysis", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    const anyRuntime = runtime as any;
+    await anyRuntime.tasks.save(candidateTask());
+    await anyRuntime.taskLinks.linkMessage("p2p", "m-card", "task_candidate");
+    anyRuntime.analyzeTask = async () => {};
+    const reply = {
+      ...dm("m2", "owner", "这个任务分析一下"),
+      replyToMessageId: "m-card",
+    };
+    const handled = await anyRuntime.handleTaskSupplement(reply);
+    assert.equal(handled, true);
+    const stored = await anyRuntime.tasks.get("task_candidate");
+    assert.equal(stored?.state, "analyzing");
+    assert.ok(adapter.replies.some((text) => text.includes("已开始分析")));
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("supplement during analysis is queued for rerun", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    const anyRuntime = runtime as any;
+    const task = candidateTask();
+    task.state = "analyzing";
+    await anyRuntime.tasks.save(task);
+    await anyRuntime.taskLinks.linkMessage("p2p", "m-card", "task_candidate");
+    anyRuntime.analyzeTask = async () => {};
+    const reply = {
+      ...dm("m3", "owner", "补充：protocol_log 开关是默认关的吗？"),
+      replyToMessageId: "m-card",
+    };
+    const handled = await anyRuntime.handleTaskSupplement(reply);
+    assert.equal(handled, true);
+    const stored = await anyRuntime.tasks.get("task_candidate");
+    assert.ok(stored?.analysisPendingAt);
+    assert.equal(adapter.replies.filter((text) => text.includes("本轮分析结束后会自动重跑")).length, 0);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("candidate card action starts analysis and skip keeps the candidate", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    const anyRuntime = runtime as any;
+    await anyRuntime.tasks.save(candidateTask("task_action"));
+    anyRuntime.taskService.analyzeTask = async () => {};
+    const action = {
+      platform: "feishu",
+      actionId: "a1",
+      taskId: "task_action",
+      action: "candidate_analyze",
+      actor: { platform: "feishu", id: "owner" },
+    };
+    const started = await anyRuntime.onAction(action);
+    assert.equal(started.ok, true);
+    assert.equal((await anyRuntime.tasks.get("task_action"))?.state, "analyzing");
+    const skipped = await anyRuntime.onAction({ ...action, actionId: "a2", action: "candidate_skip" });
+    assert.equal(skipped.ok, true);
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("owner can start task analysis from a quoted group message", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atme-dm-"));
+  try {
+    const adapter = new Adapter();
+    const runtime = new ProxyRuntime({ platform: adapter, bridge: new Bridge(), loaded: config(dir) });
+    await runtime.start();
+    const anyRuntime = runtime as any;
+    const task = candidateTask("task_group");
+    task.chatId = "oc_1";
+    await anyRuntime.tasks.save(task);
+    anyRuntime.taskService.analyzeTask = async () => {};
+    const handled = await anyRuntime.handleGroupTaskIntent({
+      platform: "feishu",
+      messageId: "m-group",
+      chat: { id: "oc_1", kind: "group" },
+      sender: { platform: "feishu", id: "owner" },
+      senderType: "user",
+      text: "分析一下这个任务",
+      replyToMessageId: "m-source",
+      mentions: [],
+      createdAt: Date.now(),
+      rawType: "text",
+    });
+    assert.equal(handled, true);
+    assert.equal((await anyRuntime.tasks.get("task_group"))?.state, "analyzing");
+    assert.ok(adapter.replies.some((text) => text.includes("已开始分析")));
+    await runtime.stop();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

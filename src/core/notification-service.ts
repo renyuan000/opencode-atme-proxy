@@ -70,8 +70,16 @@ export class NotificationService {
     text: string,
     replyToMessageId?: string,
   ): Promise<boolean> {
+    return (await this.sendOwnerReplyResult(message, text, replyToMessageId)).ok;
+  }
+
+  async sendOwnerReplyResult(
+    message: IncomingMessage,
+    text: string,
+    replyToMessageId?: string,
+  ): Promise<{ ok: boolean; messageId?: string }> {
     const openId = this.options.ownerOpenId();
-    if (!openId) return false;
+    if (!openId) return { ok: false };
     try {
       await this.options.sendLimiter.take();
       const result = await this.options.platform.reply(
@@ -94,13 +102,13 @@ export class NotificationService {
           error: toErrorMessage(error),
         });
       }
-      return true;
+      return { ok: true, messageId: result.messageId };
     } catch (error) {
       this.options.logger.warn("failed to reply to owner thread", {
         messageId: message.messageId,
         error: toErrorMessage(error),
       });
-      return this.sendToOwner(text, message.messageId);
+      return { ok: await this.sendToOwner(text, message.messageId) };
     }
   }
 
@@ -153,12 +161,19 @@ export class NotificationService {
   }
 
   async safeReply(message: IncomingMessage, text: string): Promise<boolean> {
+    return (await this.safeReplyResult(message, text)).ok;
+  }
+
+  async safeReplyResult(
+    message: IncomingMessage,
+    text: string,
+  ): Promise<{ ok: boolean; messageId?: string }> {
     const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;
     if (this.options.outbound.has(key, message.chat.id)) {
       this.options.logger.info("skip duplicate reply", {
         messageId: message.messageId,
       });
-      return true;
+      return { ok: true };
     }
     try {
       await this.options.sendLimiter.take();
@@ -196,13 +211,13 @@ export class NotificationService {
         origin: "reply",
         text,
       });
-      return true;
+      return { ok: true, messageId: result.messageId };
     } catch (error) {
       this.options.logger.error("failed to reply", {
         messageId: message.messageId,
         error: toErrorMessage(error),
       });
-      return false;
+      return { ok: false };
     }
   }
 

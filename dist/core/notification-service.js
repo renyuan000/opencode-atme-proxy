@@ -44,9 +44,12 @@ export class NotificationService {
         }
     }
     async sendOwnerReply(message, text, replyToMessageId) {
+        return (await this.sendOwnerReplyResult(message, text, replyToMessageId)).ok;
+    }
+    async sendOwnerReplyResult(message, text, replyToMessageId) {
         const openId = this.options.ownerOpenId();
         if (!openId)
-            return false;
+            return { ok: false };
         try {
             await this.options.sendLimiter.take();
             const result = await this.options.platform.reply({ chatId: message.chat.id, messageId: replyToMessageId ?? message.messageId }, { kind: "text", text, uuid: stableUuid("owner-reply", message.messageId, sha256(text).slice(0, 16)) });
@@ -67,14 +70,14 @@ export class NotificationService {
                     error: toErrorMessage(error),
                 });
             }
-            return true;
+            return { ok: true, messageId: result.messageId };
         }
         catch (error) {
             this.options.logger.warn("failed to reply to owner thread", {
                 messageId: message.messageId,
                 error: toErrorMessage(error),
             });
-            return this.sendToOwner(text, message.messageId);
+            return { ok: await this.sendToOwner(text, message.messageId) };
         }
     }
     async sendOwnerNotification(view) {
@@ -120,12 +123,15 @@ export class NotificationService {
         return this.sendToOwner(text);
     }
     async safeReply(message, text) {
+        return (await this.safeReplyResult(message, text)).ok;
+    }
+    async safeReplyResult(message, text) {
         const key = `reply:${message.platform}:${message.messageId}:${sha256(text).slice(0, 12)}`;
         if (this.options.outbound.has(key, message.chat.id)) {
             this.options.logger.info("skip duplicate reply", {
                 messageId: message.messageId,
             });
-            return true;
+            return { ok: true };
         }
         try {
             await this.options.sendLimiter.take();
@@ -161,14 +167,14 @@ export class NotificationService {
                 origin: "reply",
                 text,
             });
-            return true;
+            return { ok: true, messageId: result.messageId };
         }
         catch (error) {
             this.options.logger.error("failed to reply", {
                 messageId: message.messageId,
                 error: toErrorMessage(error),
             });
-            return false;
+            return { ok: false };
         }
     }
     async chatLabel(message) {

@@ -90,3 +90,23 @@ test("notification section renders its own message link", () => {
   assert.match(text, /\[查看原消息\]/);
   assert.match(text, /position=12/);
 });
+
+test("notification card renders action buttons", () => {
+  const rendered = card(
+    renderNotificationCard(
+      view({
+        actions: [
+          { label: "开始分析", action: "candidate_analyze", taskId: "task_1", type: "primary" },
+          { label: "暂不分析", action: "candidate_skip", taskId: "task_1" },
+        ],
+      }),
+    ),
+  );
+  const action = rendered.elements.find((item: any) => item.tag === "action");
+  assert.ok(action);
+  assert.equal(action.actions.length, 2);
+  assert.equal(action.actions[0].text.content, "开始分析");
+  assert.equal(action.actions[0].value.a, "candidate_analyze");
+  assert.equal(action.actions[0].value.t, "task_1");
+  assert.equal(action.actions[1].value.a, "candidate_skip");
+});

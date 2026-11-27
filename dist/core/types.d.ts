@@ -145,6 +145,8 @@ export interface TaskRecord {
     archivedAt?: number;
     archivedReason?: string;
     lastAnalyzedAt?: number;
+    analysisStartedAt?: number;
+    analysisPendingAt?: number;
     createdAt: number;
     updatedAt: number;
 }
@@ -263,6 +265,13 @@ export interface NotificationHeaderMeta {
     left?: string;
     right?: string;
 }
+export interface NotificationAction {
+    label: string;
+    action: string;
+    taskId?: string;
+    planHash?: string;
+    type?: "primary" | "default" | "danger";
+}
 export interface NotificationView {
     title: string;
     subtitle?: string;
@@ -273,6 +282,7 @@ export interface NotificationView {
         url: string;
     };
     footer?: string;
+    actions?: NotificationAction[];
 }
 export interface PendingReplySummary {
     taskId: string;

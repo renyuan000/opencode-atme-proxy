@@ -1075,6 +1075,9 @@ export class ProxyRuntime {
     sendOwnerReply(message, text, replyToMessageId) {
         return this.notificationService.sendOwnerReply(message, text, replyToMessageId ?? message.replyToMessageId);
     }
+    sendOwnerReplyResult(message, text, replyToMessageId) {
+        return this.notificationService.sendOwnerReplyResult(message, text, replyToMessageId ?? message.replyToMessageId);
+    }
     async acknowledge(message) {
         const emoji = this.config.reply.ackReaction ?? "OK";
         if (!emoji)
@@ -2668,6 +2671,11 @@ export class ProxyRuntime {
         }
         return undefined;
     }
+    asksForAnalysis(text) {
+        if (/(暂不|不用|不需要|先不|不要|无需|别).{0,12}(分析|开发|修改)/.test(text))
+            return false;
+        return /(分析|解析|看一下|看看|检查|查一下|排查|定位|怎么做|怎么改|开发|修改)/.test(text);
+    }
     async handleTaskSupplement(message) {
         if (message.text.trim().startsWith("/"))
             return false;
@@ -2717,7 +2725,21 @@ export class ProxyRuntime {
         const taskLine = `任务：${task.title}`;
         const contextLine = `任务ID：${task.id}\n群：${group}`;
         let replyText;
-        if (state === "awaiting_approval" || state === "needs_info") {
+        if (state === "candidate" && this.asksForAnalysis(message.text)) {
+            this.pending.deleteForTask(task.id);
+            await this.pending.flush();
+            task.state = "analyzing";
+            task.updatedAt = Date.now();
+            await this.tasks.save(task);
+            this.track(this.analyzeTask(task)).catch((error) => {
+                this.logger.error("candidate supplement analysis failed", {
+                    taskId: task.id,
+                    error: toErrorMessage(error),
+                });
+            });
+            replyText = `已开始分析\n${taskLine}\n${contextLine}`;
+        }
+        else if (state === "awaiting_approval" || state === "needs_info" || state === "failed" || state === "expired") {
             this.pending.deleteForTask(task.id);
             await this.pending.flush();
             task.state = "analyzing";
@@ -2731,17 +2753,28 @@ export class ProxyRuntime {
             });
             replyText = `补充已收到，正在重新分析\n${taskLine}\n${contextLine}`;
         }
+        else if (state === "analyzing") {
+            task.analysisPendingAt = Date.now();
+            task.updatedAt = Date.now();
+            await this.tasks.save(task);
+            replyText = "";
+        }
         else if (state === "executing") {
             replyText = `补充已记录；当前执行不会中途改变\n${taskLine}\n${contextLine}`;
         }
         else if (state === "candidate") {
-            replyText = `补充已收到；该候选任务暂未分析\n${taskLine}\n${contextLine}`;
+            replyText = `未启动分析：这是候选任务，需要你明确确认。\n回复 /分析 ${task.id} 或点击「开始分析」按钮。\n${taskLine}\n${contextLine}`;
         }
         else {
             replyText = `补充已收到\n${taskLine}\n${contextLine}`;
         }
         const replyTarget = message.replyToMessageId ?? task.candidateMessageId ?? task.approvalMessageId;
-        await this.sendOwnerReply(message, replyText, replyTarget);
+        if (replyText) {
+            const sent = await this.sendOwnerReplyResult(message, replyText, replyTarget);
+            if (sent.messageId) {
+                await this.taskLinks.linkMessage(task.chatId, sent.messageId, task.id);
+            }
+        }
         return true;
     }
     async withPermissionGuidance(message, reply) {
@@ -3004,8 +3037,95 @@ export class ProxyRuntime {
             return;
         await this.handleGroupScan(message, signal);
     }
-    handleBotMention(message, signal) {
+    async handleBotMention(message, signal) {
+        if (await this.handleGroupTaskIntent(message))
+            return;
         return this.botMentionFlow.handle(message, signal);
+    }
+    async resolveTaskFromMessage(message) {
+        for (const id of this.taskIdsFrom(message.text)) {
+            const task = await this.tasks.get(id);
+            if (task && !task.archivedAt)
+                return task;
+        }
+        const replyTo = message.replyToMessageId;
+        if (!replyTo)
+            return undefined;
+        const linked = this.taskLinks.findByMessageAny(replyTo);
+        if (linked) {
+            const task = await this.tasks.get(linked);
+            if (task && !task.archivedAt)
+                return task;
+        }
+        const tasks = await this.tasks.list();
+        return tasks.find((task) => !task.archivedAt &&
+            (task.messageIds.includes(replyTo) ||
+                task.candidateMessageId === replyTo ||
+                task.approvalMessageId === replyTo ||
+                task.supplements?.some((item) => item.messageId === replyTo)));
+    }
+    async handleGroupTaskIntent(message) {
+        if (message.chat.kind !== "group")
+            return false;
+        if (message.sender.id !== this.ownerOpenId())
+            return false;
+        if (!this.asksForAnalysis(message.text))
+            return false;
+        let task = await this.resolveTaskFromMessage(message);
+        if (!task) {
+            task = await this.taskService.ensureTask(message, undefined, "mention_bot", {
+                autoAnalyze: true,
+            });
+            if (!task)
+                return false;
+            if (task.state === "candidate") {
+                task.state = "analyzing";
+                task.updatedAt = Date.now();
+                await this.tasks.save(task);
+                this.track(this.analyzeTask(task)).catch((error) => {
+                    this.logger.error("group task analysis failed", {
+                        taskId: task.id,
+                        error: toErrorMessage(error),
+                    });
+                });
+            }
+            const createdReply = await this.safeReplyResult(message, `已开始分析\n任务：${task.title}\n任务ID：${task.id}\n开发/修改会等审批卡确认。`);
+            if (createdReply.messageId) {
+                await this.taskLinks.linkMessage(task.chatId, createdReply.messageId, task.id);
+            }
+            await this.markProcessed(message);
+            return true;
+        }
+        const state = await this.taskService.appendSupplement(task, message);
+        if (state === "analyzing") {
+            task.analysisPendingAt = Date.now();
+            task.updatedAt = Date.now();
+            await this.tasks.save(task);
+            await this.safeReply(message, `补充已记录；本轮分析结束后会自动重跑\n任务：${task.title}\n任务ID：${task.id}`);
+            await this.markProcessed(message);
+            return true;
+        }
+        if (!["candidate", "needs_info", "awaiting_approval", "failed", "expired"].includes(state)) {
+            await this.safeReply(message, `当前状态不能分析：${state}\n任务：${task.title}\n任务ID：${task.id}`);
+            await this.markProcessed(message);
+            return true;
+        }
+        this.pending.deleteForTask(task.id);
+        await this.pending.flush();
+        task.state = "analyzing";
+        task.updatedAt = Date.now();
+        await this.tasks.save(task);
+        this.track(this.analyzeTask(task)).catch((error) => {
+            this.logger.error("group task analysis failed", {
+                taskId: task.id,
+                error: toErrorMessage(error),
+            });
+        });
+        const sent = await this.safeReplyResult(message, `已开始分析\n任务：${task.title}\n任务ID：${task.id}\n完成后会发审批卡给你。`);
+        if (sent.messageId)
+            await this.taskLinks.linkMessage(task.chatId, sent.messageId, task.id);
+        await this.markProcessed(message);
+        return true;
     }
     handleMeMention(message, signal) {
         return this.meMentionFlow.handle(message, signal);
@@ -3162,6 +3282,9 @@ export class ProxyRuntime {
         return this.approvalService.sweepExpiredApprovals();
     }
     async onAction(action) {
+        if (action.action === "candidate_analyze" || action.action === "candidate_skip") {
+            return this.onCandidateAction(action);
+        }
         if (action.action === "permission_allow" || action.action === "permission_deny") {
             if (action.actor.id !== this.ownerOpenId())
                 return { ok: false, toast: "无权操作" };
@@ -3177,6 +3300,30 @@ export class ProxyRuntime {
             return { ok: true, toast: result, ...(card?.kind === "card" ? { card: card.card } : {}) };
         }
         return this.approvalService.onAction(action);
+    }
+    async onCandidateAction(action) {
+        if (!(await this.approvalService.isAuthorizedActor(action.actor))) {
+            return { ok: false, toast: "无权操作" };
+        }
+        const task = await this.tasks.get(action.taskId);
+        if (!task)
+            return { ok: false, toast: "任务不存在或已清理" };
+        if (action.action === "candidate_skip") {
+            return { ok: true, toast: "已保留候选任务，之后仍可 /分析 或点击开始分析" };
+        }
+        if (task.state === "analyzing")
+            return { ok: true, toast: "该任务正在分析中" };
+        if (!["candidate", "needs_info", "awaiting_approval", "failed", "expired"].includes(task.state)) {
+            return { ok: false, toast: `当前状态不能重新分析：${task.state}` };
+        }
+        const reply = await this.analyzePendingTask(task.id);
+        await this.audit.append({
+            actor: action.actor,
+            action: "candidate_analysis_requested",
+            taskId: task.id,
+            details: { via: "card" },
+        });
+        return { ok: true, toast: reply };
     }
     async approveReply(action, pending) {
         const task = await this.tasks.get(action.taskId);
@@ -3733,6 +3880,9 @@ export class ProxyRuntime {
     }
     safeReply(message, text) {
         return this.notificationService.safeReply(message, text);
+    }
+    safeReplyResult(message, text) {
+        return this.notificationService.safeReplyResult(message, text);
     }
     sendToApprover(text) {
         return this.notificationService.sendToApprover(text);

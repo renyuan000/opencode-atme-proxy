@@ -878,6 +878,21 @@ export function renderNotificationCard(view: NotificationView): OutboundMessage 
       text: { tag: "lark_md", content: `[${view.link.label}](${view.link.url})` },
     });
   }
+  if (view.actions?.length) {
+    elements.push({
+      tag: "action",
+      actions: view.actions.map((item) => ({
+        tag: "button",
+        text: { tag: "plain_text", content: item.label },
+        type: item.type ?? "default",
+        value: {
+          a: item.action,
+          ...(item.taskId ? { t: item.taskId } : {}),
+          ...(item.planHash ? { h: item.planHash } : {}),
+        },
+      })),
+    });
+  }
   return {
     kind: "card",
     card: {

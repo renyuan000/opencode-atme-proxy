@@ -31,6 +31,10 @@ export declare class NotificationService {
     constructor(options: NotificationServiceOptions);
     sendToOwner(text: string, sourceMessageId?: string): Promise<boolean>;
     sendOwnerReply(message: IncomingMessage, text: string, replyToMessageId?: string): Promise<boolean>;
+    sendOwnerReplyResult(message: IncomingMessage, text: string, replyToMessageId?: string): Promise<{
+        ok: boolean;
+        messageId?: string;
+    }>;
     sendOwnerNotification(view: NotificationView): Promise<boolean>;
     sendOwnerNotificationResult(view: NotificationView): Promise<{
         ok: boolean;
@@ -38,6 +42,10 @@ export declare class NotificationService {
     }>;
     sendToApprover(text: string): Promise<boolean>;
     safeReply(message: IncomingMessage, text: string): Promise<boolean>;
+    safeReplyResult(message: IncomingMessage, text: string): Promise<{
+        ok: boolean;
+        messageId?: string;
+    }>;
     chatLabel(message: IncomingMessage): Promise<string>;
     rememberChatName(chatId: string, name: string): void;
     fetchChatName(chatId: string): Promise<string | undefined>;

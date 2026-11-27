@@ -102,6 +102,7 @@ export declare class ProxyRuntime {
     private resolveSenderLabel;
     private sendToOwner;
     private sendOwnerReply;
+    private sendOwnerReplyResult;
     private acknowledge;
     private linkAbort;
     private onMessageRecalled;
@@ -167,6 +168,7 @@ export declare class ProxyRuntime {
     private notifyBlockedDirect;
     private isDmTaskFollowup;
     private findActiveDmTask;
+    private asksForAnalysis;
     private handleTaskSupplement;
     private withPermissionGuidance;
     private handleDirectMessage;
@@ -177,6 +179,8 @@ export declare class ProxyRuntime {
     private applyBurstGrouping;
     private handleMessage;
     private handleBotMention;
+    private resolveTaskFromMessage;
+    private handleGroupTaskIntent;
     private handleMeMention;
     private handlePolledBatch;
     private isFileRelevant;
@@ -188,6 +192,7 @@ export declare class ProxyRuntime {
     private onReconnected;
     private sweepExpiredApprovals;
     private onAction;
+    private onCandidateAction;
     private approveReply;
     private latestAnalysis;
     private createChildSession;
@@ -202,6 +207,7 @@ export declare class ProxyRuntime {
     private resolveProject;
     private askOpenCode;
     private safeReply;
+    private safeReplyResult;
     private sendToApprover;
     private markProcessed;
     private sanitize;
